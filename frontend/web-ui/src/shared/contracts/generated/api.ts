@@ -112,6 +112,8 @@ export interface ProjectSummary {
 export type ProjectSource = 'configured' | 'local_disk'
 
 export interface ProjectCatalogItem {
+  resource_errors?: string[]
+  resource_counts?: Partial<Record<'datasets' | 'models' | 'apps' | 'deployments', number | null>>
   project_id: string
   display_name?: string | null
   description?: string | null
@@ -119,6 +121,10 @@ export interface ProjectCatalogItem {
   project_source?: ProjectSource
   storage_prefix?: string | null
   summary?: ProjectSummary | null
+  created_at?: string | null
+  updated_at?: string | null
+  revision?: string | null
+  model_total?: number | null
 }
 
 export interface ProjectFileMetadata {

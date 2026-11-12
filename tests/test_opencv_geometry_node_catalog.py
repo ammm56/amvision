@@ -27,6 +27,8 @@ def test_opencv_geometry_node_catalog_builder_matches_checked_in_catalog() -> No
         "custom.opencv.perspective-transform",
         "custom.opencv.affine-transform",
         "custom.opencv.planar-transform-bridge",
+        "custom.opencv.mapped-roi-crop",
+        "custom.opencv.roi-array",
         "custom.opencv.undistort",
         "custom.opencv.remap",
         "custom.opencv.quadrilateral-from-circle-centers",

@@ -6,12 +6,17 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 @dataclass(frozen=True)
@@ -57,17 +62,26 @@ class SqlAlchemyDatasetExportDeliveryService:
         self.dataset_storage = dataset_storage
 
     def package_export(
-        self, dataset_export_id: str, *, rebuild: bool = False,
-        package_object_key: str | None = None, persist_package_metadata: bool = True,
+        self,
+        dataset_export_id: str,
+        *,
+        rebuild: bool = False,
+        package_object_key: str | None = None,
+        persist_package_metadata: bool = True,
     ) -> DatasetExportPackage:
         """打包期间持有 Project 操作权，排除删除和同一导出的重复打包。"""
         export = self._require_dataset_export(dataset_export_id)
         with ProjectMutationAdmissionService(self.session_factory).operation(
-            project_id=export.project_id, mutation_kind="dataset-export-package",
+            project_id=export.project_id,
+            mutation_kind="dataset-export-package",
             resource_id=dataset_export_id,
         ):
-            return self._package_export(dataset_export_id, rebuild=rebuild,
-                package_object_key=package_object_key, persist_package_metadata=persist_package_metadata)
+            return self._package_export(
+                dataset_export_id,
+                rebuild=rebuild,
+                package_object_key=package_object_key,
+                persist_package_metadata=persist_package_metadata,
+            )
 
     def _package_export(
         self,
@@ -92,7 +106,9 @@ class SqlAlchemyDatasetExportDeliveryService:
         dataset_export = self._require_dataset_export(dataset_export_id)
         self._validate_export_ready(dataset_export)
 
-        resolved_package_object_key = self._normalize_optional_object_key(package_object_key)
+        resolved_package_object_key = self._normalize_optional_object_key(
+            package_object_key
+        )
         if resolved_package_object_key is None:
             resolved_package_object_key = self._build_package_object_key(dataset_export)
 
@@ -171,12 +187,16 @@ class SqlAlchemyDatasetExportDeliveryService:
 
         return package, package_path
 
-    def resolve_manifest_file(self, dataset_export_id: str) -> tuple[DatasetExport, Path]:
+    def resolve_manifest_file(
+        self, dataset_export_id: str
+    ) -> tuple[DatasetExport, Path]:
         """解析一个 DatasetExport 的 manifest 文件路径。"""
 
         dataset_export = self._require_dataset_export(dataset_export_id)
         self._validate_export_ready(dataset_export)
-        manifest_path = self.dataset_storage.resolve(dataset_export.manifest_object_key or "")
+        manifest_path = self.dataset_storage.resolve(
+            dataset_export.manifest_object_key or ""
+        )
         if not manifest_path.is_file():
             raise ResourceNotFoundError(
                 "找不到指定 DatasetExport 的 manifest 文件",
@@ -193,7 +213,9 @@ class SqlAlchemyDatasetExportDeliveryService:
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            dataset_export = unit_of_work.dataset_exports.get_dataset_export(dataset_export_id)
+            dataset_export = unit_of_work.dataset_exports.get_dataset_export(
+                dataset_export_id
+            )
         finally:
             unit_of_work.close()
 
@@ -218,6 +240,9 @@ class SqlAlchemyDatasetExportDeliveryService:
     def _validate_export_ready(self, dataset_export: DatasetExport) -> None:
         """校验当前 DatasetExport 是否已经可供下载和训练消费。"""
 
+        if dataset_export.metadata.get("files_cleaned_at"):
+            raise ResourceNotFoundError("导出文件已清理，请从来源版本重新创建导出")
+
         if dataset_export.status != "completed":
             raise InvalidRequestError(
                 "当前 DatasetExport 尚未完成，不能下载或用于训练",
@@ -231,7 +256,10 @@ class SqlAlchemyDatasetExportDeliveryService:
                 "当前 DatasetExport 缺少 export_path",
                 details={"dataset_export_id": dataset_export.dataset_export_id},
             )
-        if dataset_export.manifest_object_key is None or not dataset_export.manifest_object_key.strip():
+        if (
+            dataset_export.manifest_object_key is None
+            or not dataset_export.manifest_object_key.strip()
+        ):
             raise InvalidRequestError(
                 "当前 DatasetExport 缺少 manifest_object_key",
                 details={"dataset_export_id": dataset_export.dataset_export_id},
@@ -245,8 +273,12 @@ class SqlAlchemyDatasetExportDeliveryService:
     ) -> DatasetExportPackage | None:
         """按指定 object key 读取可复用的下载包信息。"""
 
-        recorded_package_object_key = self._read_optional_str(dataset_export.metadata, "package_object_key")
-        package_file_name = self._read_optional_str(dataset_export.metadata, "package_file_name")
+        recorded_package_object_key = self._read_optional_str(
+            dataset_export.metadata, "package_object_key"
+        )
+        package_file_name = self._read_optional_str(
+            dataset_export.metadata, "package_file_name"
+        )
         packaged_at = self._read_optional_str(dataset_export.metadata, "packaged_at")
         package_size = self._read_optional_int(dataset_export.metadata, "package_size")
         if (
@@ -298,7 +330,9 @@ class SqlAlchemyDatasetExportDeliveryService:
             package_object_key=package_object_key,
             package_file_name=self._build_package_file_name(dataset_export),
             package_size=int(package_stat.st_size),
-            packaged_at=datetime.fromtimestamp(package_stat.st_mtime, timezone.utc).isoformat(),
+            packaged_at=datetime.fromtimestamp(
+                package_stat.st_mtime, timezone.utc
+            ).isoformat(),
         )
 
     def _build_package_object_key(self, dataset_export: DatasetExport) -> str:
@@ -310,7 +344,9 @@ class SqlAlchemyDatasetExportDeliveryService:
         )
 
     def _build_package_file_name(self, dataset_export: DatasetExport) -> str:
-        """构建 DatasetExport 下载包的默认文件名。"""
+        """优先使用向导设置的文件名；以导出 ID 作为未设置时的默认名称。"""
+        if name := dataset_export.metadata.get("package_name"):
+            return str(name)
 
         return (
             f"{dataset_export.dataset_id}-{dataset_export.format_id}-"

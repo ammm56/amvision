@@ -9,6 +9,10 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 ## 当前公开范围
 
 - GET /api/v1/system/bootstrap
+- POST /api/v1/projects
+- PATCH /api/v1/projects/{project_id}
+- GET /api/v1/projects/{project_id}/overview
+- GET /api/v1/projects/{project_id}/deletion-operations/{operation_id}
 - POST /api/v1/projects/bootstrap
 - GET /api/v1/projects
 - GET /api/v1/projects/{project_id}
@@ -23,7 +27,7 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 
 ## 设计边界
 
-- Project 只负责命名空间、目录骨架和最小 manifest，不负责独立的增删改查主数据生命周期。
+- Project 只负责命名空间、目录骨架和最小 manifest，元数据仍保存在 manifest，项目更新与删除受现有生命周期锁保护，不新增 Project 数据表。
 - Project bootstrap 只在本地磁盘上初始化 `projects/{project_id}` 相关骨架和 manifest，不会额外创建数据库 Project 表。
 - system/bootstrap 是前端首屏和工作站首个 HTTP 聚合入口，用于一次性拿到当前主体、provider 目录、可见 Project 和关键能力摘要。
 - Project summary 是工作台正式快照面，用于聚合 datasets、imports、exports、training、validation、evaluation、conversion、inference、workflows 和 deployments。
@@ -141,6 +145,7 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 ## GET /api/v1/projects
 
 - 当前支持查询参数：
+  - `q`：对可见项目名称、ID、说明进行全局搜索，最长 200 字符
   - `include_summary`
   - `offset`
   - `limit`
@@ -313,3 +318,26 @@ Project 删除仅适用于来源为 `local_disk` 的非默认 Project。`default
 - 当前不公开 Project rename、archive 接口；Project delete 只支持本地磁盘 Project。
 - 当前 `project_id` 一旦作为目录名进入后续数据链路，应视为稳定命名空间，不建议在外层随意重写。
 - 当前 files 读取接口只开放公开命名空间，不作为任意 ObjectStore 浏览器使用。
+
+
+## 项目工作区增量接口（2026-11-04）
+
+所有接口继续使用 v1；原 bootstrap、summary、文件和 SDK 契约保留。没有数据库 schema 迁移。旧 manifest 缺失的日期返回 null，界面显示“—”，不使用当前时间填充。
+
+- `POST /api/v1/projects`：`request_id`（UUID）、`display_name`（1–128 字符）、`description`（可空，最多 2000 字符）。ID 为 `project-{request_id.hex}`，同一操作者、同一请求和内容可明确重试；冲突返回 409。权限沿用 bootstrap，且新 ID 必须在项目可见范围内；限制为指定项目的账号不提供新建入口。
+- `PATCH /api/v1/projects/{id}`：名称、说明和 `expected_revision`。读取获得的 revision 是 manifest 的 SHA-256；版本不匹配返回 409，不能覆盖另一会话的修改。配置项目只读。不会修改 ID、目录、创建人或创建时间。
+- 目录增加 `created_at`、`updated_at`、`revision`、`model_total`。列表按元数据更新时间倒序，先搜索与分页，再计算当前页 summary；模型数不包括平台预训练模型或模型版本数。
+- `GET /api/v1/projects/{id}/overview?limit=6`：返回 `recent`、`active`、`total`、`offset`、`limit`、`checked_at` 和资源组 `access`。`limit` 为 1–100，`offset` 从 0 开始，`q` 最多 200 字符；`kind` 可为 `datasets/models/apps/runtimes/deployments/tasks`，空值表示全部有权类别。最近更新包含任务、数据集版本、模型版本、应用元数据与发布版本、Workflow Runtime 和模型部署；按真实更新时间倒序并以资源身份稳定排序。查询数据库窄字段并与本地应用元数据合并，不读取图片或完整任务结果。运行部署使用实际进程状态，不用“已登记/启用”充当运行中。此接口不执行或等待业务调用。
+  - 部署活动项同时返回 `runtime_mode`（`sync` / `async`）；同一部署的两种模式是独立运行项，不能只按部署 ID 去重。`stopping` 仍属于需要显示的当前服务状态。
+- `GET /api/v1/projects/{id}/deletion-operations/{operation_id}`：需要 `projects:delete`，并检查项目权限；原操作者可在项目授权记录删除后核对自己的操作。`latest` 支持删除响应未知时核对最近受理结果，不重新删除。状态为 `deleting`、`failed`、`cleanup_pending`、`cleanup_failed`、`deleted`。清理失败返回 `cleanup_error`，完成后不再返回旧错误。
+- 删除确认必须逐字匹配项目 ID（不忽略空白）；删除前仍复核活动任务、Runtime、Trigger 等阻止项。默认项目和配置项目保持保护。后台清理失败保留隔离目录及 manifest，既有启动恢复负责再次清理；检查状态只读，不隐式重试删除。
+
+### 项目入口与资源可见范围
+
+项目目录与概览需要 `datasets:read`、`models:read`、`workflows:read`、`tasks:read`、`datasets:write`、`workflows:write` 中任一能力，并继续校验项目范围。前端页面还遵守 `allowed_pages`；仅能查看某类资源不要求同时授予其他类别。
+
+列表和详情的 `resource_counts` 只包含可访问类别：`datasets/models/apps/deployments`。授权类别读取失败时对应值为 `null`，并在 `resource_errors` 返回类别名，不能补成 0；正常元数据仍可读取。`include_summary=false` 不计算这些计数。概览 `access` 还包含 `runtimes/tasks`，服务端按 scope 与页面范围过滤活动、名称和计数。完整旧 `summary` 只向可读全部资源组的账号返回；直接访问旧 summary 接口而权限不完整时返回 403，避免绕过概览过滤。
+
+删除阻止项增加 `display_name`；资源 ID 仍保留用于确定身份。界面可以显示友好名称及有权限的详情入口，缺失名称时回退 ID。前端按账号、项目保存多条未完成删除操作；连续读取失败保留待确认，不把失败当作未受理，也不自动重复 DELETE。
+
+删除回执写入 ObjectStore 的 `runtime/project-deletion-results/`，与待清理的项目目录分离；按项目哈希保存最近操作索引。已有旧操作没有新回执时返回 404，不能把不存在的回执认作清理完成。回执不是授权凭据，也不通过公开项目文件接口暴露。

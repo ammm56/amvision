@@ -1,0 +1,69 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.measurement-items-check",
+  "version": "0.1.8",
+  "display_name": "Measurement Items Check",
+  "category": "opencv.inspection.measurement",
+  "description": "对明确字段执行闭区间检查，保留测量值、单位、上下限及不可测状态。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "metrics",
+      "display_name": "Metrics",
+      "payload_type_id": "value.v1",
+      "required": true
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "checks",
+      "display_name": "Checks",
+      "payload_type_id": "value.v1",
+      "required": true
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "check_id": {
+        "type": "string",
+        "title": "检查标识"
+      },
+      "metric": {
+        "type": "string",
+        "title": "测量字段"
+      },
+      "minimum": {
+        "type": "number",
+        "title": "下限"
+      },
+      "maximum": {
+        "type": "number",
+        "title": "上限"
+      },
+      "unit": {
+        "type": "string",
+        "title": "单位",
+        "default": ""
+      }
+    },
+    "required": [
+      "check_id",
+      "metric"
+    ]
+  },
+  "capability_tags": [
+    "vision.inspection",
+    "opencv.measurement-items"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

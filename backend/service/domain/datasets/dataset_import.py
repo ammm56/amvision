@@ -26,6 +26,7 @@ IMPLEMENTED_DATASET_IMPORT_TASK_TYPES: Final[tuple[DatasetImportTaskType, ...]] 
     "pose",
     "classification",
     "obb",
+    "anomaly", "connector-reference", "rgbd", "point-cloud",
 )
 
 
@@ -35,7 +36,9 @@ IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE: Final[
 
 
 # 数据集导入记录的最小状态集合。
-DatasetImportStatus = Literal["received", "extracted", "validated", "completed", "failed"]
+DatasetImportStatus = Literal[
+    "received", "extracted", "validated", "completed", "failed", "cancelled"
+]
 
 
 # 导入请求允许的 split 策略。
@@ -45,6 +48,7 @@ DatasetImportRequestedSplitStrategy = Literal["auto", "train", "val", "test"]
 # 导入完成后记录的实际 split 策略。
 DatasetImportResolvedSplitStrategy = Literal[
     "manifest-name",
+    "seeded-ratios",
     "image_sets",
     "image_sets-trainval-as-train",
     "image_sets-multi-shard",

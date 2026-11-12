@@ -154,6 +154,7 @@ Pixel-to-World 和 World-to-Pixel 依赖相机/平面标定，归入 `opencv.nod
 | node type | category | 层级 | 说明 |
 | --- | --- | --- | --- |
 | `custom.opencv.image-create` | `opencv.image.transform` | 原子 | 按宽、高、通道、dtype 和填充值创建图片。 |
+| `custom.opencv.image-decode` | `opencv.image.basic` | 原子 | 显式解码一次供本次执行复用；默认 OpenCV，也可显式选择未压缩 BGR24 BMP。 |
 | `custom.opencv.image-type-convert` | `opencv.image.color` | 原子 | 显式转换 dtype、通道布局和数值范围，不与颜色空间转换混用。 |
 | `custom.opencv.image-translate` | `opencv.image.transform` | 常用工具 | 封装高频平移参数与边界模式，底层复用 affine 实现。 |
 | `custom.opencv.image-composite` | `opencv.image.transform` | 常用工具 | 按位置、mask 和 alpha 组合图片。 |
@@ -162,6 +163,10 @@ Pixel-to-World 和 World-to-Pixel 依赖相机/平面标定，归入 `opencv.nod
 | `custom.opencv.image-quality-metrics` | `opencv.inspection.statistics` | 常用工具 | 一次输出亮度、对比度、清晰度、曝光裁剪、饱和度和噪声估计，可选 ROI。 |
 
 `image-quality-metrics` 至少输出 mean/std、Laplacian variance、Tenengrad、low/high clipping ratio、HSV saturation statistics 和 robust noise estimate。已有 Brightness/ROI Intensity 节点保留，不复制为新的 Brightness 节点。
+
+Image Decode 0.1.10 的 `decode_method=opencv` 保持原解码方式。`bmp-bgr24` 只接受 BITMAPINFOHEADER、BI_RGB、24 位 BMP：文件输入短期映射后复制为独立连续 BGR 矩阵；编码内存与 LocalBuffer 输入使用同一格式解析器。已解码的 raw 图片继续使用原始像素读取路径。格式不匹配明确失败，不隐式回退。输出仍计算完整像素摘要并按 Run 释放，不新增队列、跨 Run 大图缓存或常驻映射。
+
+Mapped ROI Crop 0.1.10 接受 `roi`、`rois`（标准 `roi-list.v1`）或 `roi_items` 三者之一；同时连接时明确失败。`selected_ids` 按 ROI 标识筛选，局部 `window_roi` 在每个父 ROI 内使用相同的可编辑窗口。列表路径逐项复用原采样算法、插值、越界校验和来源坐标，不改变执行并发。空选择输出空裁图列表，由 Workflow 的显式条件分支决定是否调用模型。
 
 ### 几何对象、选择与二维变换
 
@@ -177,12 +182,14 @@ Pixel-to-World 和 World-to-Pixel 依赖相机/平面标定，归入 `opencv.nod
 | `custom.opencv.lines-select` | `opencv.geometry.shape` | 按显式 index/filter 选择并保持 `lines.v1`。 |
 | `custom.opencv.circles-select` | `opencv.geometry.shape` | 按显式 index/filter 选择并保持 `circles.v1`。 |
 | `custom.opencv.ellipses-select` | `opencv.geometry.shape` | 按显式 index/filter 选择并保持 `ellipses.v1`。 |
-| `custom.opencv.transform-2d-create` | `opencv.image.transform` | 创建刚体、相似、仿射或透视 `planar-transform.v1`。 |
+| `custom.opencv.transform-2d-create` | `opencv.image.transform` | 创建刚体、相似、仿射或透视 `planar-transform.v1`；仿射 `matrix_2x3`、透视 `matrix_3x3` 可通过可选 `value.v1` 参数输入端口连接上游矩阵。 |
 | `custom.opencv.transform-2d-compose` | `opencv.image.transform` | 按明确顺序组合二维变换。 |
 | `custom.opencv.transform-2d-invert` | `opencv.image.transform` | 反演并报告奇异或病态矩阵。 |
 | `custom.opencv.transform-points` | `opencv.image.transform` | 变换 `points.v1` 并更新 coordinate space。 |
 | `custom.opencv.pixel-to-world` | `opencv.calibration.pose` | 使用明确标定模型把像素点转换到平面世界坐标。 |
 | `custom.opencv.world-to-pixel` | `opencv.calibration.pose` | 使用明确标定模型把平面世界坐标投影到像素坐标。 |
+
+Transform 2D Create 0.1.9 复用统一参数输入绑定：未连接时使用参数框，连接时使用上游值，并继续执行原有矩阵形状、数值和可逆性校验。节点不根据图片自动推断坐标方向。仅需要变换 ROI 时，可连接 Planar Transform Bridge 的 `roi` 与 `transform`，不连接 `image`，避免不必要的图片变换与复制。
 
 现有 Point Distance、Point-to-Line Distance、Line Intersection 和 Line Angle 继续复用。补充的关系量测为：
 

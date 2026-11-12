@@ -225,6 +225,29 @@ def test_short_yolox_training_resolves_only_implicit_schedule_defaults() -> None
         DetectionTrainingTaskCreateRequestBody.model_validate(payload)
 
 
+@pytest.mark.parametrize(("enabled", "warmup", "no_aug", "rule"), [
+    (True, 5, 15, "yolox_epoch_schedule_invalid"),
+    (True, 20, 0, "yolox_warmup_epochs_invalid"),
+    (True, 2, 3, None),
+    (False, 2, 0, None),
+])
+def test_yolox_twenty_epoch_explicit_schedule(enabled, warmup, no_aug, rule) -> None:
+    """覆盖实际页面的 20 轮增强开关请求，错误使用稳定规则。"""
+    payload = _base_request(model_type="yolox")
+    payload["execution"] = {"max_epochs": 20}
+    payload["parameters"] = {
+        "optimization": {"warmup_epochs": warmup, "no_aug_epochs": no_aug},
+        "augmentation": {"enabled": enabled},
+    }
+    if rule:
+        with pytest.raises(ValidationError) as captured:
+            DetectionTrainingTaskCreateRequestBody.model_validate(payload)
+        assert captured.value.errors()[0]["type"] == rule
+    else:
+        request = DetectionTrainingTaskCreateRequestBody.model_validate(payload)
+        assert request.parameters.optimization.no_aug_epochs == no_aug
+
+
 def test_training_execution_policy_defaults_to_auto_batch_amp_and_five_epoch_io() -> None:
     """公共执行策略默认使用 AutoBatch、AMP 和五轮磁盘/验证周期。"""
 

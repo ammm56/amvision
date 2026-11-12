@@ -15,6 +15,7 @@ from backend.service.application.models.training.yolox_detection_task_service im
     YOLOX_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.ports.queue import QueueBackend, QueueMessage
+from backend.service.application.support.resource_cleanup import release_model_task_resources
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -58,6 +59,15 @@ class YoloXTrainingQueueWorker:
         )
         if queue_task is None:
             return False
+
+        processed = self._run_claimed_task(queue_task)
+        # runner 的 finally 可能在异常 traceback 仍持有模型时运行。
+        # 等消费栈和异常处理退出后再清理一次，空闲轮询不做 GC/CUDA 操作。
+        release_model_task_resources()
+        return processed
+
+    def _run_claimed_task(self, queue_task: QueueMessage) -> bool:
+        """处理已领取任务；返回时不再持有训练帧、checkpoint 或异常 traceback。"""
 
         lease = TrainingLeaseHeartbeat(
             queue_backend=self.queue_backend,

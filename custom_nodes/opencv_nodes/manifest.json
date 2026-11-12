@@ -1,14 +1,17 @@
 {
   "format_id": "amvision.node-pack-manifest.v1",
   "id": "opencv.nodes",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "displayName": "OpenCV Nodes",
-  "description": "提供统一的 OpenCV 颜色、增强、滤波、阈值、分割、特征、模板、几何、标定、量测、检测和可视化节点。",
+  "description": "提供通用 OpenCV 图像、圆心定位、几何阵列、ROI 取参、前景与边界比较、局部映射裁剪和可视化节点。",
   "category": "vision",
   "categoryRoot": "opencv",
   "implementationLayout": "categories",
   "capabilities": [
     "pipeline.node",
+    "opencv.foreground-comparison",
+    "opencv.roi-crop-inputs",
+    "opencv.polygon-foreground-comparison",
     "vision.opencv",
     "vision.filter",
     "vision.segmentation",
@@ -18,7 +21,13 @@
     "vision.calibration",
     "vision.measurement",
     "vision.defect",
-    "vision.render"
+    "vision.render",
+    "opencv.circle-pattern-locate",
+    "opencv.mapped-roi-crop",
+    "opencv.image-decode",
+    "opencv.roi-array",
+    "opencv.foreground-boundary-check",
+    "opencv.mapped-roi-window"
   ],
   "entrypoints": {
     "backend": "custom_nodes.opencv_nodes.backend.entry:register"

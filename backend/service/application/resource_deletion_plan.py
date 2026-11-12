@@ -34,6 +34,9 @@ ID_FIELDS = {
     "outbox": "message_id",
 }
 REFERENCE_FIELDS = {
+    "base_version_id",
+    "returned_version_id",
+    "handoff_export_id",
     "task_id",
     "parent_task_id",
     "training_task_id",
@@ -122,6 +125,22 @@ def build_resource_deletion_plan(
     operation_id: str,
 ) -> ResourceDeletionPlan:
     """闭包包含所属产物，外部依赖在修改文件和数据库前阻止删除。"""
+    if kind == "dataset-export-files":
+        # 复用导出依赖、受管路径和运行占用校验；只回收产物，保留任务与报告。
+        plan = build_resource_deletion_plan(
+            inventory=inventory,
+            storage=storage,
+            project_id=project_id,
+            kind="dataset-export",
+            resource_id=resource_id,
+            operation_id=operation_id,
+        )
+        plan.target = ResourceRef(kind=kind, resource_id=resource_id)
+        plan.records = [ResourceRef(kind=kind, resource_id=resource_id)]
+        plan.paths = [
+            path for path in plan.paths if not path.source.startswith("task-runs/")
+        ]
+        return plan
     for value in (project_id, resource_id, operation_id):
         normalize_queue_path_component(value, field_name="resource_id")
     selected: dict[tuple[str, str], dict] = {}
@@ -130,6 +149,10 @@ def build_resource_deletion_plan(
         """把聚合根加入去重清单。"""
         selected[resource_kind, str(row[ID_FIELDS[resource_kind]])] = row
 
+    dataset_record = kind == "dataset" and any(
+        row["project_id"] == project_id and row["dataset_id"] == resource_id
+        for row in inventory.get("dataset", ())
+    )
     if kind == "dataset":
         for item_kind in ("dataset-version", "dataset-import", "dataset-export"):
             for row in inventory[item_kind]:
@@ -140,6 +163,7 @@ def build_resource_deletion_plan(
                     add(item_kind, row)
         if (
             not selected
+            and not dataset_record
             and not storage.resolve(
                 f"projects/{project_id}/datasets/{resource_id}"
             ).is_dir()
@@ -173,19 +197,44 @@ def build_resource_deletion_plan(
     if kind == "deployment":
         # 可选回收只尝试此实例的导入产物；共享模型保留，不阻止删除实例。
         from copy import deepcopy
+
         reduced = deepcopy(inventory)
-        reduced["deployment"] = [r for r in reduced["deployment"] if r["deployment_instance_id"] != resource_id]
+        reduced["deployment"] = [
+            r
+            for r in reduced["deployment"]
+            if r["deployment_instance_id"] != resource_id
+        ]
         instance = selected["deployment", resource_id]
-        for candidate_kind, field in (("model-build", "model_build_id"), ("model-version", "model_version_id")):
+        for candidate_kind, field in (
+            ("model-build", "model_build_id"),
+            ("model-version", "model_version_id"),
+        ):
             candidate_id = instance.get(field)
-            if not candidate_id or not any(r.get(field) == candidate_id and r.get("project_id") == project_id for r in reduced.get("imported-artifact", [])):
+            if not candidate_id or not any(
+                r.get(field) == candidate_id and r.get("project_id") == project_id
+                for r in reduced.get("imported-artifact", [])
+            ):
                 continue
             try:
-                candidate = build_resource_deletion_plan(inventory=reduced, storage=storage, project_id=project_id, kind=candidate_kind, resource_id=candidate_id, operation_id=operation_id)
+                candidate = build_resource_deletion_plan(
+                    inventory=reduced,
+                    storage=storage,
+                    project_id=project_id,
+                    kind=candidate_kind,
+                    resource_id=candidate_id,
+                    operation_id=operation_id,
+                )
             except ResourceInUseError:
                 continue
             for ref in candidate.records:
-                row = next((r for r in reduced.get(ref.kind, []) if r[ID_FIELDS[ref.kind]] == ref.resource_id), None)
+                row = next(
+                    (
+                        r
+                        for r in reduced.get(ref.kind, [])
+                        if r[ID_FIELDS[ref.kind]] == ref.resource_id
+                    ),
+                    None,
+                )
                 if row is not None:
                     add(ref.kind, row)
                     reduced[ref.kind].remove(row)
@@ -212,7 +261,11 @@ def build_resource_deletion_plan(
             if rk in {"dataset-import", "dataset-export"}
         }
         for row in inventory["task"]:
-            if row["task_id"] in linked_tasks:
+            if row["task_id"] in linked_tasks or (
+                row.get("task_kind") == "dataset-workspace"
+                and row.get("task_spec_json", {}).get("dataset_version_id")
+                in version_ids
+            ):
                 add("task", row)
         for row in inventory["model-version"]:
             if row.get("training_task_id") in task_ids:
@@ -223,7 +276,10 @@ def build_resource_deletion_plan(
         owned_versions = {rid for (rk, rid) in selected if rk == "model-version"}
         owned_builds = {rid for (rk, rid) in selected if rk == "model-build"}
         for row in inventory.get("imported-artifact", []):
-            if row.get("model_version_id") in owned_versions or row.get("model_build_id") in owned_builds:
+            if (
+                row.get("model_version_id") in owned_versions
+                or row.get("model_build_id") in owned_builds
+            ):
                 add("imported-artifact", row)
         for row in inventory["model-file"]:
             if (
@@ -255,13 +311,20 @@ def build_resource_deletion_plan(
             )
             or (
                 rk in {"dataset-import", "dataset-export"}
-                and state not in {"completed", "failed"}
+                and state not in {"completed", "failed", "cancelled"}
             )
             or (rk == "outbox" and state in {"pending", "leased"})
         )
         if active:
             blockers.append({"resource_kind": rk, "resource_id": rid, "state": state})
-    for rk in ("task", "dataset-export", "model-version", "model-build", "deployment"):
+    for rk in (
+        "task",
+        "dataset-export",
+        "dataset-version",
+        "model-version",
+        "model-build",
+        "deployment",
+    ):
         for row in inventory[rk]:
             rid = row[ID_FIELDS[rk]]
             if (rk, rid) in selected:
@@ -480,7 +543,14 @@ def build_resource_deletion_plan(
                 "输出仍被其他模型文件引用", details={"file_id": row["file_id"]}
             )
 
-    _check_workflow_references(inventory, storage, deleted_ids, project_id=project_id, strict=kind == "deployment" or any(rk == "imported-artifact" for rk, _ in selected))
+    _check_workflow_references(
+        inventory,
+        storage,
+        deleted_ids,
+        project_id=project_id,
+        strict=kind == "deployment"
+        or any(rk == "imported-artifact" for rk, _ in selected),
+    )
     minimal_paths: list[str] = []
     for path in sorted(paths, key=lambda item: (len(PurePosixPath(item).parts), item)):
         storage.resolve_deletion_path(path)
@@ -491,7 +561,8 @@ def build_resource_deletion_plan(
         operation_id=operation_id,
         project_id=project_id,
         target=ResourceRef(kind=kind, resource_id=resource_id),
-        records=[ResourceRef(kind=rk, resource_id=rid) for rk, rid in selected],
+        records=[ResourceRef(kind=rk, resource_id=rid) for rk, rid in selected]
+        + ([ResourceRef(kind="dataset", resource_id=resource_id)] if dataset_record else []),
         paths=[
             StorageDeletionTarget(
                 source=path,
@@ -508,7 +579,12 @@ def build_resource_deletion_plan(
 
 
 def _check_workflow_references(
-    inventory: dict, storage: LocalDatasetStorage, deleted_ids: set[str], *, project_id: str | None = None, strict: bool = False
+    inventory: dict,
+    storage: LocalDatasetStorage,
+    deleted_ids: set[str],
+    *,
+    project_id: str | None = None,
+    strict: bool = False,
 ) -> None:
     """检查已发布快照和磁盘草稿内的显式资源引用。"""
     snapshots: set[str] = set()
@@ -534,7 +610,10 @@ def _check_workflow_references(
     for key in snapshots:
         if not storage.resolve(key).is_file():
             if strict and key in required_snapshots:
-                raise ResourceInUseError("Workflow 快照缺失，无法确认导入模型是否仍被使用", details={"snapshot_object_key": key})
+                raise ResourceInUseError(
+                    "Workflow 快照缺失，无法确认导入模型是否仍被使用",
+                    details={"snapshot_object_key": key},
+                )
             continue
         references = referenced_ids(storage.read_json(key)) & deleted_ids
         if references:

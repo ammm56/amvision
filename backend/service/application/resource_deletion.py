@@ -122,7 +122,7 @@ class ResourceDeletionService:
             unit = self._unit()
             try:
                 # 同一 Project 的新资源登记/恢复被 sentinel 排除；终态执行器不再拥有写权限。
-                unit.resource_deletions.delete_records(plan.records)
+                unit.resource_deletions.delete_records(plan.records, project_id=plan.project_id)
                 committed = operation.model_copy(update={"state": "committed"})
                 unit.resource_deletions.save(committed)
                 if not unit.workflow_runtime.complete_workflow_application_lifecycle(
@@ -169,7 +169,13 @@ class ResourceDeletionService:
     def _revision(plan) -> str:
         """只对将删除的对象和原路径计算稳定摘要。"""
         from backend.service.application.deployments.package_import import content_hash
-        return content_hash({"records": sorted((r.kind, r.resource_id) for r in plan.records), "paths": sorted(p.source for p in plan.paths)})
+
+        return content_hash(
+            {
+                "records": sorted((r.kind, r.resource_id) for r in plan.records),
+                "paths": sorted(p.source for p in plan.paths),
+            }
+        )
 
     def preview(self, *, kind: str, resource_id: str, project_id: str) -> dict:
         """读取与实际删除相同的范围，不占用或移动文件。"""
@@ -178,16 +184,44 @@ class ResourceDeletionService:
             inventory = unit.resource_deletions.inventory()
         finally:
             unit.close()
-        plan = build_resource_deletion_plan(inventory=inventory, storage=self.storage, project_id=project_id, kind=kind, resource_id=resource_id, operation_id="preview")
-        deleted = [{"kind": r.kind, "resource_id": r.resource_id} for r in plan.records if r.kind in {"model-version", "model-build"}]
+        plan = build_resource_deletion_plan(
+            inventory=inventory,
+            storage=self.storage,
+            project_id=project_id,
+            kind=kind,
+            resource_id=resource_id,
+            operation_id="preview",
+        )
+        deleted = [
+            {"kind": r.kind, "resource_id": r.resource_id}
+            for r in plan.records
+            if r.kind in {"model-version", "model-build"}
+        ]
         retained = []
         if kind == "deployment":
-            instance = next(r for r in inventory["deployment"] if r["deployment_instance_id"] == resource_id)
-            for rk, field in (("model-version", "model_version_id"), ("model-build", "model_build_id")):
+            instance = next(
+                r
+                for r in inventory["deployment"]
+                if r["deployment_instance_id"] == resource_id
+            )
+            for rk, field in (
+                ("model-version", "model_version_id"),
+                ("model-build", "model_build_id"),
+            ):
                 rid = instance.get(field)
                 if rid and not any(r["resource_id"] == rid for r in deleted):
-                    retained.append({"kind": rk, "resource_id": rid, "reason": "共享或被引用的导入产物，或本地训练/转换产物"})
-        return {"revision": self._revision(plan), "deleted_models": deleted, "retained_models": retained}
+                    retained.append(
+                        {
+                            "kind": rk,
+                            "resource_id": rid,
+                            "reason": "共享或被引用的导入产物，或本地训练/转换产物",
+                        }
+                    )
+        return {
+            "revision": self._revision(plan),
+            "deleted_models": deleted,
+            "retained_models": retained,
+        }
 
     def recover(self) -> dict[str, int]:
         """启动时先恢复未提交删除，再完成已提交清理。"""
@@ -286,7 +320,11 @@ class ResourceDeletionService:
             operation.error = str(error)
             self._save(operation)
             raise PersistenceOperationError(
-                "数据库记录已删除，文件或队列清理尚未完成，可重试清理",
+                (
+                    "导出记录已保留，产物清理尚未完成，可重试清理"
+                    if operation.plan.target.kind == "dataset-export-files"
+                    else "数据库记录已删除，文件或队列清理尚未完成，可重试清理"
+                ),
                 details={
                     "operation_id": operation.plan.operation_id,
                     "cleanup_state": "pending",

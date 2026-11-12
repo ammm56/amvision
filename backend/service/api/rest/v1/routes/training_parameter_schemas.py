@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Final, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 
 TrainingDevice: TypeAlias = Literal["auto", "cpu", "cuda"] | str
@@ -393,7 +394,7 @@ class OrderedFloatRangeParameters(TrainingParameterGroup):
         """校验区间顺序。"""
 
         if self.minimum > self.maximum:
-            raise ValueError("minimum 不能大于 maximum")
+            raise PydanticCustomError("training_range_order_invalid", "minimum 不能大于 maximum")
         return self
 
     @property

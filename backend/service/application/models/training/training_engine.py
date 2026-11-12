@@ -7,7 +7,6 @@ from dataclasses import dataclass, replace
 from functools import wraps
 import gc
 import math
-import os
 from typing import Any, Callable, ParamSpec, TypeVar, cast
 
 from backend.service.application.errors import InvalidRequestError
@@ -452,11 +451,12 @@ def _release_cuda_after_oom() -> None:
 
 
 def release_training_runtime_resources() -> None:
-    """在每个训练尝试结束后释放 CUDA、IPC 和 Python 高水位资源。
+    """在每个训练尝试结束后回收 Python 对象和未使用的 CUDA/IPC 缓存。
 
     训练 worker 是常驻进程。模型、optimizer、DataLoader 或异常 traceback 即使
-    已离开业务作用域，也需要显式触发回收；Windows 额外清理当前进程 working
-    set，避免多次训练把已释放但仍驻留的页长期计入物理内存。
+    已离开业务作用域，也需要显式触发回收。Windows 工作集交给操作系统管理；
+    EmptyWorkingSet 不释放 Private 提交内存，强制裁剪反而使后续任务重新调页。
+    此时返回值仍可能包含待落盘的 checkpoint，最终资源验证应在调用方消费完结果后。
     """
 
     gc.collect()
@@ -471,20 +471,6 @@ def release_training_runtime_resources() -> None:
     except (ImportError, RuntimeError):
         pass
     gc.collect()
-    if os.name != "nt":
-        return
-    try:
-        import ctypes
-
-        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
-        get_current_process.argtypes = []
-        get_current_process.restype = ctypes.c_void_p
-        empty_working_set = ctypes.windll.psapi.EmptyWorkingSet
-        empty_working_set.argtypes = [ctypes.c_void_p]
-        empty_working_set.restype = ctypes.c_bool
-        empty_working_set(get_current_process())
-    except (AttributeError, OSError, TypeError, ValueError):
-        return
 
 
 def _read_bool_option(

@@ -31,8 +31,9 @@ def resolve_training_batch_size(
     runtime_precision: str,
     extra_options: dict[str, object] | None,
     resume_batch_size: int | None = None,
+    training_loss_probe: Callable[[Any], Any] | None = None,
 ) -> TrainingBatchResolution:
-    """解析固定 batch 或通过 CUDA 实测选择安全 AutoBatch。"""
+    """解析 batch；training_loss_probe 可提供模型专属的带标签训练 loss。"""
 
     def resolved(value: TrainingBatchResolution) -> TrainingBatchResolution:
         """登记共享 TrainingEngine 运行时后返回解析结果。"""
@@ -123,6 +124,7 @@ def resolve_training_batch_size(
             input_size=input_size,
             batch_size=batch_size,
             runtime_precision=runtime_precision,
+            training_loss_probe=training_loss_probe,
         )
 
     selected = select_largest_safe_batch_size(
@@ -218,12 +220,13 @@ def _profile_cuda_training_batch(
     input_size: tuple[int, int],
     batch_size: int,
     runtime_precision: str,
+    training_loss_probe: Callable[[Any], Any] | None = None,
 ) -> int | None:
     """执行一次无 optimizer step 的 forward/backward 并返回显存峰值。"""
 
     cuda = torch_module.cuda
-    was_training = bool(model.training)
-    batch_norm_states: list[tuple[Any, bool]] = []
+    module_states = [(module, bool(module.training)) for module in model.modules()]
+    images = outputs = objective = None
     try:
         model.train()
         batch_norm_base = getattr(
@@ -234,7 +237,6 @@ def _profile_cuda_training_batch(
         batch_norm_type = getattr(batch_norm_base, "_BatchNorm", ())
         for module in model.modules():
             if batch_norm_type and isinstance(module, batch_norm_type):
-                batch_norm_states.append((module, bool(module.training)))
                 module.eval()
         model.zero_grad(set_to_none=True)
         cuda.empty_cache()
@@ -256,7 +258,7 @@ def _profile_cuda_training_batch(
                 ),
             )
         with autocast_context:
-            outputs = model(images)
+            outputs = training_loss_probe(images) if training_loss_probe else model(images)
             objective = _sum_differentiable_tensors(
                 torch_module=torch_module,
                 value=outputs,
@@ -272,9 +274,10 @@ def _profile_cuda_training_batch(
         raise
     finally:
         model.zero_grad(set_to_none=True)
-        for module, training in batch_norm_states:
-            module.train(training)
-        model.train(was_training)
+        # 直接恢复各模块标志，避免父模块 train() 再次覆盖原本冻结的子模块。
+        for module, training in module_states:
+            module.training = training
+        images = outputs = objective = None
         cuda.empty_cache()
 
 

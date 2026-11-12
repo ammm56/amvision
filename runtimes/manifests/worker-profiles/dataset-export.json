@@ -6,7 +6,8 @@
   "enabled_consumer_kinds": [
     "resource-cleanup",
     "model-deployment-transfer",
-    "dataset-export"
+    "dataset-export",
+    "dataset-workspace"
   ],
   "max_concurrent_tasks": 1,
   "poll_interval_seconds": 1.0

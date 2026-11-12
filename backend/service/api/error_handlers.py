@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.contracts.errors import ErrorContract
+from backend.service.api.validation_messages import PUBLIC_VALIDATION_MESSAGES
 from backend.service.application.errors import ServiceError
 from backend.service.application.public_errors import (
     build_error_contract,
@@ -147,11 +148,12 @@ def _serialize_validation_errors(
             if isinstance(raw_rule, str) and raw_rule.strip()
             else "validation_error"
         )
+        reason, fixed_path = PUBLIC_VALIDATION_MESSAGES.get(rule, ("请求字段校验失败", ()))
         serialized.append(
             {
-                "path": location,
+                "path": list(fixed_path) if fixed_path else location,
                 "rule": rule,
-                "reason": "请求字段校验失败",
+                "reason": reason,
             }
         )
     return serialized

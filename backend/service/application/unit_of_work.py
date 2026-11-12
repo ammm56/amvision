@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from backend.service.domain.datasets.dataset_catalog import DatasetCatalog
 
 from sqlalchemy.sql import Executable
 
@@ -48,6 +49,7 @@ class UnitOfWork(Protocol):
     - workflow_runtime：WorkflowAppRuntime、WorkflowRun 仓储。
     """
 
+    dataset_catalog: DatasetCatalog
     dataset_exports: DatasetExportRepository
     dataset_imports: DatasetImportRepository
     datasets: DatasetVersionRepository

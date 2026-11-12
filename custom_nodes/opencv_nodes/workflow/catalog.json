@@ -3010,7 +3010,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3074,7 +3074,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3197,7 +3197,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3262,7 +3262,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3331,7 +3331,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3397,7 +3397,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3534,7 +3534,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3616,7 +3616,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3677,7 +3677,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3755,7 +3755,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3825,7 +3825,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3904,7 +3904,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -3998,7 +3998,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4087,7 +4087,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4101,6 +4101,24 @@
       "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
+        {
+          "name": "roi_items",
+          "display_name": "ROI Items",
+          "payload_type_id": "value.v1",
+          "description": "显式 ROI 记录数组；允许空数组，输出空图集。连接时不得同时连接其他裁剪来源。",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "按 regions 的外接矩形裁剪并保留 region_id；连接时不得同时连接其他裁剪来源。",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
         {
           "name": "image",
           "display_name": "Image",
@@ -4273,7 +4291,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -4365,7 +4383,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4448,7 +4466,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4528,7 +4546,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -4595,7 +4613,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4658,7 +4676,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4713,7 +4731,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4792,7 +4810,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4851,7 +4869,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -4939,7 +4957,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -5027,7 +5045,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -5118,7 +5136,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -5206,7 +5224,70 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-decode",
+      "display_name": "Image Decode",
+      "category": "opencv.image.basic",
+      "description": "显式解码图片为当前执行内共享的原始矩阵，保留像素类型和通道；执行结束释放。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.10",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "decode_method": {
+            "type": "string",
+            "enum": [
+              "opencv",
+              "bmp-bgr24"
+            ],
+            "default": "opencv",
+            "title": "Decode Method",
+            "description": "opencv 支持普通图片输入；bmp-bgr24 解码未压缩 24 位 BMP，本地/ObjectStore 文件通过短期映射读取，上传或协议输入从编码缓冲区读取；保留全部像素，格式不匹配时明确报错。"
+          }
+        },
+        "additionalProperties": false
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-decode",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -5283,7 +5364,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -5438,7 +5519,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -5594,7 +5675,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -5741,7 +5822,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -5872,7 +5953,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -5954,7 +6035,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6051,7 +6132,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6139,7 +6220,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6194,7 +6275,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6282,7 +6363,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6356,7 +6437,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6417,7 +6498,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6500,7 +6581,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6567,7 +6648,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6634,7 +6715,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -6882,7 +6963,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -6962,7 +7043,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7029,7 +7110,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7101,7 +7182,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7195,7 +7276,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -7299,7 +7380,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7366,7 +7447,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7450,7 +7531,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7557,7 +7638,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7628,7 +7709,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7704,7 +7785,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7786,7 +7867,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7868,7 +7949,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -7941,7 +8022,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8029,7 +8110,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8228,7 +8309,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8298,7 +8379,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8373,7 +8454,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8445,7 +8526,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8521,7 +8602,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8580,7 +8661,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8646,7 +8727,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8728,7 +8809,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8837,7 +8918,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8931,7 +9012,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -8996,7 +9077,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9109,7 +9190,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9190,7 +9271,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9297,7 +9378,77 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-inspection-items",
+      "display_name": "Draw Inspection Items",
+      "category": "opencv.inspection.measurement",
+      "description": "使用已有测量和判定绘制逐 ROI 原图、证据、数值与阈值；不重新计算判定。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "checks",
+          "display_name": "Checks",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9368,7 +9519,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9467,7 +9618,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9571,7 +9722,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9672,7 +9823,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9753,7 +9904,77 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.inspection-items-merge",
+      "display_name": "Inspection Items Merge",
+      "category": "opencv.inspection.measurement",
+      "description": "按命名检查集合和 ROI ID 汇总，缺项、错位或空集合拒绝执行。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "checks",
+          "display_name": "Checks",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9839,7 +10060,223 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.mask-items-difference",
+      "display_name": "Mask Items Difference",
+      "category": "opencv.inspection.measurement",
+      "description": "按 ROI ID 计算 A 减去容差膨胀后的 B；输出差集图及明确分母的比例。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "masks_a",
+          "display_name": "Masks A",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "masks_b",
+          "display_name": "Masks B",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tolerance_pixels": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 64,
+            "default": 0,
+            "title": "边缘容差（像素）"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.mask-items-properties",
+      "display_name": "Mask Items Properties",
+      "category": "opencv.inspection.measurement",
+      "description": "测量前景像素面积、公共图像坐标质心及无向主轴，不作合格判定。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "min_axis_anisotropy": {
+            "type": "number",
+            "title": "最小主轴各向异性",
+            "default": 0.1,
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.measurement-items-check",
+      "display_name": "Measurement Items Check",
+      "category": "opencv.inspection.measurement",
+      "description": "对明确字段执行闭区间检查，保留测量值、单位、上下限及不可测状态。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "checks",
+          "display_name": "Checks",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "title": "检查标识"
+          },
+          "metric": {
+            "type": "string",
+            "title": "测量字段"
+          },
+          "minimum": {
+            "type": "number",
+            "title": "下限"
+          },
+          "maximum": {
+            "type": "number",
+            "title": "上限"
+          },
+          "unit": {
+            "type": "string",
+            "title": "单位",
+            "default": ""
+          }
+        },
+        "required": [
+          "check_id",
+          "metric"
+        ]
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -9935,7 +10372,68 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.pose-items-difference",
+      "display_name": "Pose Items Difference",
+      "category": "opencv.inspection.measurement",
+      "description": "按 ID 计算质心 dx/dy、距离和无向轴角差；不可测时保留 null。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "current",
+          "display_name": "Current",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference",
+          "display_name": "Reference",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10009,7 +10507,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10083,7 +10581,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10157,7 +10655,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10235,7 +10733,264 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.roi-foreground-compare",
+      "display_name": "ROI Foreground Compare",
+      "category": "opencv.inspection.difference",
+      "description": "在共同坐标系内比较各 ROI 前景的缺失和溢出；不自动对齐，不测量高度。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference_image",
+          "display_name": "Reference Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "rois",
+          "display_name": "ROIs",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Comparison",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "comparison_images",
+          "display_name": "Comparison Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 80,
+            "title": "灰度阈值"
+          },
+          "foreground": {
+            "type": "string",
+            "enum": [
+              "dark",
+              "light"
+            ],
+            "default": "dark",
+            "title": "前景明暗"
+          },
+          "tolerance_pixels": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 64,
+            "default": 2,
+            "title": "边缘容差（输入图像素）"
+          },
+          "min_reference_area": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 100,
+            "title": "最小参考前景面积"
+          },
+          "max_missing_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.05,
+            "title": "最大缺失比例"
+          },
+          "max_excess_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.05,
+            "title": "最大溢出比例"
+          },
+          "check_pose": {
+            "type": "boolean",
+            "default": false,
+            "title": "检查质心和主轴"
+          },
+          "max_centroid_shift_pixels": {
+            "type": "number",
+            "minimum": 0,
+            "default": 8,
+            "title": "最大质心偏移（像素）"
+          },
+          "max_axis_angle_degrees": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 90,
+            "default": 3,
+            "title": "最大主轴角差（度）"
+          },
+          "emit_comparison_images": {
+            "type": "boolean",
+            "default": false,
+            "title": "输出逐 ROI 差异图"
+          },
+          "check_boundary": {
+            "type": "boolean",
+            "default": false,
+            "title": "检查前景是否越过 ROI"
+          },
+          "search_margin_pixels": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128,
+            "default": 8,
+            "title": "边界外搜索余量（像素）"
+          },
+          "max_outside_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.02,
+            "title": "最大越界前景比例"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.foreground-comparison"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.roi-mask-extract",
+      "display_name": "ROI Mask Extract",
+      "category": "opencv.inspection.measurement",
+      "description": "在显式允许 ROI 和搜索余量中提取二值前景与允许域，不执行阈值分割。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "rois",
+          "display_name": "Rois",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "allowed_masks",
+          "display_name": "Allowed Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "search_margin_pixels": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 128,
+            "default": 0,
+            "title": "搜索余量（像素）"
+          },
+          "coordinate_space": {
+            "type": "string",
+            "title": "共同坐标系名称",
+            "default": "input-image"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10310,7 +11065,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10414,7 +11169,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10499,7 +11254,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10605,7 +11360,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10688,7 +11443,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10869,7 +11624,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -10950,7 +11705,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11032,7 +11787,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11110,7 +11865,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11201,7 +11956,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11279,7 +12034,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11344,7 +12099,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11416,7 +12171,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11497,7 +12252,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11588,7 +12343,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11667,7 +12422,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11748,7 +12503,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11829,7 +12584,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -11907,7 +12662,152 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.mapped-roi-crop",
+      "display_name": "Mapped ROI Crop",
+      "category": "opencv.image.transform",
+      "description": "按参考变换裁剪校正矩形图；roi、rois 或 roi_items 仅连接一个。可连接父裁图局部窗口，直接采样窗口而不生成完整父裁图。坐标倍率显式配置，越界拒绝。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.10",
+      "concurrency_policy": "thread-safe",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi_items",
+          "display_name": "Roi Items",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "selected_ids",
+          "display_name": "Selected Ids",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "window_roi",
+          "display_name": "Local Window ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "rois",
+          "display_name": "ROIs",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "crops",
+          "display_name": "Crops",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "ROI 使用参考原图坐标，coordinate_scale 明确声明定位图到原图的等比倍率。",
+        "properties": {
+          "coordinate_scale": {
+            "default": 1,
+            "exclusiveMinimum": 0,
+            "maximum": 64,
+            "type": "number"
+          },
+          "interpolation": {
+            "default": "linear",
+            "enum": [
+              "nearest",
+              "linear",
+              "cubic"
+            ],
+            "type": "string"
+          },
+          "maximum_total_pixels": {
+            "default": 25000000,
+            "maximum": 100000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "roi_coordinate_scale": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 64,
+            "default": 1,
+            "title": "ROI 坐标到原图倍率"
+          }
+        },
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.mapped-roi-crop",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12007,7 +12907,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12155,7 +13055,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12235,7 +13135,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12382,7 +13282,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12463,7 +13363,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12551,7 +13451,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12629,7 +13529,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12797,7 +13697,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -12946,7 +13846,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13085,7 +13985,159 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.roi-array",
+      "display_name": "ROI Array",
+      "category": "opencv.image.transform",
+      "description": "复制首槽矩形或多边形；行列二维向量阵列。Frame 可选：首槽使用矩形裁图局部坐标，输出父图坐标。越界拒绝。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "thread-safe",
+      "input_ports": [
+        {
+          "name": "roi",
+          "display_name": "Roi",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "frame",
+          "display_name": "Frame",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "rois",
+          "display_name": "Rois",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 1,
+            "title": "行数"
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 1,
+            "title": "列数"
+          },
+          "column_step_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "default": [
+              100,
+              0
+            ],
+            "title": "列位移 [X, Y]"
+          },
+          "row_step_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "default": [
+              0,
+              100
+            ],
+            "title": "行位移 [X, Y]"
+          },
+          "roi_id_prefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "default": "roi",
+            "title": "ROI 名称前缀"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.geometry",
+        "opencv.roi-array"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13225,7 +14277,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13286,7 +14338,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13294,12 +14346,31 @@
       "node_type_id": "custom.opencv.transform-2d-create",
       "display_name": "Transform 2D Create",
       "category": "opencv.image.transform",
-      "description": "创建 rigid、similarity、affine 或 homography 的明确方向二维变换。",
+      "description": "创建 rigid、similarity、affine 或 homography 的明确方向二维变换；矩阵可连接 value 输入。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "concurrency_policy": "serialized",
-      "input_ports": [],
+      "input_ports": [
+        {
+          "name": "matrix_2x3",
+          "display_name": "Matrix 2×3",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "matrix_3x3",
+          "display_name": "Matrix 3×3",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
       "output_ports": [
         {
           "name": "transform",
@@ -13368,6 +14439,16 @@
           "target_coordinate_space"
         ]
       },
+      "parameter_input_bindings": [
+        {
+          "parameter_name": "matrix_2x3",
+          "input_port_name": "matrix_2x3"
+        },
+        {
+          "parameter_name": "matrix_3x3",
+          "input_port_name": "matrix_3x3"
+        }
+      ],
       "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.transform",
@@ -13381,7 +14462,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13442,7 +14523,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13522,7 +14603,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13578,7 +14659,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13775,7 +14856,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13861,7 +14942,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -13931,7 +15012,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14008,7 +15089,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14085,7 +15166,137 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circle-pattern-locate",
+      "display_name": "Circle Pattern Locate",
+      "category": "opencv.matching.registration",
+      "description": "匹配带名称的参考圆心与候选圆，验证整个图案后输出刚性变换；不使用圆的列表顺序。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "thread-safe",
+      "input_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "以候选圆输入图像的像素为单位设置搜索边界与配准门槛。",
+        "properties": {
+          "reference_points": {
+            "items": {
+              "additionalProperties": false,
+              "description": "参考点名称和坐标；名称负责关联，数组顺序不参与匹配。",
+              "properties": {
+                "point_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "center_xy": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "required": [
+                "point_id",
+                "center_xy"
+              ],
+              "type": "object"
+            },
+            "maxItems": 64,
+            "minItems": 3,
+            "type": "array"
+          },
+          "match_tolerance_px": {
+            "default": 8,
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "type": "number"
+          },
+          "maximum_rmse_px": {
+            "default": 2,
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "type": "number"
+          },
+          "minimum_match_ratio": {
+            "default": 0.9,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "maximum_angle_degrees": {
+            "default": 10,
+            "maximum": 180,
+            "minimum": 0,
+            "type": "number"
+          },
+          "maximum_translation_px": {
+            "default": 500,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "maximum_hypotheses": {
+            "default": 5000,
+            "maximum": 50000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reference_points"
+        ],
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.circle-pattern-locate",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14183,7 +15394,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14251,7 +15462,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14354,7 +15565,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14436,7 +15647,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14514,7 +15725,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14718,7 +15929,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14796,7 +16007,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -14923,7 +16134,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15089,7 +16300,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15265,7 +16476,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15330,7 +16541,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15406,7 +16617,8 @@
               "kind": {
                 "enum": [
                   "planar-calibration",
-                  "localization-template"
+                  "localization-template",
+                  "point-cloud"
                 ],
                 "title": "Kind",
                 "type": "string"
@@ -15466,7 +16678,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15606,7 +16818,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15723,7 +16935,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15810,7 +17022,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -15978,7 +17190,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16140,7 +17352,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16224,7 +17436,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16321,7 +17533,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16436,7 +17648,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16541,7 +17753,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16636,7 +17848,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16722,7 +17934,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16838,7 +18050,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -16907,7 +18119,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17004,7 +18216,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17084,7 +18296,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17175,7 +18387,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17305,7 +18517,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17408,7 +18620,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17505,7 +18717,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17581,7 +18793,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17677,7 +18889,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17760,7 +18972,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -17915,7 +19127,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {
         "i18n": {
           "description": {
@@ -17997,7 +19209,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18072,7 +19284,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18168,7 +19380,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18248,7 +19460,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18338,7 +19550,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18496,7 +19708,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18585,7 +19797,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18680,7 +19892,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -18898,7 +20110,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19126,7 +20338,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19241,7 +20453,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19437,7 +20649,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19525,7 +20737,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19637,7 +20849,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19688,7 +20900,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19806,7 +21018,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -19937,7 +21149,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20288,7 +21500,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20506,7 +21718,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20562,7 +21774,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20613,7 +21825,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20735,7 +21947,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20852,7 +22064,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20932,7 +22144,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -20983,7 +22195,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
@@ -21072,7 +22284,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     }
   ],

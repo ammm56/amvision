@@ -37,6 +37,8 @@ def test_delete_dataset_resources_after_real_import(tmp_path: Path, delete_kind:
                 url = "/api/v1/datasets/dataset-delete?project_id=project-1"
             deleted = client.delete(url, headers=headers)
             assert deleted.status_code == (409 if delete_kind == "blocked" else 204), deleted.text
+            catalog = client.get("/api/v1/datasets/catalog/dataset-delete", headers=headers, params={"project_id": "project-1"})
+            assert catalog.status_code == (404 if delete_kind == "dataset" else 200)
             unit = SqlAlchemyUnitOfWork(factory.create_session())
             retained = unit.datasets.get_dataset_version(version.dataset_version_id)
             unit.close()

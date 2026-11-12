@@ -74,6 +74,10 @@ class DatasetExportFileWriterMixin(
                 asdict(export_result.format_manifest),
             )
 
+        if export_result.format_id.startswith("amvision-"):
+            from .sample_media import write_media_files
+            write_media_files(self.dataset_storage, dataset_version, split_samples, export_result)
+            return
         if export_result.format_id in {
             COCO_DETECTION_DATASET_FORMAT,
             COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,

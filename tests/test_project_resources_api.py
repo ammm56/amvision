@@ -146,6 +146,31 @@ def test_project_list_supports_offset_limit_and_pagination_headers(
     assert [item["project_id"] for item in list_response.json()] == ["project-2"]
 
 
+def test_project_exact_id_search_precedes_prefix_matches(tmp_path: Path) -> None:
+    """完整 ID 定位优先显示目标，仍保留其余模糊匹配与权限过滤。"""
+    client, session_factory = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-exact-search.db",
+        project_items=[
+            BackendServiceProjectCatalogItemConfig(project_id=value, display_name=value)
+            for value in ("project-1", "project-10", "project-11")
+        ],
+    )
+    try:
+        token = issue_test_user_token(
+            session_factory, username="exact-search", scopes=("workflows:read",),
+            project_ids=("project-1", "project-10"),
+        )
+        with client:
+            result = client.get("/api/v1/projects", headers=build_bearer_headers(token),
+                                params={"q": "PROJECT-1", "limit": 1})
+        assert result.status_code == 200
+        assert result.headers["x-total-count"] == "2"
+        assert result.json()[0]["project_id"] == "project-1"
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_project_object_metadata_and_content_support_image_preview(
     tmp_path: Path,
 ) -> None:
@@ -219,6 +244,12 @@ def test_workflow_prompt_mask_upload_persists_binary_project_asset(
                 },
                 files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
             )
+            repeated_response = client.post(
+                "/api/v1/projects/project-1/workflow-prompt-masks",
+                headers=build_test_headers(scopes="workflows:write"),
+                params={"application_id": "workflow-app-1", "node_id": "mask-editor-1"},
+                files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
+            )
     finally:
         session_factory.engine.dispose()
 
@@ -235,20 +266,6 @@ def test_workflow_prompt_mask_upload_persists_binary_project_asset(
     )
     assert stored_mask is not None
     assert set(np.unique(stored_mask).tolist()) == {0, 255}
-
-    try:
-        with client:
-            repeated_response = client.post(
-                "/api/v1/projects/project-1/workflow-prompt-masks",
-                headers=build_test_headers(scopes="workflows:write"),
-                params={
-                    "application_id": "workflow-app-1",
-                    "node_id": "mask-editor-1",
-                },
-                files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
-            )
-    finally:
-        session_factory.engine.dispose()
 
     assert repeated_response.status_code == 201
     assert repeated_response.json()["object_key"] == payload["object_key"]
@@ -780,6 +797,7 @@ def test_project_deletion_is_blocked_by_active_task(tmp_path: Path) -> None:
         {
             "resource_kind": "task",
             "resource_id": "task-project-delete-active",
+            "display_name": "active training",
             "state": "running",
         }
     ]
@@ -1123,6 +1141,7 @@ def test_project_deletion_is_blocked_by_active_queue_message(tmp_path: Path) -> 
         {
             "resource_kind": "queue_message",
             "resource_id": queued.task_id,
+            "display_name": queued.task_id,
             "state": "queued",
         }
     ]
@@ -1156,6 +1175,8 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(
 
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     try:
+        for dataset_id in ("dataset-1", "dataset-2"):
+            unit_of_work.dataset_catalog.ensure("project-1", dataset_id, "detection")
         unit_of_work.dataset_imports.save_dataset_import(
             DatasetImport(
                 dataset_import_id="dataset-import-1",

@@ -90,6 +90,18 @@ Workflow 节点统一消费 `image-ref.v1`：
 - worker 崩溃、超时取消和旧异步回调都使用 epoch fence；旧进程不能停止或标坏新进程。
 - 日志按 `YYYYMMDD` 写入当日日志文件，长期运行不会让单个文件无限增长。
 
+### 启动失败与停止恢复
+
+Worker 启动失败通过独立的 `startup-failed` 内部消息返回错误码、具体原因、路径或节点信息。父进程先消费该消息，再使用退出码作为兜底；消息仍校验 revision、generation、指纹和 worker 身份。未通过启动屏障的 worker 不向调用方提供服务。
+
+- 文件不存在、权限不足、无效配置或节点实现变化且需要重新发布时，立即暂停该版本的自动恢复。
+- 其他启动故障在同一 revision/generation 下最多自动尝试 3 次，沿用已有退避间隔，达到上限后暂停。
+- 失败次数、最后原因及下一步操作保存在现有 `health_summary.recovery` 中。HTTP 服务重启不能清除已暂停的恢复记录；不增加数据库表或迁移。
+- 修正配置后显式点击“启动”会重新尝试；节点定义已改变时，先审核草稿、重新发布，再停止实例、选择新版本并启动。新 generation 不继承旧版本的恢复阻止状态。
+- 暂停恢复不会将 `desired_state=running` 偷改为停止，也不会把该实例计为就绪。具体错误保留在 `last_error` 和恢复摘要中。
+
+以上只控制 worker 启动恢复。同步 Runtime/Trigger 调用不增加队列、重试或额外数据库写入；正常执行、满载与长时间运行不计入启动失败次数，也不重放任何业务请求。
+
 ## Run 追溯
 
 已持久化 Run 记录固定保存 version、revision、generation、snapshot fingerprint 和 worker instance id。后续切版、回滚或重启不会修改历史 Run 的来源。

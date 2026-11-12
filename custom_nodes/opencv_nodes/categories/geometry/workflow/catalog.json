@@ -4153,6 +4153,151 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.mapped-roi-crop",
+      "display_name": "Mapped ROI Crop",
+      "category": "opencv.image.transform",
+      "description": "按参考变换裁剪校正矩形图；roi、rois 或 roi_items 仅连接一个。可连接父裁图局部窗口，直接采样窗口而不生成完整父裁图。坐标倍率显式配置，越界拒绝。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.10",
+      "concurrency_policy": "thread-safe",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi_items",
+          "display_name": "Roi Items",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "selected_ids",
+          "display_name": "Selected Ids",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "window_roi",
+          "display_name": "Local Window ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "rois",
+          "display_name": "ROIs",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "crops",
+          "display_name": "Crops",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "ROI 使用参考原图坐标，coordinate_scale 明确声明定位图到原图的等比倍率。",
+        "properties": {
+          "coordinate_scale": {
+            "default": 1,
+            "exclusiveMinimum": 0,
+            "maximum": 64,
+            "type": "number"
+          },
+          "interpolation": {
+            "default": "linear",
+            "enum": [
+              "nearest",
+              "linear",
+              "cubic"
+            ],
+            "type": "string"
+          },
+          "maximum_total_pixels": {
+            "default": 25000000,
+            "maximum": 100000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "roi_coordinate_scale": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 64,
+            "default": 1,
+            "title": "ROI 坐标到原图倍率"
+          }
+        },
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.mapped-roi-crop",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.pad-border",
       "display_name": "Pad Border",
       "category": "opencv.image.transform",
@@ -5331,6 +5476,158 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.roi-array",
+      "display_name": "ROI Array",
+      "category": "opencv.image.transform",
+      "description": "复制首槽矩形或多边形；行列二维向量阵列。Frame 可选：首槽使用矩形裁图局部坐标，输出父图坐标。越界拒绝。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "thread-safe",
+      "input_ports": [
+        {
+          "name": "roi",
+          "display_name": "Roi",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "frame",
+          "display_name": "Frame",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "rois",
+          "display_name": "Rois",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 1,
+            "title": "行数"
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 1,
+            "title": "列数"
+          },
+          "column_step_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "default": [
+              100,
+              0
+            ],
+            "title": "列位移 [X, Y]"
+          },
+          "row_step_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "default": [
+              0,
+              100
+            ],
+            "title": "行位移 [X, Y]"
+          },
+          "roi_id_prefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "default": "roi",
+            "title": "ROI 名称前缀"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.geometry",
+        "opencv.roi-array"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.rotation-correct",
       "display_name": "Rotation Correct",
       "category": "opencv.image.transform",
@@ -5535,12 +5832,31 @@
       "node_type_id": "custom.opencv.transform-2d-create",
       "display_name": "Transform 2D Create",
       "category": "opencv.image.transform",
-      "description": "创建 rigid、similarity、affine 或 homography 的明确方向二维变换。",
+      "description": "创建 rigid、similarity、affine 或 homography 的明确方向二维变换；矩阵可连接 value 输入。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "concurrency_policy": "serialized",
-      "input_ports": [],
+      "input_ports": [
+        {
+          "name": "matrix_2x3",
+          "display_name": "Matrix 2×3",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "matrix_3x3",
+          "display_name": "Matrix 3×3",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
       "output_ports": [
         {
           "name": "transform",
@@ -5609,6 +5925,16 @@
           "target_coordinate_space"
         ]
       },
+      "parameter_input_bindings": [
+        {
+          "parameter_name": "matrix_2x3",
+          "input_port_name": "matrix_2x3"
+        },
+        {
+          "parameter_name": "matrix_3x3",
+          "input_port_name": "matrix_3x3"
+        }
+      ],
       "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.transform",
@@ -5622,7 +5948,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.9",
       "metadata": {}
     },
     {

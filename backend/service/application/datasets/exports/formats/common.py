@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from backend.service.application.datasets.content import content_key
 
 from backend.contracts.datasets.exports.coco_detection_export import CocoDetectionAnnotation
 from backend.contracts.datasets.dataset_formats import (
@@ -49,8 +50,7 @@ def _build_version_image_relative_path(
         or f"images/{sample.split}/{sample.sample_id}/{sample.file_name}"
     ).lstrip("/")
     return (
-        f"projects/{dataset_version.project_id}/datasets/{dataset_version.dataset_id}/versions/"
-        f"{dataset_version.dataset_version_id}/{image_object_key}"
+        f"{content_key(dataset_version.project_id, dataset_version.dataset_id, dataset_version.dataset_version_id, dataset_version.metadata)}/{image_object_key}"
     )
 
 

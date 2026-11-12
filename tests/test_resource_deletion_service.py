@@ -46,9 +46,9 @@ def test_delete_task_database_failure_restores_files(deletion_runtime, monkeypat
     service, factory, storage, _queue = deletion_runtime
     original = ResourceDeletionRepository.delete_records
 
-    def fail_after_delete(repository, references):
+    def fail_after_delete(repository, references, *, project_id):
         """模拟数据库操作已执行但提交前失败。"""
-        original(repository, references)
+        original(repository, references, project_id=project_id)
         raise RuntimeError("database failure")
 
     monkeypatch.setattr(ResourceDeletionRepository, "delete_records", fail_after_delete)

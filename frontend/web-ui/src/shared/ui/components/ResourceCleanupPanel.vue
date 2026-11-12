@@ -3,7 +3,7 @@
   <section v-if="operations.length" class="resource-cleanup" aria-live="polite">
     <h2>{{ t('pending') }}</h2>
     <div v-for="operation in operations" :key="operation.operation_id" class="resource-cleanup__row">
-      <div><strong>{{ operation.resource_id }}</strong><p>{{ operation.error ? t('failed') : operation.state === 'prepared' ? t('prepared') : t('running') }}</p><InlineError :message="operation.error" /></div>
+      <div><strong>{{ operation.resource_id }}</strong><p>{{ operation.error ? t('failed') : operation.resource_kind === 'dataset-export-files' ? t('filesOnly') : operation.state === 'prepared' ? t('prepared') : t('running') }}</p><InlineError :message="operation.error" /></div>
       <Button v-if="operation.state === 'committed'" size="sm" :loading="retrying === operation.operation_id" :disabled="!!retrying" @click="retry(operation.operation_id)">{{ t('retry') }}</Button>
     </div>
   </section>
@@ -16,7 +16,7 @@ import { getErrorMessage } from '@/shared/api/error'
 import Button from './Button.vue'
 import InlineError from '../feedback/InlineError.vue'
 import { resourceDeletionMessages } from './resource-deletion-messages'
-const props = defineProps<{ projectId: string }>()
+const props = defineProps<{ projectId: string; resourceId?: string }>()
 const emit = defineEmits<{ settled: [] }>()
 const { t } = useI18n({ messages: resourceDeletionMessages })
 const operations = ref<DeletionStatus[]>([])
@@ -34,7 +34,8 @@ async function load() {
   controller = new AbortController()
   if (!props.projectId || disposed) { operations.value = []; return }
   try {
-    const next = await listResourceDeletions(props.projectId, controller.signal)
+    const all = await listResourceDeletions(props.projectId, controller.signal)
+    const next = props.resourceId ? all.filter(item => item.resource_id === props.resourceId) : all
     if (currentEpoch !== epoch || disposed) return
     const previousIds = new Set(operations.value.map(item => item.operation_id))
     operations.value = next
@@ -55,7 +56,7 @@ async function retry(id: string) {
   catch (cause) { if (isCurrent()) error.value = getErrorMessage(cause) }
   finally { if (isCurrent()) retrying.value = null }
 }
-watch(() => props.projectId, () => { projectGeneration++; retrying.value = null; operations.value = []; error.value = null; void load() }, { immediate: true })
+watch(() => [props.projectId, props.resourceId], () => { projectGeneration++; retrying.value = null; operations.value = []; error.value = null; void load() }, { immediate: true })
 watch(deletionRevision, () => { void load() })
 onBeforeUnmount(() => { disposed = true; epoch++; controller?.abort(); clearTimeout(timer) })
 </script>

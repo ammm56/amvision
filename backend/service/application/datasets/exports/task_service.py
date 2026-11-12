@@ -37,7 +37,7 @@ from backend.service.application.tasks.task_service import (
 )
 from backend.service.application.tasks.queue_outbox import build_queue_outbox_message
 from backend.service.domain.datasets.dataset_export import DatasetExport
-from backend.service.domain.datasets.dataset_version import DatasetVersion
+from backend.service.domain.datasets.dataset_version import DatasetVersion, DatasetCategory
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -82,11 +82,23 @@ class SqlAlchemyDatasetExportTaskService:
         """创建并入队一条 DatasetExport 任务。"""
 
         self._validate_submission_request(request)
-        dataset_version = self._require_dataset_version(request.dataset_version_id)
+        dataset_version = self._require_dataset_version(request)
         self._validate_dataset_version_identity(
             request=request,
             dataset_version=dataset_version,
         )
+        if request.annotation_handoff:
+            from backend.service.application.datasets.annotation_handoff import (
+                HANDOFF_FORMATS,
+            )
+
+            if (
+                request.format_id not in HANDOFF_FORMATS
+                or request.category_names
+                and request.category_names
+                != tuple(c.name for c in dataset_version.categories)
+            ):
+                raise InvalidRequestError("外部标注交接须使用 COCO 并保留来源类别名称")
         created_at = self._now_iso()
         task_id = self._next_id("task")
         queue_task_id = f"queue-message-{task_id}"
@@ -130,6 +142,11 @@ class SqlAlchemyDatasetExportTaskService:
                 "output_object_prefix": request.output_object_prefix,
                 "created_by": created_by,
                 "target_format": request.format_id,
+                "included_splits": request.included_splits,
+                "source_category_ids": request.source_category_ids,
+                "package_name": request.package_name,
+                "selection": request.selection,
+                "annotation_handoff": request.annotation_handoff,
                 "queue_name": DATASET_EXPORT_QUEUE_NAME,
                 "queue_task_id": queue_task_id,
             },
@@ -180,7 +197,7 @@ class SqlAlchemyDatasetExportTaskService:
                 "当前导出任务正在执行，不能重复执行",
                 details={"dataset_export_id": dataset_export_id},
             )
-        if dataset_export.status == "failed":
+        if dataset_export.status in {"failed", "cancelled"}:
             raise InvalidRequestError(
                 "当前导出任务已经结束，不能重复执行",
                 details={
@@ -208,12 +225,12 @@ class SqlAlchemyDatasetExportTaskService:
         else:
             self.task_service.execute_task_state_command(
                 TaskStateCommandRequest(
-                task_id=task_id,
-                target_state="running",
-                expected_states=(task_snapshot.state,),
-                expected_current_attempt_no=task_snapshot.current_attempt_no,
-                progress_patch={"stage": "exporting", "percent": 10},
-                message="dataset export started",
+                    task_id=task_id,
+                    target_state="running",
+                    expected_states=(task_snapshot.state,),
+                    expected_current_attempt_no=task_snapshot.current_attempt_no,
+                    progress_patch={"stage": "exporting", "percent": 10},
+                    message="dataset export started",
                 )
             )
         self._save_dataset_export(
@@ -330,6 +347,7 @@ class SqlAlchemyDatasetExportTaskService:
             "output_object_prefix": request.output_object_prefix,
             "category_names": list(request.category_names),
             "include_test_split": request.include_test_split,
+            "selection": request.selection,
         }
 
     def _build_task_record(
@@ -408,24 +426,32 @@ class SqlAlchemyDatasetExportTaskService:
         finally:
             unit_of_work.close()
 
-    def _require_dataset_version(self, dataset_version_id: str) -> DatasetVersion:
-        """按 id 读取导出来源的 DatasetVersion。"""
+    def _require_dataset_version(self, request: DatasetExportRequest) -> DatasetVersion:
+        """提交阶段只读取身份、类别和 SQL 选择统计，避免加载全部图片标注。"""
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            dataset_version = unit_of_work.datasets.get_dataset_version(
-                dataset_version_id
+            summary = unit_of_work.dataset_catalog.version(
+                request.dataset_id, request.dataset_version_id
             )
+            if request.selection is not None:
+                selected = unit_of_work.dataset_catalog.selection_summary(
+                    request.dataset_version_id, request.selection
+                )
+                count = selected["sample_count"] - (
+                    selected["split_counts"].get("test", 0) if not request.include_test_split else 0
+                )
+                if count == 0:
+                    raise InvalidRequestError("当前选择没有可导出的样本")
         finally:
             unit_of_work.close()
 
-        if dataset_version is None:
-            raise ResourceNotFoundError(
-                "找不到指定的 DatasetVersion",
-                details={"dataset_version_id": dataset_version_id},
-            )
-
-        return dataset_version
+        return DatasetVersion(
+            dataset_version_id=request.dataset_version_id,
+            dataset_id=summary["dataset_id"], project_id=summary["project_id"],
+            categories=tuple(DatasetCategory(**category) for category in summary["categories"]),
+            samples=(), task_type=summary["task_type"], metadata=summary["metadata"],
+        )
 
     def _validate_dataset_version_identity(
         self,
@@ -435,6 +461,8 @@ class SqlAlchemyDatasetExportTaskService:
     ) -> None:
         """校验导出请求与 DatasetVersion 身份是否一致。"""
 
+        from .transfer_options import validate_options
+        validate_options(request, dataset_version)
         if dataset_version.project_id != request.project_id:
             raise InvalidRequestError(
                 "请求中的 project_id 与 DatasetVersion 不一致",
@@ -517,6 +545,13 @@ class SqlAlchemyDatasetExportTaskService:
             category_names=dataset_export.category_names,
             include_test_split=dataset_export.include_test_split,
             dataset_export_id=dataset_export.dataset_export_id,
+            selection=dataset_export.metadata.get("selection"),
+            included_splits=dataset_export.metadata.get("included_splits"),
+            source_category_ids=dataset_export.metadata.get("source_category_ids"),
+            package_name=dataset_export.metadata.get("package_name", ""),
+            annotation_handoff=bool(
+                dataset_export.metadata.get("annotation_handoff", False)
+            ),
         )
 
     def _build_export_artifact(

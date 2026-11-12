@@ -7,7 +7,7 @@
   --am-surface-raised: #202321;
   --am-text: #f2f2f2;
   --am-text-strong: #ffffff;
-  --am-text-muted: #a7b0ab;
+  --am-text-muted: #b0b2b4;
   --am-text-disabled: #747d78;
   --am-border: #3d3a39;
   --am-border-strong: #5a5754;
@@ -20,7 +20,7 @@
   --am-row-hover: var(--am-hover-surface);
   --am-row-selected: var(--am-action-soft);
   --am-row-selected-hover: var(--am-selected-hover-surface);
-  --am-overlay: rgb(0 0 0 / 0.72);
+  --am-overlay: rgb(0 0 0 / 0.36);
   --am-code-surface: #111312;
   --am-code-text: #f5f6f7;
   --am-action-primary: var(--am-brand-primary);
@@ -31,7 +31,7 @@
   --am-on-action: var(--am-brand-on-primary);
   --am-focus-ring: var(--am-brand-primary-soft);
   --am-input-focus-ring: #8b8b8b;
-  --am-sidebar-link: #c9d3cd;
+  --am-sidebar-link: #a7a7a7;
   --am-progress-fill: var(--am-brand-primary);
   --am-progress-text: var(--am-brand-primary);
   --am-progress-track: #27312d;

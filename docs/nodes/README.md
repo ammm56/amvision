@@ -7,6 +7,8 @@
 - [Node Pack manifest](node-pack-manifest.md)：manifest、版本、依赖、capability、timeout、启用和兼容范围。
 - [Runtime hook 与回调](runtime-hooks-callbacks.md)：Trigger、hook、结果上报和外部调用边界。
 - [OpenCV 圆节点](opencv-circle-nodes.md)：Hough Circles、Circle Measure 与四圆角点组合。
+- [圆心定位、ROI 前景比较与裁剪读码](roi-comparison-and-crop-decode.md)：图案配准、可编辑ROI阵列、边界比较与条码坐标关联；[正面实图验证](../operations/linescan-front-array-validation-20261029.md)。
+- [按区域测量、判定与证据绘图](inspection-measurement-items.md)：独立测量、显式阈值、按 ID 汇总和逐项证据预览。
 - [文件记录、汇总与字段显示](file-record-display.md)：通用规则计数、JSONL、增量汇总及图片角标。
 - [节点分类](../architecture/workflows/node-taxonomy.md)：Core/Custom 分类、命名和职责。
 

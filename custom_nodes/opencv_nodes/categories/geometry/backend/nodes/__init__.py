@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+from .roi_array import NODE_TYPE_ID as ROI_ARRAY_NODE_TYPE_ID, handle_node as roi_array_handler
+
+from .mapped_roi_crop import (
+    NODE_TYPE_ID as MAPPED_ROI_CROP_NODE_TYPE_ID,
+    handle_node as mapped_roi_crop_handler,
+)
+
 from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.affine_transform import (
     NODE_TYPE_ID as AFFINE_TRANSFORM_NODE_TYPE_ID,
     handle_node as affine_transform_handler,
@@ -68,6 +75,8 @@ from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.industrial_geom
 
 
 NODE_HANDLERS = (
+    (ROI_ARRAY_NODE_TYPE_ID, roi_array_handler),
+    (MAPPED_ROI_CROP_NODE_TYPE_ID, mapped_roi_crop_handler),
     (AFFINE_TRANSFORM_NODE_TYPE_ID, affine_transform_handler),
     (LINE_DEDUPLICATE_NODE_TYPE_ID, line_deduplicate_handler),
     (LINE_INTERSECTION_NODE_TYPE_ID, line_intersection_handler),

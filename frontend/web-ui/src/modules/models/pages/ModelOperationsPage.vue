@@ -187,6 +187,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
@@ -512,12 +513,17 @@ const {
   submitConversionFailedMessage: () => t('modelOps.messages.submitConversionFailed'),
 })
 
+const transferRoute=useRoute()
 onMounted(async () => {
   void sessionStore.ensureDeviceBootstrap()
   if (projectStore.projects.length === 0) {
     await projectStore.loadProjects()
   }
+  const task=transferRoute?.query.task, id=transferRoute?.query.datasetExport
+  if(typeof id==='string' && taskTypeOptions.value.some(item=>item.value===task)) selectedTaskType.value=task as ModelTaskType
   await refreshPage()
+  const resource=trainingDatasetExports.value.find(item=>item.dataset_export_id===id && !item.metadata.files_cleaned_at)
+  if(resource)applyTrainingDatasetExport(resource)
 })
 
 function normalizeSelectValue(value: SelectValue): string {

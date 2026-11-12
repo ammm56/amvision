@@ -264,8 +264,7 @@
         :title="t('triggerSources.emptyTitle')"
         :description="t('triggerSources.emptyDescription')"
       />
-      <div v-else class="resource-table">
-        <table>
+      <ResourceTable v-else :label="t('triggerSources.listTitle')">
           <thead>
             <tr>
               <th>{{ t('triggerSources.fields.triggerSource') }}</th>
@@ -312,8 +311,7 @@
               </td>
             </tr>
           </tbody>
-        </table>
-      </div>
+      </ResourceTable>
       <PaginationControls
         v-if="triggerSources.length > 0"
         class="trigger-source-page__pagination"
@@ -382,6 +380,7 @@ import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'

@@ -36,6 +36,7 @@ MANIFEST
 *.lscache
 custom_nodes/.amvision-node-packs/
 sdks/dotnet/src/Amvar.Vision/Config/
+frontend/web-ui/.roi-grid-check/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
@@ -83,6 +84,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+/docs/output/
 
 # PyBuilder
 .pybuilder/
@@ -271,5 +273,7 @@ docs/api/postman/assets/*.zip
 # .NET SDK Console 的本地/私有调试图片
 sdks/dotnet/apps/AMVision.Console/Resources/Img/
 
-# 设计界面图片
+# 本地前端设计图、参考素材和验证记录
 docs/design/frontend/generated/
+docs/design/frontend/references/
+docs/design/frontend/verification/

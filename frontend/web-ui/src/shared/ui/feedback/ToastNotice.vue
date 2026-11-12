@@ -79,10 +79,11 @@ onBeforeUnmount(clearTimer)
 
 <style scoped>
 .toast-notice {
-  --toast-text: var(--am-info-text);
-  --toast-icon: var(--am-info-icon);
-  --toast-surface: var(--am-info-surface);
-  --toast-border: var(--am-info-border);
+  /* 普通操作反馈保持中性，通过图标表达成功或信息，不使用品牌色铺底。 */
+  --toast-text: var(--am-text);
+  --toast-icon: var(--am-text-muted);
+  --toast-surface: var(--am-surface-raised);
+  --toast-border: var(--am-border);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
@@ -94,13 +95,6 @@ onBeforeUnmount(clearTimer)
   border: 1px solid var(--toast-border);
   border-radius: var(--am-radius-md);
   box-shadow: var(--am-shadow-floating);
-}
-
-.toast-notice--success {
-  --toast-text: var(--am-success-text);
-  --toast-icon: var(--am-success-icon);
-  --toast-surface: var(--am-success-surface);
-  --toast-border: var(--am-success-border);
 }
 
 .toast-notice--error {

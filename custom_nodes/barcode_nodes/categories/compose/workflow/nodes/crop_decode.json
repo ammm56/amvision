@@ -1,0 +1,21 @@
+{
+  "format_id":"amvision.node-definition.v1", "node_type_id":"custom.barcode.crop-decode", "version":"0.1.8",
+  "display_name":"Barcode Crop Decode", "category":"barcode.compose",
+  "description":"逐张解码裁剪图，保留未读出项，位置回映射到直接父图；不推断跨层坐标。",
+  "implementation_kind":"custom-node", "runtime_kind":"python-callable",
+  "input_ports":[{"name":"crops","display_name":"Crops","payload_type_id":"image-refs.v1"}],
+  "output_ports":[{"name":"results","display_name":"Results","payload_type_id":"barcode-results.v1"},{"name":"summary","display_name":"Items","payload_type_id":"value.v1"}],
+  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{
+    "format":{"type":"string","enum":["all-readable","data-matrix","qr-code"],"default":"all-readable","title":"条码制式"},
+    "decode_scale":{"type":"integer","minimum":1,"maximum":4,"default":1,"title":"解码倍率","description":"显式 cubic 插值倍率。返回坐标换算回原图；插值后最大1600万像素。"},
+    "try_rotate":{"type":"boolean","default":true},
+    "try_downscale":{"type":"boolean","default":true},
+    "try_invert":{"type":"boolean","default":true},
+    "binarizer":{"type":"string","enum":["local-average","global-histogram","fixed-threshold","bool-cast"],"default":"local-average"},
+    "is_pure":{"type":"boolean","default":false},
+    "return_errors":{"type":"boolean","default":false}
+  }},
+  "capability_tags":["barcode.decode","barcode.remap"],
+  "runtime_requirements":{"python_packages":["opencv-python","numpy","zxing-cpp"]},
+  "node_pack_id":"barcode.nodes","node_pack_version":"0.1.8"
+}

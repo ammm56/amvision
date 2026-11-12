@@ -1,0 +1,1 @@
+{"name":"amvar-settings-design","private":true,"type":"module","scripts":{"dev":"node ../../../../../frontend/web-ui/node_modules/vite/bin/vite.js --host 127.0.0.1 --port 8769 --strictPort","build":"node ../../../../../frontend/web-ui/node_modules/vite/bin/vite.js build"}}

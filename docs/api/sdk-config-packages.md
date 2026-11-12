@@ -16,12 +16,13 @@ SDK 配置包把一个 Project 已创建的 Workflow Runtime、TriggerSource 和
 
 ## API
 
-三个接口都要求当前 Project 可见，并同时要求 `workflows:read` 与 `models:read`：
+下列接口都要求当前 Project 可见，并同时要求 `workflows:read` 与 `models:read`：
 
 ```http
 POST /api/v1/projects/{project_id}/sdk-config-packages/preview
 POST /api/v1/projects/{project_id}/sdk-config-packages/download
 GET  /api/v1/projects/{project_id}/sdk-config-packages/current
+GET  /api/v1/projects/{project_id}/sdk-config-packages/resources
 ```
 
 请求体：
@@ -74,6 +75,8 @@ README.md
 
 没有 Workflow Runtime 时不会生成对应文件；没有模型 Deployment 时不会生成模型文件。Project 没有任何可导出资源时，download 返回明确错误。
 
+模型配置文件固定命名为 `config_model_deployments.json`。生成时间只用于包名和生成元数据，不进入配置文件路径，避免同一配置跨秒生成不同 revision、预览后下载误报 409 或 `current` 无法稳定返回 304。现有 .NET SDK 按 `config*.json` 读取，无需更新 SDK 接口。手工更新 Config 目录时应替换本次导出的配置集合，移除被替代的旧 `config_model_deployment_<timestamp>.json`，避免同一部署被重复登记；SDK 托管快照继续按完整 generation 替换。
+
 一个应用只有一个 Runtime 时，文件名固定为 `config_<application-id>.json`。同一应用有多个 Runtime 时追加 Runtime 的 `sdk_config_file_id`；受控测试资源可以在 Runtime metadata 中显式设置该稳定短标识。未设置时回退真实 `workflow_runtime_id`，避免同名覆盖。配置文件中的 Runtime key 对多 Runtime 应用使用各自的 Runtime 展示名称，不能按随机资源 id 排序后生成含义不确定的 `_2`、`_3` 名称。
 
 每个 Workflow 配置文件包含：
@@ -113,3 +116,18 @@ ZeroMQ 与 local-shared-memory 配置只允许高性能输入 `image-ref.v1`、`
 - 配置包是生成时快照。Runtime/Trigger/Deployment id 被删除或替换后，必须重新生成。
 - 自动同步默认关闭；token 应使用只具备所需 Project 与 `workflows:read`、`models:read` scope 的专用凭据。HTTP 自动同步不改变 local-shared-memory 只能同机访问 `data/buffers` 的物理边界；远程 SDK 仍使用 HTTP 或 ZeroMQ。
 - 版本选择属于 Runtime 控制面；调用 SDK 不能在单次请求中绕过 Runtime 指定 revision。
+
+
+## 项目页面的资源范围与预览核对
+
+`resources` 返回可调用资源的 `id`、`name`、`kind`（runtime/trigger/deployment）及 Trigger 的 `runtime_id`，不返回凭据。目录监听由后端执行，不进入可选调用资源。
+
+`GET /api/v1/projects/{project_id}/sdk-config-packages/resources` 使用 `offset`（默认 0）和 `limit`（默认及上限 200）分页。响应头为 `x-offset`、`x-limit`、`x-total-count`、`x-has-more`，有下一页时附 `x-next-offset`。只读取资源元数据，不为列表构建完整配置包。调用方须读取全部页面或明确使用分页结果，不能把第一页误认为全部。
+
+当前生成容量为每类 10,000 项。列表和生成前先查询总数，任一类别超过容量返回明确的 400 错误；不静默截断模型部署。容量检查也包含已登记但无需 SDK 调用配置的触发源，控制整个配置快照的成本。前端分批加载并核对总数、重复 ID 和容量；当前范围列表与文件列表每页渲染 50 项，选择集合独立于搜索和显示页。读取期间发现总数变化、重复或缺项时要求刷新；同数量资源替换等并发变化还由生成时资源校验和预览 revision 核对处理。
+
+preview/download 可增加 `runtime_ids`、`trigger_source_ids`、`deployment_ids`。未传或 null 为全量范围，空数组为该类不选。默认“全部资源”由服务端按生成时快照解析，前端不会用旧页面 ID 集合替代全量语义。所选 Trigger 自动包含必要 Runtime；失效或跨项目资源返回 400，不静默略过。普通目录监听省略说明仍进入 notes。
+
+download 的可选 `expected_revision` 必须与同范围、同模式的预览一致，否则返回 409。页面每次修改范围、凭据选项或调用模式后重新预览；预览失败会禁用下载，避免下载与屏幕预览不一致。SDK current 的全量自动同步接口保持原语义，未增加执行队列或自动业务重试。
+
+resources、preview、download 与 current 均要求 `workflows:read`、`models:read` 及项目可见权限；设置了页面范围的账号还须能读取运行实例和部署页面。前端入口使用相同规则。资源分页与 UI 调整不改变配置文件 JSON 结构或 .NET SDK 调用方式；本次无需更新 .NET 数据面实现。

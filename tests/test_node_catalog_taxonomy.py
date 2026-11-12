@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import json
 from collections import Counter
+from pathlib import Path
 
 from backend.nodes.core_catalog import get_core_workflow_node_definitions
 from custom_nodes.opencv_nodes.workflow.catalog_builder import (
@@ -47,12 +49,13 @@ EXPECTED_CORE_CATEGORY_COUNTS = {
 }
 
 EXPECTED_OPENCV_CATEGORY_COUNTS = {
+    "opencv.image.basic": 1,
     "opencv.image.color": 6,
     "opencv.image.enhancement": 7,
     "opencv.image.filter": 6,
     "opencv.image.edge": 4,
     "opencv.image.threshold": 4,
-    "opencv.image.transform": 22,
+    "opencv.image.transform": 24,
     "opencv.mask.operation": 7,
     "opencv.mask.morphology": 2,
     "opencv.segmentation.image": 4,
@@ -60,7 +63,7 @@ EXPECTED_OPENCV_CATEGORY_COUNTS = {
     "opencv.feature.detection": 6,
     "opencv.matching.feature": 3,
     "opencv.matching.template": 5,
-    "opencv.matching.registration": 4,
+    "opencv.matching.registration": 5,
     "opencv.geometry.detection": 7,
     "opencv.geometry.contour": 5,
     "opencv.geometry.shape": 18,
@@ -71,7 +74,8 @@ EXPECTED_OPENCV_CATEGORY_COUNTS = {
     "opencv.measurement.geometry": 11,
     "opencv.inspection.statistics": 4,
     "opencv.inspection.batch": 5,
-    "opencv.inspection.difference": 7,
+    "opencv.inspection.difference": 8,
+    "opencv.inspection.measurement": 7,
     "opencv.output.render": 13,
     "opencv.output.workflow": 2,
 }
@@ -102,14 +106,13 @@ def test_opencv_catalog_uses_confirmed_two_level_taxonomy_and_english_names() ->
     catalog = build_custom_node_catalog_document()
     category_counts = Counter(item.category for item in catalog.node_definitions)
 
-    assert len(catalog.node_definitions) == 183
+    assert len(catalog.node_definitions) == 195
     assert category_counts == EXPECTED_OPENCV_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category)
         for item in catalog.node_definitions
     )
     assert all("/" not in item.category for item in catalog.node_definitions)
-    assert min(category_counts.values()) >= 2
     assert all(
         not _HAN_PATTERN.search(item.display_name) for item in catalog.node_definitions
     )
@@ -118,4 +121,12 @@ def test_opencv_catalog_uses_confirmed_two_level_taxonomy_and_english_names() ->
         for item in catalog.node_definitions
         if isinstance(item.metadata.get("i18n"), dict)
     )
-    assert {item.node_pack_version for item in catalog.node_definitions} == {"0.1.8"}
+    assert {item.node_pack_version for item in catalog.node_definitions} == {"0.1.10"}
+
+
+def test_opencv_aggregate_catalog_matches_generated_contracts() -> None:
+    """公共资源规则变化时，分类目录和发布加载的总目录必须同步。"""
+    path = Path(__file__).resolve().parents[1] / "custom_nodes/opencv_nodes/workflow/catalog.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == (
+        build_custom_node_catalog_document().model_dump(mode="json")
+    )

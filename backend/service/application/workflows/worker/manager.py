@@ -65,6 +65,9 @@ from backend.service.application.workflows.worker.messages import (
     try_deserialize_run_result_worker_state,
 )
 from backend.service.application.workflows.worker import process as worker_process
+from backend.service.application.workflows.worker.startup import (
+    build_recovery_failure, read_startup_failure, recovery_blocked,
+)
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -119,6 +122,7 @@ class _WorkflowRuntimeProcessHandle:
         default_factory=dict, repr=False
     )
     started_event: Event = field(default_factory=Event, repr=False)
+    startup_error: ServiceError | None = None
     request_lock: Lock = field(default_factory=Lock, repr=False)
     active_execution_token_id: str | None = None
     active_execution_run_id: str | None = None
@@ -1663,6 +1667,11 @@ class WorkflowRuntimeWorkerManager:
         deadline = monotonic() + max(0.1, timeout_seconds)
         while not handle.started_event.wait(timeout=0.1):
             if not handle.process.is_alive():
+                # 子进程退出时 Queue 已刷出；响应线程先消费错误，再报告空队列退出。
+                # 只有响应线程自身退出才使用退出码兜底，避免抢在具体错误之前清理。
+                if handle.response_thread is not None and handle.response_thread.is_alive():
+                    if monotonic() < deadline:
+                        continue
                 process_exit_code = handle.process.exitcode
                 raise ServiceConfigurationError(
                     "workflow runtime worker 在启动完成前退出",
@@ -1679,6 +1688,8 @@ class WorkflowRuntimeWorkerManager:
                         "timeout_seconds": timeout_seconds,
                     },
                 )
+        if handle.startup_error is not None:
+            raise handle.startup_error
         runtime_state = self._read_cached_runtime_state(handle)
         if runtime_state is None:
             raise ServiceConfigurationError("workflow runtime worker 启动状态缺失")
@@ -1836,6 +1847,13 @@ class WorkflowRuntimeWorkerManager:
             try:
                 message = handle.response_queue.get(timeout=0.2)
             except Empty:
+                if not handle.started_event.is_set() and not handle.process.is_alive():
+                    handle.startup_error = ServiceConfigurationError(
+                        "workflow runtime worker 在启动完成前退出，未返回启动错误",
+                        details={"workflow_runtime_id": handle.workflow_runtime_id,
+                                 "process_exit_code": handle.process.exitcode},
+                    )
+                    handle.started_event.set()
                 continue
             except Exception:
                 continue
@@ -1860,6 +1878,13 @@ class WorkflowRuntimeWorkerManager:
                     if pending is not None:
                         pending.error_message = error.message
                         pending.event.set()
+                continue
+
+            if message_type == "startup-failed":
+                with handle.state_lock:
+                    if not handle.started_event.is_set():
+                        handle.startup_error = read_startup_failure(message)
+                        handle.started_event.set()
                 continue
 
             if message_type in {"node-started", "node-ended"}:
@@ -2377,6 +2402,8 @@ class WorkflowRuntimeWorkerManager:
             )
             recoverable_runtimes: list[WorkflowAppRuntime] = []
             for workflow_app_runtime in desired_runtimes:
+                if recovery_blocked(workflow_app_runtime):
+                    continue
                 if workflow_app_runtime.desired_revision_id is None:
                     continue
                 desired_revision = (
@@ -2470,8 +2497,11 @@ class WorkflowRuntimeWorkerManager:
                             self._stop_runtime(runtime_id)
                 except Exception:  # noqa: BLE001 - 恢复失败后的清理不能覆盖原错误
                     pass
+            recovery = (build_recovery_failure(error, failure_context[0])
+                        if failure_context is not None else None)
             with self._lock:
-                failure_count = self._recovery_failures.get(runtime_id, 0) + 1
+                failure_count = (recovery["attempt"] if recovery is not None
+                                 else self._recovery_failures.get(runtime_id, 0) + 1)
                 self._recovery_failures[runtime_id] = failure_count
                 self._recovery_next_attempt_at[runtime_id] = monotonic() + min(
                     60.0,
@@ -2492,13 +2522,16 @@ class WorkflowRuntimeWorkerManager:
                 runtime_state,
                 instance_id=failed_runtime.worker_instance_id,
                 loaded_snapshot_fingerprint=expected_fingerprint,
+                health_summary={"recovery": recovery},
             )
             try:
                 self._persist_runtime_state_event(
                     workflow_runtime_id=runtime_id,
                     runtime_state=runtime_state,
                     event_type="runtime.recovery_failed",
-                    message="workflow app runtime 自动恢复失败，将按退避策略重试",
+                    message=("workflow app runtime 自动恢复失败，将按退避策略重试"
+                             if recovery["retryable"] else
+                             "workflow app runtime 自动恢复已暂停；修正配置后点击启动，节点已改变时需重新发布"),
                     expected_revision_id=expected_revision_id,
                     expected_generation=failed_runtime.revision_generation,
                     expected_snapshot_fingerprint=expected_fingerprint,
@@ -2527,6 +2560,7 @@ class WorkflowRuntimeWorkerManager:
             if (
                 workflow_app_runtime is None
                 or workflow_app_runtime.desired_state != "running"
+                or recovery_blocked(workflow_app_runtime)
                 or workflow_app_runtime.active_revision_id is None
                 or workflow_app_runtime.desired_revision_id
                 != workflow_app_runtime.active_revision_id

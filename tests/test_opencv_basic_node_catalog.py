@@ -47,8 +47,15 @@ def test_opencv_basic_node_catalog_builder_matches_checked_in_catalog() -> None:
         "custom.opencv.image-stitch",
         "custom.opencv.image-quality-metrics",
     } <= node_type_ids
+    # 分类碎片保留各节点修订；统一发布目录另行覆盖当前包版本。
+    decode = next(
+        item for item in actual_catalog_payload["node_definitions"]
+        if item["node_type_id"] == "custom.opencv.image-decode"
+    )
+    assert decode["version"] == decode["node_pack_version"] == "0.1.10"
     assert {
         item["node_pack_version"] for item in actual_catalog_payload["node_definitions"]
+        if item["node_type_id"] != "custom.opencv.image-decode"
     } == {"0.1.8"}
     _assert_source_image_schema_supports_local_buffer_refs(
         catalog_payload=actual_catalog_payload,

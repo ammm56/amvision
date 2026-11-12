@@ -244,6 +244,7 @@ class PreviewSessionPool:
                     slot.replies.put(reply, timeout=2)
                 elif kind == "finished":
                     if payload.get("worker_reusable") is False:
+                        # 通道失步或资源清理失败都不能复用。先确认退出，再归还执行容量。
                         self._stop(slot)
                         self._close_slot(slot)
                     borrowing_finished = True

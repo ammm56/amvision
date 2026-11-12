@@ -7,6 +7,7 @@ import pytest
 
 from tests.api_test_support import build_test_headers
 from tests.test_workflow_app_version_runtime import _publish_current_draft
+from tests.test_workflow_app_version_runtime import _set_runtime_state
 from tests.test_workflow_runtime_invoke_api import (
     _create_runtime_api_client,
     _save_example_documents,
@@ -27,6 +28,58 @@ def _create_runtime(client, headers, version_id):
     )
     assert response.status_code == 201, response.text
     return response.json()["workflow_runtime_id"]
+
+
+def test_missing_snapshot_pauses_recovery_and_manual_start_recovers(tmp_path, monkeypatch):
+    """独立 worker 报告丢失文件，恢复状态入库；修复后显式启动可正常使用。"""
+    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+
+    client, factory, storage = _create_runtime_api_client(
+        tmp_path, database_name="recovery-path.db", enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            manager = client.app.state.workflow_runtime_worker_manager
+            monkeypatch.setattr(manager, "_schedule_desired_runtime_recoveries", lambda: None)
+            _, app = _save_example_documents(client=client, dataset_storage=storage, example_name="inspection_limits")
+            version_id = _publish_current_draft(client=client, headers=headers, application_id=app.application_id, release_notes="Recovery fixture")
+            runtime_id = _create_runtime(client, headers, version_id)
+            url = f"/api/v1/workflows/app-runtimes/{runtime_id}"
+            started = client.post(f"{url}/start", headers=headers)
+            assert started.status_code == 200, started.text
+            assert client.post(f"{url}/stop", headers=headers).status_code == 200
+            uow = SqlAlchemyUnitOfWork(factory.create_session())
+            try:
+                version = uow.workflow_runtime.get_workflow_app_version(version_id)
+                snapshot = storage.resolve(version.application_snapshot_object_key)
+            finally:
+                uow.close()
+            held = snapshot.with_suffix(".test-held")
+            snapshot.rename(held)
+            try:
+                _set_runtime_state(session_factory=factory, runtime_id=runtime_id, desired_state="running", observed_state="failed")
+                target = manager._get_recoverable_runtime_target(runtime_id)
+                assert target is not None
+                manager._recover_desired_runtime(target[0])
+                failed = client.get(url, headers=headers).json()
+                recovery = failed["health_summary"]["recovery"]
+                assert recovery["attempt"] == 1
+                assert recovery["retryable"] is False, recovery
+                assert recovery["error"]["details"]["phase"] == "worker_startup"
+                assert "application" in str(recovery["error"]), recovery
+                assert manager._get_recoverable_runtime_target(runtime_id) is None
+                assert runtime_id not in {r.workflow_runtime_id for r in manager._load_recoverable_desired_runtimes()}
+                assert not manager.is_runtime_available(runtime_id)
+            finally:
+                held.rename(snapshot)
+            restarted = client.post(f"{url}/start", headers=headers)
+            assert restarted.status_code == 200, restarted.text
+            assert restarted.json()["observed_state"] == "running"
+            assert "recovery" not in restarted.json()["health_summary"]
+            assert client.post(f"{url}/stop", headers=headers).status_code == 200
+    finally:
+        factory.engine.dispose()
 
 
 def _invoke_with_display(client, headers, runtime_url, mode, payload):

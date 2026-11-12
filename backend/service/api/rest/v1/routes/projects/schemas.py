@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -45,7 +46,9 @@ class ProjectStatusSummaryResponse(BaseModel):
     """描述某一类 Project 资源的总数与状态分布。"""
 
     total: int = Field(description="资源总数")
-    status_counts: dict[str, int] = Field(default_factory=dict, description="状态计数字典")
+    status_counts: dict[str, int] = Field(
+        default_factory=dict, description="状态计数字典"
+    )
 
 
 class ProjectSummaryResponse(BaseModel):
@@ -57,11 +60,15 @@ class ProjectSummaryResponse(BaseModel):
     imports: ProjectStatusSummaryResponse = Field(description="数据集导入聚合摘要")
     exports: ProjectStatusSummaryResponse = Field(description="数据集导出聚合摘要")
     training: ProjectStatusSummaryResponse = Field(description="训练任务聚合摘要")
-    validation: ProjectStatusSummaryResponse = Field(description="人工验证 session 聚合摘要")
+    validation: ProjectStatusSummaryResponse = Field(
+        description="人工验证 session 聚合摘要"
+    )
     evaluation: ProjectStatusSummaryResponse = Field(description="评估任务聚合摘要")
     conversion: ProjectStatusSummaryResponse = Field(description="转换任务聚合摘要")
     inference: ProjectStatusSummaryResponse = Field(description="推理任务聚合摘要")
-    workflows: ProjectWorkflowSummaryResponse = Field(description="workflow 相关聚合摘要")
+    workflows: ProjectWorkflowSummaryResponse = Field(
+        description="workflow 相关聚合摘要"
+    )
     deployments: ProjectDeploymentSummaryResponse = Field(
         description="deployment 相关聚合摘要"
     )
@@ -88,7 +95,41 @@ class ProjectCatalogItemResponse(BaseModel):
         description="Project 来源；configured 表示配置项，local_disk 表示本地目录"
     )
     storage_prefix: str = Field(description="Project 对应的本地 ObjectStore 前缀")
-    summary: ProjectSummaryResponse | None = Field(default=None, description="可选聚合摘要")
+    summary: ProjectSummaryResponse | None = Field(
+        default=None, description="可选聚合摘要"
+    )
+    created_at: str | None = Field(
+        default=None, description="项目 manifest 创建时间；未知时为空"
+    )
+    updated_at: str | None = Field(default=None, description="项目元数据最后更新时间")
+    revision: str | None = Field(default=None, description="可编辑元数据的条件更新摘要")
+    model_total: int | None = Field(
+        default=None, description="项目模型资源数量，不含平台预训练模型"
+    )
+    resource_errors: list[str] = Field(default_factory=list)
+    resource_counts: dict[str, int | None] = Field(default_factory=dict, description="当前账号有权读取的资源计数；未授权类别不返回")
+
+
+class ProjectCreateRequestBody(BaseModel):
+    """项目创建表单；request_id 用于结果核对，不自动重放业务调用。"""
+
+    request_id: UUID = Field(description="本次创建的稳定请求标识")
+    display_name: str = Field(min_length=1, max_length=128, description="项目展示名称")
+    description: str | None = Field(
+        default=None, max_length=2000, description="项目说明"
+    )
+
+
+class ProjectUpdateRequestBody(BaseModel):
+    """只允许修改项目展示元数据。"""
+
+    display_name: str = Field(min_length=1, max_length=128, description="项目展示名称")
+    description: str | None = Field(
+        default=None, max_length=2000, description="项目说明"
+    )
+    expected_revision: str = Field(
+        min_length=64, max_length=64, description="读取时的 revision"
+    )
 
 
 class ProjectObjectMetadataResponse(BaseModel):
@@ -142,6 +183,7 @@ class ProjectDeletionRequestBody(BaseModel):
 class ProjectDeletionBlockerResponse(BaseModel):
     """描述一个阻止 Project 删除的活动资源。"""
 
+    display_name: str = ""
     resource_kind: str = Field(description="资源类型")
     resource_id: str = Field(description="资源 id")
     state: str = Field(description="当前状态")

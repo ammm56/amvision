@@ -1,6 +1,6 @@
 :root {
   font-family: var(--am-font-sans);
-  font-size: 14px;
+  font-size: var(--am-type-body);
   color: var(--am-text);
   background: var(--am-page);
 }
@@ -38,3 +38,7 @@ a {
 a:hover {
   text-decoration: underline;
 }
+
+/* 实心状态图标仅内部符号使用白色描边。 */
+.status-disc > circle { stroke: none; }
+.status-disc > path { fill: none; }

@@ -20,6 +20,7 @@ from backend.service.infrastructure.persistence.deployment_orm import (
     DeploymentInstanceRecord,
 )
 from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
+from backend.service.infrastructure.persistence.model_orm import ModelRecord
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
     WorkflowRunRecord,
@@ -74,6 +75,43 @@ class SqlAlchemyProjectSummaryRepository:
             deployment_status_counts=deployment_counts,
         )
 
+    def get_model_total(self, project_id: str) -> int:
+        """统计项目模型，不把模型版本或训练任务重复计数。"""
+
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(ModelRecord)
+                .where(ModelRecord.project_id == project_id)
+            )
+            or 0
+        )
+
+    def get_deployment_total(self, project_id: str) -> int:
+        """仅统计部署资源，不加载部署快照或其他类别。"""
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(DeploymentInstanceRecord)
+                .where(DeploymentInstanceRecord.project_id == project_id)
+            )
+            or 0
+        )
+
+    def get_overview(self, project_id: str, *, limit: int = 6) -> dict[str, object]:
+        """复用概览读取仓储，保持内部调用的有限快照接口。"""
+        from .project_activity_repository import ProjectActivityRepository
+
+        repository = ProjectActivityRepository(self.session)
+        access = dict.fromkeys(
+            ("datasets", "models", "apps", "runtimes", "deployments", "tasks"), True
+        )
+        recent, _ = repository.recent(project_id, access=access, offset=0, limit=limit)
+        return {
+            "recent": recent,
+            "active": repository.active(project_id, access, limit),
+        }
+
     def _count_by_one_column(
         self,
         column: object,
@@ -107,8 +145,7 @@ class SqlAlchemyProjectSummaryRepository:
             grouped.setdefault(raw_kind.strip(), {})[raw_state.strip()] = int(raw_count)
         return {
             task_kind: {
-                state: grouped[task_kind][state]
-                for state in sorted(grouped[task_kind])
+                state: grouped[task_kind][state] for state in sorted(grouped[task_kind])
             }
             for task_kind in sorted(grouped)
         }

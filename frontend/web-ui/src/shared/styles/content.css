@@ -108,7 +108,7 @@
 .form-panel h2,
 .resource-section h2 {
   color: var(--am-text-strong);
-  font-size: 20px;
+  font-size: var(--am-type-section);
   line-height: 1.25;
 }
 
@@ -126,8 +126,8 @@
 .file-picker__label,
 .checkbox-field span {
   color: var(--am-text-muted);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--am-type-caption);
+  font-weight: 500;
 }
 
 .field input,
@@ -152,6 +152,14 @@
 
 .field textarea {
   min-height: 84px;
+}
+
+/* 表格行内编辑使用同一套输入框、焦点和主题样式。 */
+.field.field--compact input {
+  min-height: 28px;
+  height: 28px;
+  padding: 2px 8px;
+  font-size: 13px;
 }
 
 .field input:hover:not(:disabled):not(:read-only),
@@ -266,21 +274,21 @@ input[type='radio']:disabled {
 }
 
 .resource-table th {
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--am-text);
+  font-size: var(--am-type-caption);
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .resource-table td {
   color: var(--am-text);
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: var(--am-type-body);
+  line-height: 1.45;
 }
 
-.resource-table td > span {
+.resource-table td > code {
   font-family: var(--am-font-mono);
-  font-size: 11px;
+  font-size: var(--am-type-caption);
 }
 
 .resource-table tbody tr {

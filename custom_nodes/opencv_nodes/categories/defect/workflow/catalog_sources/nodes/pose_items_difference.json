@@ -1,0 +1,49 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.pose-items-difference",
+  "version": "0.1.8",
+  "display_name": "Pose Items Difference",
+  "category": "opencv.inspection.measurement",
+  "description": "按 ID 计算质心 dx/dy、距离和无向轴角差；不可测时保留 null。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "current",
+      "display_name": "Current",
+      "payload_type_id": "value.v1",
+      "required": true
+    },
+    {
+      "name": "reference",
+      "display_name": "Reference",
+      "payload_type_id": "value.v1",
+      "required": true
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "metrics",
+      "display_name": "Metrics",
+      "payload_type_id": "value.v1",
+      "required": true
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "capability_tags": [
+    "vision.inspection",
+    "opencv.measurement-items"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

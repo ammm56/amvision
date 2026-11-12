@@ -449,6 +449,8 @@ def test_delete_completed_dataset_export_removes_export_files_package_and_task(
 
 def _create_test_client(
     tmp_path: Path,
+    *,
+    enable_queue_outbox_dispatcher: bool = True,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定临时 SQLite、本地文件存储和队列的测试客户端。"""
 
@@ -456,6 +458,7 @@ def _create_test_client(
         tmp_path,
         database_name="amvision-export-api.db",
         enable_local_buffer_broker=False,
+        enable_queue_outbox_dispatcher=enable_queue_outbox_dispatcher,
     )
     return context.client, context.session_factory, context.dataset_storage, context.queue_backend
 

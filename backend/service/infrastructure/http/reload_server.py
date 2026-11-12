@@ -18,7 +18,21 @@ def serve(config: Config, sockets: list[socket] | None = None) -> None:
     """在子进程内绑定监听；config 为服务配置，sockets 必须为空。"""
     if sockets:
         raise ValueError("开发热重载不接受父进程共享的监听 socket")
+    enable_reload_interrupt()
     Server(config).run()
+
+
+def enable_reload_interrupt() -> None:
+    """恢复受管进程组继承的 Ctrl+C，使 Uvicorn 能正常结束重载子进程。"""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    # CREATE_NEW_PROCESS_GROUP 默认忽略 Ctrl+C，且忽略标志会被 spawn 子进程继承。
+    # 只在开发 HTTP 子进程恢复；不改变父启动器或任何 Runtime/Trigger 的信号策略。
+    if not kernel.SetConsoleCtrlHandler(None, False):
+        raise ctypes.WinError(ctypes.get_last_error())
 
 
 def run_reload(**options: object) -> None:

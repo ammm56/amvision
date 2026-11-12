@@ -1777,11 +1777,29 @@
         }
       },
       {
+        "parameter_name": "prepare_details",
+        "display_name": "Prepare Details",
+        "description": "",
+        "group_id": "default",
+        "order": 1,
+        "required": false,
+        "hidden": false,
+        "readonly": false,
+        "default_value": false,
+        "enum_options": [],
+        "widget": "auto",
+        "json_schema": {
+          "default": false,
+          "title": "Prepare Details",
+          "type": "boolean"
+        }
+      },
+      {
         "parameter_name": "color",
         "display_name": "Color",
         "description": "",
         "group_id": "default",
-        "order": 1,
+        "order": 2,
         "required": true,
         "hidden": false,
         "readonly": false,

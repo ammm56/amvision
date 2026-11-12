@@ -41,8 +41,11 @@ from backend.contracts.datasets.exports.yolo_export import (
 )
 
 
+from .formats.sample_media import MediaExportManifest
+
 DatasetExportFormatManifest = (
-    CocoDetectionExportManifest
+    MediaExportManifest
+    | CocoDetectionExportManifest
     | VocDetectionExportManifest
     | VocInstanceSegmentationExportManifest
     | ImageNetClassificationExportManifest
@@ -86,6 +89,12 @@ class DatasetExportRequest:
     category_names: tuple[str, ...] = ()
     include_test_split: bool = True
     dataset_export_id: str | None = None
+    # 可选固定版本选择；None 保持既有整版本导出行为。
+    selection: dict[str, object] | None = None
+    annotation_handoff: bool = False
+    included_splits: tuple[str, ...] | None = None
+    source_category_ids: tuple[int, ...] | None = None
+    package_name: str = ""
 
 
 @dataclass(frozen=True)

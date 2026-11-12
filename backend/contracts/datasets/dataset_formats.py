@@ -11,14 +11,17 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Literal, Mapping
 
+from .sample_media import MEDIA_TASKS
 
-DatasetFormatFamily = Literal["coco", "voc", "yolo", "imagenet", "dota"]
+
+DatasetFormatFamily = Literal["coco", "voc", "yolo", "imagenet", "dota", "amvision-media"]
 DatasetFormatTaskType = Literal[
     "detection",
     "segmentation",
     "pose",
     "classification",
     "obb",
+    "anomaly", "connector-reference", "rgbd", "point-cloud",
 ]
 DatasetExportFormatId = Literal[
     "coco-detection-v1",
@@ -32,6 +35,7 @@ DatasetExportFormatId = Literal[
     "imagenet-classification-v1",
     "dota-obb-v1",
     "yolo-obb-v1",
+    "amvision-anomaly-v1", "amvision-connector-reference-v1", "amvision-rgbd-v1", "amvision-point-cloud-v1",
 ]
 
 
@@ -183,6 +187,11 @@ DATASET_FORMAT_SPECIFICATIONS: Final[tuple[DatasetFormatSpecification, ...]] = (
         class_index_base=0,
         split_convention="manifest-or-images-labels-directories",
     ),
+    *(DatasetFormatSpecification(
+        format_id=f"amvision-{kind}-v1", family="amvision-media", task_type=kind,
+        annotation_kind=kind, coordinate_convention="declared-in-manifest",
+        class_index_base=None, split_convention="manifest-per-sample",
+    ) for kind in MEDIA_TASKS),
 )
 
 
@@ -213,7 +222,7 @@ IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE: Final[
         for item in DATASET_FORMAT_SPECIFICATIONS
         if item.export_enabled and item.task_type == task_type
     )
-    for task_type in ("detection", "segmentation", "pose", "classification", "obb")
+    for task_type in ("detection", "segmentation", "pose", "classification", "obb", *MEDIA_TASKS)
 }
 
 
@@ -227,7 +236,7 @@ IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE: Final[
             if item.import_enabled and item.task_type == task_type
         )
     )
-    for task_type in ("detection", "segmentation", "pose", "classification", "obb")
+    for task_type in ("detection", "segmentation", "pose", "classification", "obb", *MEDIA_TASKS)
 }
 
 

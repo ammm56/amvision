@@ -113,6 +113,10 @@ def _build_gallery_item(
     if isinstance(crop_index, int):
         gallery_item["caption"] = f"Crop {crop_index}"
         gallery_item["crop_index"] = crop_index
+    roi_id = image_item.get("roi_id")
+    if isinstance(roi_id, str) and roi_id:
+        gallery_item["caption"] = roi_id
+        gallery_item["roi_id"] = roi_id
     bbox_xyxy = image_item.get("bbox_xyxy")
     if isinstance(bbox_xyxy, list):
         gallery_item["bbox_xyxy"] = bbox_xyxy

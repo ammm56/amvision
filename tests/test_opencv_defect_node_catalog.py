@@ -45,6 +45,14 @@ def test_opencv_defect_node_catalog_builder_matches_checked_in_catalog() -> None
         "custom.opencv.contour-deviation-inspect",
         "custom.opencv.variation-model-build",
         "custom.opencv.variation-inspect",
+        "custom.opencv.roi-foreground-compare",
+        "custom.opencv.roi-mask-extract",
+        "custom.opencv.mask-items-difference",
+        "custom.opencv.mask-items-properties",
+        "custom.opencv.pose-items-difference",
+        "custom.opencv.measurement-items-check",
+        "custom.opencv.inspection-items-merge",
+        "custom.opencv.draw-inspection-items",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.nodes"

@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, type Pinia } from 'pinia'
 import { nextTick } from 'vue'
+import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useProjectStore } from '@/app/stores/project.store'
@@ -397,12 +398,23 @@ function sourceModelDetail(model: DeploymentSourceModelSummary): DeploymentSourc
 
 describe('DeploymentOperationsPage', () => {
   let pinia: Pinia
+  let router: Router
+
+  it('opens the requested deployment details and reads its runtime state', async () => {
+    await router.push({ path: '/deployments', query: { deployment: deployment.deployment_instance_id } })
+    mount(DeploymentOperationsPage, { global: { plugins: [pinia, i18n, router] } })
+    await flushPromises()
+    expect(document.body.textContent).toContain('状态信息')
+    expect(document.body.textContent).toContain(deployment.deployment_instance_id)
+    expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', deployment.deployment_instance_id, 'sync', 'status')
+    expect(vi.mocked(runTaskDeploymentStatusAction).mock.calls.every(call => call[3] === 'status')).toBe(true)
+  })
 
   it('只读用户不启动需要写权限的部署导入面板，权限收回后卸载面板', async () => {
     const session = useSessionStore(pinia)
     session.currentUser!.scopes = ['models:read']
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n], stubs: { DeploymentTransferPanel: { name: 'DeploymentTransferPanel', template: '<div />', methods: { exportFor: () => undefined } } } },
+      global: { plugins: [pinia, i18n, router], stubs: { DeploymentTransferPanel: { name: 'DeploymentTransferPanel', template: '<div />', methods: { exportFor: () => undefined } } } },
     })
     await flushPromises()
     expect(wrapper.findComponent({ name: 'DeploymentTransferPanel' }).exists()).toBe(false)
@@ -417,7 +429,12 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.findComponent({ name: 'DeploymentTransferPanel' }).exists()).toBe(false)
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/deployments', component: DeploymentOperationsPage }],
+    })
+    await router.push('/deployments')
     setI18nLocale('zh-CN')
     pinia = createPinia()
     const projectStore = useProjectStore(pinia)
@@ -506,7 +523,7 @@ describe('DeploymentOperationsPage', () => {
   it('omits redundant section kicker labels from the deployment page', async () => {
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -524,7 +541,7 @@ describe('DeploymentOperationsPage', () => {
   it('localizes runtime mode choices without changing their protocol values', async () => {
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -543,7 +560,7 @@ describe('DeploymentOperationsPage', () => {
   it('renders four deterministic deployment status indicators with localized accessible details', async () => {
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -591,7 +608,7 @@ describe('DeploymentOperationsPage', () => {
     })
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -608,7 +625,7 @@ describe('DeploymentOperationsPage', () => {
   it('renders deployment runtime health and dispatches runtime actions', async () => {
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -660,7 +677,7 @@ describe('DeploymentOperationsPage', () => {
     ))
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -689,7 +706,7 @@ describe('DeploymentOperationsPage', () => {
     ))
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -717,7 +734,7 @@ describe('DeploymentOperationsPage', () => {
     )
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -738,7 +755,7 @@ describe('DeploymentOperationsPage', () => {
 
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -778,7 +795,7 @@ describe('DeploymentOperationsPage', () => {
 
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -815,7 +832,7 @@ describe('DeploymentOperationsPage', () => {
 
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
-        plugins: [pinia, i18n],
+        plugins: [pinia, i18n, router],
       },
     })
     await flushPromises()
@@ -879,7 +896,7 @@ describe('DeploymentOperationsPage', () => {
     ))
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
@@ -906,7 +923,7 @@ describe('DeploymentOperationsPage', () => {
     vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
 
@@ -989,7 +1006,7 @@ describe('DeploymentOperationsPage', () => {
     vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
@@ -1040,7 +1057,7 @@ describe('DeploymentOperationsPage', () => {
     vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
@@ -1105,7 +1122,7 @@ describe('DeploymentOperationsPage', () => {
     vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
@@ -1186,7 +1203,7 @@ describe('DeploymentOperationsPage', () => {
     }))
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
@@ -1227,7 +1244,7 @@ describe('DeploymentOperationsPage', () => {
     }))
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
@@ -1275,7 +1292,7 @@ describe('DeploymentOperationsPage', () => {
     }))
 
     const wrapper = mount(DeploymentOperationsPage, {
-      global: { plugins: [pinia, i18n] },
+      global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')

@@ -85,7 +85,11 @@ class CocoDatasetImportParserMixin:
             if not isinstance(payload, dict):
                 raise InvalidRequestError(
                     "COCO manifest 必须是 JSON 对象",
-                    details={"manifest_file": self._relative_path(dataset_root, manifest_path)},
+                    details={
+                        "manifest_file": self._relative_path(
+                            dataset_root, manifest_path
+                        )
+                    },
                 )
             if not {"images", "annotations", "categories"}.issubset(payload):
                 continue
@@ -156,14 +160,19 @@ class CocoDatasetImportParserMixin:
                         tuple(normalized_skeleton),
                     )
                     previous_schema = pose_schema_by_category.get(category_key)
-                    if previous_schema is not None and previous_schema != current_schema:
+                    if (
+                        previous_schema is not None
+                        and previous_schema != current_schema
+                    ):
                         raise InvalidRequestError(
                             "COCO pose 各 split 的关键点定义不一致"
                         )
                     pose_schema_by_category[category_key] = current_schema
 
         if not manifest_payloads:
-            raise InvalidRequestError("annotations 目录中没有可用的 COCO detection manifest")
+            raise InvalidRequestError(
+                "annotations 目录中没有可用的 COCO detection manifest"
+            )
         if not source_categories:
             raise InvalidRequestError("COCO 数据集缺少 categories 定义")
         if len(set(source_categories.values())) != len(source_categories):
@@ -172,10 +181,14 @@ class CocoDatasetImportParserMixin:
                 details={"category_names": list(source_categories.values())},
             )
 
-        ordered_source_category_ids = sorted(source_categories, key=self._category_sort_key)
+        ordered_source_category_ids = sorted(
+            source_categories, key=self._category_sort_key
+        )
         category_id_map = {
             source_category_id: normalized_id
-            for normalized_id, source_category_id in enumerate(ordered_source_category_ids)
+            for normalized_id, source_category_id in enumerate(
+                ordered_source_category_ids
+            )
         }
         categories = tuple(
             DatasetCategory(
@@ -197,7 +210,9 @@ class CocoDatasetImportParserMixin:
             annotation_refs.append(self._relative_path(dataset_root, manifest_path))
             images_payload = payload.get("images", [])
             annotations_payload = payload.get("annotations", [])
-            if not isinstance(images_payload, list) or not isinstance(annotations_payload, list):
+            if not isinstance(images_payload, list) or not isinstance(
+                annotations_payload, list
+            ):
                 raise InvalidRequestError("COCO images 和 annotations 必须是数组")
 
             image_payload_by_id: dict[str, dict[str, object]] = {}
@@ -216,7 +231,9 @@ class CocoDatasetImportParserMixin:
                     )
                 image_payload_by_id[image_key] = image_payload
 
-            annotations_by_image_id: dict[str, list[dict[str, object]]] = defaultdict(list)
+            annotations_by_image_id: dict[str, list[dict[str, object]]] = defaultdict(
+                list
+            )
             annotation_ids: set[str] = set()
             for annotation_payload in annotations_payload:
                 if not isinstance(annotation_payload, dict):
@@ -258,6 +275,14 @@ class CocoDatasetImportParserMixin:
             }
 
             for source_image_key, image_payload in image_payload_by_id.items():
+                for external_key in ("amvision_sample_id", "amvision_handoff_id"):
+                    if external_key in image_payload and (
+                        not isinstance(image_payload[external_key], str)
+                        or not 1 <= len(image_payload[external_key]) <= 255
+                    ):
+                        raise InvalidRequestError(
+                            "COCO 外部标注身份必须是 1–255 字符的字符串"
+                        )
                 file_name = str(image_payload.get("file_name", "")).strip()
                 if not file_name:
                     raise InvalidRequestError("COCO image.file_name 不能为空")
@@ -285,8 +310,12 @@ class CocoDatasetImportParserMixin:
                     )
                 split_by_resolved_image[resolved_image_path] = current_split
                 image_refs.append(self._relative_path(dataset_root, source_image_path))
-                width = self._read_int(image_payload, "width", "COCO image.width 不能为空")
-                height = self._read_int(image_payload, "height", "COCO image.height 不能为空")
+                width = self._read_int(
+                    image_payload, "width", "COCO image.width 不能为空"
+                )
+                height = self._read_int(
+                    image_payload, "height", "COCO image.height 不能为空"
+                )
                 if width <= 0 or height <= 0:
                     raise InvalidRequestError("COCO image.width 和 height 必须大于 0")
                 self._require_declared_image_size(
@@ -310,7 +339,10 @@ class CocoDatasetImportParserMixin:
                             details={"category_id": source_category_id},
                         )
                     if source_category_id not in category_id_map:
-                        raise InvalidRequestError("COCO annotation 引用了未定义的 category_id", details={"category_id": source_category_id})
+                        raise InvalidRequestError(
+                            "COCO annotation 引用了未定义的 category_id",
+                            details={"category_id": source_category_id},
+                        )
                     bbox_xywh = self._read_bbox_xywh(annotation_payload.get("bbox"))
                     _validate_bbox_within_image(
                         bbox_xywh,
@@ -331,7 +363,12 @@ class CocoDatasetImportParserMixin:
                     annotations.append(
                         _build_annotation_for_task(
                             task_type=task_type,
-                            annotation_id=str(annotation_payload.get("id", f"coco-ann-{source_image_key}-{annotation_index}")),
+                            annotation_id=str(
+                                annotation_payload.get(
+                                    "id",
+                                    f"coco-ann-{source_image_key}-{annotation_index}",
+                                )
+                            ),
                             category_id=category_id_map[source_category_id],
                             bbox_xywh=bbox_xywh,
                             iscrowd=self._read_coco_iscrowd(annotation_payload),
@@ -342,7 +379,9 @@ class CocoDatasetImportParserMixin:
                     built_annotation = annotations[-1]
                     if (
                         task_type == "segmentation"
-                        and isinstance(getattr(built_annotation, "segmentation", None), dict)
+                        and isinstance(
+                            getattr(built_annotation, "segmentation", None), dict
+                        )
                         and built_annotation.segmentation.get("size") != [height, width]
                     ):
                         raise InvalidRequestError(
@@ -362,11 +401,15 @@ class CocoDatasetImportParserMixin:
                             )
                     if task_type == "pose":
                         keypoints = getattr(built_annotation, "keypoints", None) or []
-                        expected_count = len(pose_schema_by_category[source_category_id][0])
+                        expected_count = len(
+                            pose_schema_by_category[source_category_id][0]
+                        )
                         if len(keypoints) != expected_count * 3:
                             raise InvalidRequestError(
                                 "COCO pose keypoints 数量与 category 定义不一致",
-                                details={"annotation_id": built_annotation.annotation_id},
+                                details={
+                                    "annotation_id": built_annotation.annotation_id
+                                },
                             )
                         for point_index in range(expected_count):
                             x = float(keypoints[point_index * 3])
@@ -393,11 +436,27 @@ class CocoDatasetImportParserMixin:
                             split=current_split,
                             annotations=tuple(annotations),
                             metadata={
-                                "source_image_ref": self._relative_path(dataset_root, source_image_path),
+                                "source_image_ref": self._relative_path(
+                                    dataset_root, source_image_path
+                                ),
+                                **(
+                                    {
+                                        "external_sample_id": image_payload[
+                                            "amvision_sample_id"
+                                        ],
+                                        "external_handoff_id": image_payload.get(
+                                            "amvision_handoff_id"
+                                        ),
+                                    }
+                                    if "amvision_sample_id" in image_payload
+                                    else {}
+                                ),
                             },
                         ),
                         source_image_path=source_image_path,
-                        source_image_ref=self._relative_path(dataset_root, source_image_path),
+                        source_image_ref=self._relative_path(
+                            dataset_root, source_image_path
+                        ),
                     )
                 )
                 image_id_counter += 1
@@ -413,7 +472,9 @@ class CocoDatasetImportParserMixin:
                 forced_split,
                 auto_strategy="manifest-name",
             ),
-            class_map={str(category.category_id): category.name for category in categories},
+            class_map={
+                str(category.category_id): category.name for category in categories
+            },
             categories=categories,
             samples=tuple(parsed_samples),
             detected_profile={
@@ -455,7 +516,11 @@ class CocoDatasetImportParserMixin:
         """读取 COCO 非负整数 id，拒绝 bool、浮点和字符串方言。"""
 
         raw_value = payload.get(key)
-        if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
+        if (
+            isinstance(raw_value, bool)
+            or not isinstance(raw_value, int)
+            or raw_value < 0
+        ):
             raise InvalidRequestError(
                 f"COCO {item_kind}.{key} 必须是非负整数",
                 details={key: raw_value},

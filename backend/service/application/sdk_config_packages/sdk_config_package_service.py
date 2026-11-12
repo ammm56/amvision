@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
@@ -23,10 +23,14 @@ from backend.service.application.workflows.trigger_sources.output_delivery impor
     TriggerResponsePlan,
 )
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
-from backend.service.domain.workflows.workflow_trigger_source_records import WorkflowTriggerSource
+from backend.service.domain.workflows.workflow_trigger_source_records import (
+    WorkflowTriggerSource,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 _PACKAGE_FORMAT_ID = "amvision.sdk-config-package.v1"
@@ -59,6 +63,9 @@ class SdkConfigPackageBuildRequest:
     access_token: str | None = None
     model_runtime_modes: tuple[str, ...] = ("sync",)
     include_disabled_trigger_sources: bool = True
+    runtime_ids: tuple[str, ...] | None = None
+    trigger_source_ids: tuple[str, ...] | None = None
+    deployment_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -149,12 +156,24 @@ class SdkConfigPackageService:
 
         normalized_request = _normalize_request(request)
         resources = self._load_project_resources(normalized_request.project_id)
+        resources = _select_resources(resources, normalized_request)
         builder = _SdkConfigPackageBuilder(
             normalized_request,
             local_memory_settings=self.local_memory_settings,
             dataset_storage=self.dataset_storage,
         )
         return builder.build(resources)
+
+    def list_resources(
+        self, project_id: str, *, offset: int = 0, limit: int = 200
+    ) -> tuple[list[dict[str, object]], int]:
+        """分页返回身份与依赖，不读取或泄露协议凭据和完整运行配置。"""
+        from backend.service.infrastructure.persistence.project_sdk_resource_repository import (
+            ProjectSdkResourceRepository,
+        )
+
+        with self.session_factory.create_session() as session:
+            return ProjectSdkResourceRepository(session).page(project_id, offset, limit)
 
     def build_zip_bytes(self, plan: SdkConfigPackagePlan) -> bytes:
         """把配置包计划写成 zip bytes。
@@ -173,7 +192,9 @@ class SdkConfigPackageService:
             )
 
         buffer = BytesIO()
-        with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(
+            buffer, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as archive:
             for item in plan.files:
                 archive.writestr(item.path, item.content)
             archive.writestr("manifest.json", _to_pretty_json(_build_manifest(plan)))
@@ -183,10 +204,21 @@ class SdkConfigPackageService:
     def _load_project_resources(self, project_id: str) -> "_ProjectSdkConfigResources":
         """读取当前 Project 下配置包需要的资源。"""
 
+        from backend.service.infrastructure.persistence.project_sdk_resource_repository import (
+            ProjectSdkResourceRepository,
+        )
+
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            runtimes = unit_of_work.workflow_runtime.list_workflow_app_runtimes(project_id)
-            trigger_sources = unit_of_work.workflow_trigger_sources.list_trigger_sources(project_id)
+            ProjectSdkResourceRepository(unit_of_work.session).validate_capacity(
+                project_id
+            )
+            runtimes = unit_of_work.workflow_runtime.list_workflow_app_runtimes(
+                project_id
+            )
+            trigger_sources = (
+                unit_of_work.workflow_trigger_sources.list_trigger_sources(project_id)
+            )
         finally:
             unit_of_work.close()
 
@@ -196,8 +228,12 @@ class SdkConfigPackageService:
         )
         deployments = deployment_service.list_deployment_instances(
             project_id=project_id,
-            limit=10_000,
+            limit=10_001,
         )
+        if any(
+            len(items) > 10_000 for items in (runtimes, trigger_sources, deployments)
+        ):
+            raise InvalidRequestError("资源超过单类 10000 项导出上限，请拆分项目后导出")
         return _ProjectSdkConfigResources(
             runtimes=runtimes,
             trigger_sources=trigger_sources,
@@ -225,6 +261,68 @@ class _ProjectSdkConfigResources:
     application_display_names: dict[str, str]
 
 
+def _select_resources(
+    resources: _ProjectSdkConfigResources, request: SdkConfigPackageBuildRequest
+) -> _ProjectSdkConfigResources:
+    """校验项目内选择，补齐 Trigger 的 Runtime 依赖，保留默认完整导出语义。"""
+
+    def select_ids(requested: tuple[str, ...] | None, available: set[str]) -> set[str]:
+        """拒绝不存在或跨项目的资源，避免静默导出错误范围。"""
+        if requested is None:
+            return available
+        selected = set(requested)
+        if not selected <= available:
+            raise InvalidRequestError(
+                "所选资源已变化，请刷新资源列表",
+                details={"missing_ids": sorted(selected - available)},
+            )
+        return selected
+
+    runtime_ids = select_ids(
+        request.runtime_ids, {item.workflow_runtime_id for item in resources.runtimes}
+    )
+    deployment_ids = select_ids(
+        request.deployment_ids,
+        {item.deployment_instance_id for item in resources.deployments},
+    )
+    trigger_ids = select_ids(
+        request.trigger_source_ids,
+        {
+            item.trigger_source_id
+            for item in resources.trigger_sources
+            if request.trigger_source_ids is None
+            or item.trigger_kind in {"zeromq-topic", "local-shared-memory"}
+        },
+    )
+    triggers = tuple(
+        item
+        for item in resources.trigger_sources
+        if item.trigger_source_id in trigger_ids
+        or item.trigger_kind in {"directory-watch", "directory-poll"}
+    )
+    runtime_ids.update(
+        item.workflow_runtime_id
+        for item in triggers
+        if item.trigger_kind in {"zeromq-topic", "local-shared-memory"}
+    )
+    if not runtime_ids <= {item.workflow_runtime_id for item in resources.runtimes}:
+        raise InvalidRequestError("触发入口关联的运行实例已不存在")
+    return replace(
+        resources,
+        runtimes=tuple(
+            item
+            for item in resources.runtimes
+            if item.workflow_runtime_id in runtime_ids
+        ),
+        trigger_sources=triggers,
+        deployments=tuple(
+            item
+            for item in resources.deployments
+            if item.deployment_instance_id in deployment_ids
+        ),
+    )
+
+
 class _SdkConfigPackageBuilder:
     """把 Project 资源转换成 SDK 配置文件。"""
 
@@ -250,17 +348,28 @@ class _SdkConfigPackageBuilder:
         """构建完整配置包计划。"""
 
         files: list[SdkConfigPackageFile] = []
-        trigger_sources_by_runtime = self._group_trigger_sources(resources.trigger_sources)
-        runtime_count_by_application = _count_runtimes_by_application(resources.runtimes)
-        for runtime in sorted(resources.runtimes, key=lambda item: item.workflow_runtime_id):
+        trigger_sources_by_runtime = self._group_trigger_sources(
+            resources.trigger_sources
+        )
+        runtime_count_by_application = _count_runtimes_by_application(
+            resources.runtimes
+        )
+        for runtime in sorted(
+            resources.runtimes, key=lambda item: item.workflow_runtime_id
+        ):
             workflow_file = self._build_workflow_file(
                 runtime=runtime,
-                trigger_sources=trigger_sources_by_runtime.get(runtime.workflow_runtime_id, ()),
+                trigger_sources=trigger_sources_by_runtime.get(
+                    runtime.workflow_runtime_id, ()
+                ),
                 application_display_name=resources.application_display_names.get(
                     runtime.workflow_runtime_id
                 ),
                 application_has_multiple_runtimes=(
-                    runtime_count_by_application.get(runtime.application_id.casefold(), 0) > 1
+                    runtime_count_by_application.get(
+                        runtime.application_id.casefold(), 0
+                    )
+                    > 1
                 ),
             )
             files.append(workflow_file)
@@ -274,7 +383,9 @@ class _SdkConfigPackageBuilder:
 
         workflow_runtime_count = len(resources.runtimes)
         trigger_source_count = sum(
-            item.trigger_source_count for item in files if item.kind == "workflow-runtime"
+            item.trigger_source_count
+            for item in files
+            if item.kind == "workflow-runtime"
         )
         model_deployment_count = sum(
             item.count for item in files if item.kind == "model-deployments"
@@ -289,7 +400,8 @@ class _SdkConfigPackageBuilder:
             timestamp=self.timestamp,
             package_name=package_name,
             base_api_url=self.request.base_api_url,
-            contains_access_token=self.request.include_access_token and bool(self.request.access_token),
+            contains_access_token=self.request.include_access_token
+            and bool(self.request.access_token),
             configuration_revision=_build_configuration_revision(
                 project_id=self.request.project_id,
                 base_api_url=self.request.base_api_url,
@@ -311,7 +423,10 @@ class _SdkConfigPackageBuilder:
 
         grouped: dict[str, list[WorkflowTriggerSource]] = {}
         for trigger_source in trigger_sources:
-            if not self.request.include_disabled_trigger_sources and not trigger_source.enabled:
+            if (
+                not self.request.include_disabled_trigger_sources
+                and not trigger_source.enabled
+            ):
                 continue
             if trigger_source.trigger_kind in {"directory-watch", "directory-poll"}:
                 note = "目录监听触发源由后端自动执行，无需 SDK 调用配置，已省略。"
@@ -326,7 +441,9 @@ class _SdkConfigPackageBuilder:
                     f"TriggerSource {trigger_source.trigger_source_id} 当前没有仓库内 .NET SDK 调用实现，配置包已跳过。"
                 )
                 continue
-            grouped.setdefault(trigger_source.workflow_runtime_id, []).append(trigger_source)
+            grouped.setdefault(trigger_source.workflow_runtime_id, []).append(
+                trigger_source
+            )
         return {
             runtime_id: tuple(sorted(items, key=lambda item: item.trigger_source_id))
             for runtime_id, items in grouped.items()
@@ -418,7 +535,9 @@ class _SdkConfigPackageBuilder:
         展示名称只用于配置里的 key，不再参与文件命名。
         """
 
-        application_part = _safe_file_part(runtime.application_id, fallback="workflow-app")
+        application_part = _safe_file_part(
+            runtime.application_id, fallback="workflow-app"
+        )
         runtime_file_id = _read_optional_text(runtime.metadata, "sdk_config_file_id")
         runtime_part = _safe_file_part(
             runtime_file_id or runtime.workflow_runtime_id,
@@ -459,13 +578,17 @@ class _SdkConfigPackageBuilder:
                 trigger_key=trigger_key,
             )
 
-        bind_endpoint = _read_optional_text(trigger_source.transport_config, "bind_endpoint") or ""
+        bind_endpoint = (
+            _read_optional_text(trigger_source.transport_config, "bind_endpoint") or ""
+        )
         if not bind_endpoint:
             self.warnings.append(
                 f"TriggerSource {trigger_source.trigger_source_id} 缺少 bind_endpoint。"
             )
         default_input_binding = (
-            _read_optional_text(trigger_source.transport_config, "default_input_binding")
+            _read_optional_text(
+                trigger_source.transport_config, "default_input_binding"
+            )
             or _infer_default_input_binding(trigger_source)
             or "request_image_ref"
         )
@@ -531,10 +654,14 @@ class _SdkConfigPackageBuilder:
         """构建模型 deployment 配置文件。"""
 
         model_deployments: list[dict[str, object]] = []
-        for deployment in sorted(deployments, key=lambda item: item.deployment_instance_id):
+        for deployment in sorted(
+            deployments, key=lambda item: item.deployment_instance_id
+        ):
             for runtime_mode in self.request.model_runtime_modes:
                 model_deployments.append(
-                    self._build_model_deployment_config(deployment, runtime_mode=runtime_mode)
+                    self._build_model_deployment_config(
+                        deployment, runtime_mode=runtime_mode
+                    )
                 )
         if not model_deployments:
             return None
@@ -544,7 +671,8 @@ class _SdkConfigPackageBuilder:
             "model_deployments": model_deployments,
         }
         return SdkConfigPackageFile(
-            path=f"Config/config_model_deployment_{self.timestamp}.json",
+            # 配置文件身份不随打包时间变化，保证预览校验和 SDK ETag 稳定。
+            path="Config/config_model_deployments.json",
             kind="model-deployments",
             content=_to_pretty_json(payload),
             count=len(model_deployments),
@@ -666,6 +794,9 @@ def _normalize_request(
         access_token=request.access_token.strip() if request.access_token else None,
         model_runtime_modes=tuple(runtime_modes),
         include_disabled_trigger_sources=bool(request.include_disabled_trigger_sources),
+        runtime_ids=request.runtime_ids,
+        trigger_source_ids=request.trigger_source_ids,
+        deployment_ids=request.deployment_ids,
     )
 
 
@@ -793,7 +924,11 @@ def _build_runtime_key(
 ) -> str:
     """构建可读且能区分同一应用多个 Runtime 的配置 key。"""
 
-    if application_has_multiple_runtimes and runtime.display_name and runtime.display_name.strip():
+    if (
+        application_has_multiple_runtimes
+        and runtime.display_name
+        and runtime.display_name.strip()
+    ):
         return runtime.display_name.strip()
     if application_display_name and application_display_name.strip():
         return application_display_name.strip()

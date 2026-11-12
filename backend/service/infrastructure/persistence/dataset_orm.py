@@ -4,21 +4,42 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.service.infrastructure.persistence.base import Base
+
+
+class DatasetRecord(Base):
+    """数据集名称与说明；身份独立于版本和执行记录，revision 用于并发编辑。"""
+
+    __tablename__ = "datasets"
+    project_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(String(2000), default="")
+    task_type: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[str] = mapped_column(String(64))
+    updated_at: Mapped[str] = mapped_column(String(64))
+    revision: Mapped[str] = mapped_column(String(32))
+    # 已分配的最大版本序号；删除版本不会回退，分配与版本写入共用事务。
+    version_sequence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class DatasetVersionRecord(Base):
     """映射 DatasetVersion 聚合根。"""
 
     __tablename__ = "dataset_versions"
+    __table_args__ = (
+        Index("uq_dataset_version_number", "project_id", "dataset_id", "version_number", unique=True),
+    )
 
     dataset_version_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     dataset_id: Mapped[str] = mapped_column(String(128), index=True)
     project_id: Mapped[str] = mapped_column(String(128), index=True)
     task_type: Mapped[str] = mapped_column(String(64))
+    # 面向用户的稳定序号；dataset_version_id 继续用于路径及外部引用。
+    version_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     categories: Mapped[list[DatasetCategoryRecord]] = relationship(
@@ -45,13 +66,23 @@ class DatasetCategoryRecord(Base):
     category_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
 
-    dataset_version: Mapped[DatasetVersionRecord] = relationship(back_populates="categories")
+    dataset_version: Mapped[DatasetVersionRecord] = relationship(
+        back_populates="categories"
+    )
 
 
 class DatasetSampleRecord(Base):
     """映射 DatasetVersion 中的样本对象。"""
 
     __tablename__ = "dataset_samples"
+    __table_args__ = (
+        Index(
+            "ix_dataset_samples_version_split_image",
+            "dataset_version_id",
+            "split",
+            "image_id",
+        ),
+    )
 
     sample_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     dataset_version_id: Mapped[str] = mapped_column(
@@ -65,7 +96,9 @@ class DatasetSampleRecord(Base):
     split: Mapped[str] = mapped_column(String(32))
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
-    dataset_version: Mapped[DatasetVersionRecord] = relationship(back_populates="samples")
+    dataset_version: Mapped[DatasetVersionRecord] = relationship(
+        back_populates="samples"
+    )
     annotations: Mapped[list[DatasetAnnotationRecord]] = relationship(
         back_populates="sample",
         cascade="all, delete-orphan",

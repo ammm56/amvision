@@ -34,6 +34,19 @@ def test_missing_pin_table_keeps_values_limits_and_expected_geometry():
     paired = measure(request(registry, {"items":[{"item_id":"pair", "kind":"pitch", "pin_a":present["pin_id"], "pin_b":missing["pin_id"]}]}, {"pins":found["pins"], "features":found["features"]}))
     assert paired["result_geometry"]["value"]["items"][0]["points"] == [missing["nominal_image_point"]]
     assert validate_result_image(table, request(registry), payload) is table
+    # 嵌套列投影保留原始 item_id，几何关联仍使用业务 ID 而不是显示列名称。
+    projected = PREVIEW.handler(request(
+        registry,
+        {"display_mode": "table", "path": "items", "columns": [
+            {"key": "name", "label": "项目", "path": "item_id"},
+            {"key": "limit", "label": "上限", "path": "upper"},
+        ]},
+        {"value": checked["summary"], "geometry": measured["result_geometry"]},
+    ))["body"]
+    assert [row["item_id"] for row in projected["rows"]] == [row["item_id"] for row in table["rows"]]
+    assert all(row["name"] == row["item_id"] and row["limit"] == row["upper"] for row in projected["rows"])
+    assert projected["result_geometry"] == table["result_geometry"]
+    assert validate_result_image(projected, request(registry), payload) is projected
     wrong_run = request(registry)
     wrong_run.execution_metadata["workflow_run_id"] = "another-run"
     with pytest.raises(InvalidRequestError,match="不匹配"):
@@ -77,3 +90,22 @@ def test_explicit_column_formats_preserve_values_and_reject_unknown_formats():
     assert body["columns"] == columns and body["rows"] == value["value"]
     with pytest.raises(InvalidRequestError, match="Format"):
         PREVIEW.handler(request(registry, {"display_mode": "table", "columns": [{**columns[0], "format": "custom-script"}]}, {"value": value}))
+
+
+def test_limit_check_table_combines_field_projection_and_three_state_display():
+    """嵌套字段投影与三态结果共存，不能丢失业务 ID 或把无效测量显示为 NG。"""
+    registry = ExecutionImageRegistry()
+    row = {"item_id": "width", "state": "invalid", "passed": False, "measurement": {"value": None}}
+    value = {"value": {"format_id": "amvision.limit-check.v1", "items": [row]}}
+    result = PREVIEW.handler(request(
+        registry,
+        {"display_mode": "table", "path": "items", "columns": [
+            {"key": "measured", "label": "实测值", "path": "measurement.value"},
+            {"key": "state", "label": "判定", "format": "decision-state"},
+            {"key": "passed", "label": "放行", "format": "result"},
+        ]},
+        {"value": value},
+    ))["body"]
+    assert result["rows"] == [{**row, "measured": None}]
+    assert "measured" not in row
+    assert [column.get("format") for column in result["columns"]] == [None, "decision-state", "value"]

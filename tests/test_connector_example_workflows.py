@@ -112,6 +112,15 @@ def test_complete_example_without_stale_image_or_implicit_disk_outputs(
             "result"
         ]
         assert result.outputs["image"], "本次结果图必须可显示"
+        # 同时验证真实判定字段能够进入显示节点，避免业务结果正确但界面为空。
+        from backend.nodes.core_nodes.io.preview.value_display import _handler as display
+        display_node = next(node for node in graph.nodes if node.node_id == "display")
+        fields = display(request(images, parameters=display_node.parameters,
+            inputs={"value": result.outputs["result"]}))["body"]["fields"]
+        decision = result.outputs["result"]["value"]
+        assert fields[0]["value"] == decision["state"]
+        assert decision["state"] in fields[0]["states"]
+        assert fields[2]["value"] == decision["required_ok_count"]
         assert set(service.storage.resolve("workflows").parent.rglob("*")) == before
     finally:
         images.clear()
@@ -153,3 +162,40 @@ def test_numeric_table_merge_rejects_duplicate_items_and_wrong_observation():
     for second in (a, b | {"observation_id": "two"}):
         with pytest.raises(InvalidRequestError):
             handle_node(request(None, inputs={"tables": (a, second)}))
+
+
+@pytest.mark.parametrize("family", ["single10_front", "dual08_top"])
+@pytest.mark.skipif(not ASSETS.is_dir(), reason="缺少 connector 开发资产")
+def test_upgrade_example_preserves_layout_references_and_limits(service, family):
+    """升级是幂等的最小配置修改，不覆盖用户命名、诊断参数和公差。"""
+    from copy import deepcopy
+    from scripts.connector_assets.upgrade_recipe import upgrade_example_recipe
+    from backend.contracts.workflows.workflow_graph import WorkflowGraphTemplate
+
+    canonical, _, _ = build_example(service, ASSETS, project_id="example", family=family)
+    old = canonical.model_dump(mode="json")
+    nodes = {node["node_id"]: node for node in old["nodes"]}
+    nodes["pins"]["parameters"].pop("image_encoding")
+    nodes["pins"]["parameters"]["debug_image_panel_enabled"] = True
+    nodes["pins"]["parameters"]["layout"]["diagnostic_pin_id"] = "R1P01"
+    nodes["display"]["parameters"]["fields"][2]["path"] = "passed_count"
+    nodes["display"]["parameters"]["fields"][2]["label"] = "合格项"
+    old = WorkflowGraphTemplate.model_validate(old)
+    updated = upgrade_example_recipe(old, canonical)
+    assert upgrade_example_recipe(updated, canonical) == updated
+    assert updated.edges == old.edges and updated.metadata == old.metadata
+    after = {node.node_id: node for node in updated.nodes}
+    for node in old.nodes:
+        if node.node_id not in {"pins", "display"}:
+            assert after[node.node_id] == node
+    assert after["pins"].parameters["debug_image_panel_enabled"] is True
+    assert after["pins"].parameters["layout"]["diagnostic_pin_id"] == "R1P01"
+    assert after["display"].parameters["fields"][2]["label"] == "合格项"
+    changed = deepcopy(old.model_dump(mode="json"))
+    next(n for n in changed["nodes"] if n["node_id"] == "limits")["parameters"]["rules"][0]["upper"] = 99
+    with pytest.raises(ValueError, match="公差"):
+        upgrade_example_recipe(WorkflowGraphTemplate.model_validate(changed), canonical)
+    changed = deepcopy(old.model_dump(mode="json"))
+    next(n for n in changed["nodes"] if n["node_id"] == "pins")["parameters"]["layout"]["candidate_bands"][0]["length"] = 100
+    with pytest.raises(ValueError, match="搜索范围"):
+        upgrade_example_recipe(WorkflowGraphTemplate.model_validate(changed), canonical)

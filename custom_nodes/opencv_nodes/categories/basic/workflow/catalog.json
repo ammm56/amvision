@@ -4102,6 +4102,24 @@
       "concurrency_policy": "serialized",
       "input_ports": [
         {
+          "name": "roi_items",
+          "display_name": "ROI Items",
+          "payload_type_id": "value.v1",
+          "description": "显式 ROI 记录数组；允许空数组，输出空图集。连接时不得同时连接其他裁剪来源。",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "按 regions 的外接矩形裁剪并保留 region_id；连接时不得同时连接其他裁剪来源。",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
           "name": "image",
           "display_name": "Image",
           "payload_type_id": "image-ref.v1",
@@ -5207,6 +5225,69 @@
       },
       "node_pack_id": "opencv.nodes",
       "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-decode",
+      "display_name": "Image Decode",
+      "category": "opencv.image.basic",
+      "description": "显式解码图片为当前执行内共享的原始矩阵，保留像素类型和通道；执行结束释放。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.10",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "decode_method": {
+            "type": "string",
+            "enum": [
+              "opencv",
+              "bmp-bgr24"
+            ],
+            "default": "opencv",
+            "title": "Decode Method",
+            "description": "opencv 支持普通图片输入；bmp-bgr24 解码未压缩 24 位 BMP，本地/ObjectStore 文件通过短期映射读取，上传或协议输入从编码缓冲区读取；保留全部像素，格式不匹配时明确报错。"
+          }
+        },
+        "additionalProperties": false
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-decode",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {

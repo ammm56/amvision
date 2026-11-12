@@ -182,6 +182,11 @@ YOLOv8、YOLO11、YOLO26 的训练验证、训练 test 和独立评估共用内�
 
 ## 数据与增强约束
 
+- YOLOX 的 `runtime.seed` 同时初始化主训练的 Torch、Python 和 NumPy 随机源。
+  DataLoader 子进程沿用 PyTorch 分配的 `base_seed + worker_id` 初始化增强随机源，
+  不使用 UUID。默认单任务训练 Worker、相同环境/数据/配置下可以对照重复训练；
+  不为此强制启用确定性 CUDA 算法，也不承诺跨硬件、跨库版本或多训练线程共享
+  进程时逐位相同。暂停恢复仍按现有 checkpoint 规则处理，不新增 RNG 快照协议。
 - COCO annotations 必须按 `image_id` 聚合。同一图片的多个实例必须作为一个
   样本的多个目标，不能拆成多张重复图片。
 - 未知 `category_id` 必须报错，不能静默映射到类别 0。
@@ -223,6 +228,26 @@ RF-DETR grouped-query warm-start 不允许按 Tensor 第一维做模糊 flat sli
 与该 checkpoint 精确对应的 catalog manifest。需要改变 query 数量或 group 布局但
 两处都缺少元数据时直接拒绝 warm-start，不猜测分组，也不保留旧 flat-slice
 兼容路径。catalog 启动扫描同样会拒绝缺少上述正整数配置的 RF-DETR manifest。
+
+## 任务结束后的资源边界
+
+- TrainingEngine 在训练尝试退出时清理 Python 循环引用、未使用的 CUDA cache 和 IPC
+  引用。返回的 best/latest checkpoint bytes 尚需由任务服务写入存储，不能把此时的
+  内存快照当成最终空闲基线。
+- YOLOX 队列在结果写入和异常处理栈退出后再执行最终清理。失败、取消的 traceback
+  可能在 runner 的 `finally` 运行期间持有模型；只在该位置清理不足以验证释放。
+  空闲轮询不执行这一步，不增加后台监视线程或推理请求热路径工作。
+- 队列完成/失败记录写入自身报错属于 Worker 致命故障，向监督循环传播，不进入
+  正常任务的最终清理分支，也不隐式重试训练。Worker 退出时停止 heartbeat、关闭
+  telemetry 和数据库，进程资源由操作系统释放。此路径的验收必须检查异常传播和
+  线程退出，不能把异常 traceback 仍持有对象时的快照当成常驻泄漏。
+- Windows 不再默认调用 `EmptyWorkingSet`。它减少驻留页，不释放 Private 提交内存；
+  资源验证分别记录 Private、RSS、CUDA allocated/reserved、句柄、线程和子进程。
+  原生运行时或分配器可保留已使用过的内存；不能仅凭高 Private 判定泄漏，也不能
+  仅凭低 RSS 宣称已经释放。
+- 连续训练验证应在同一进程中包含增强开/关、成功/失败/取消；成功时先消费输出
+  文件和丢弃大结果，失败时先结束异常捕获，再核对对象引用与资源趋势。
+  不通过自动重启 Worker、私有 CUDA 清理接口或全局设备 reset 掩盖问题。
 
 ## 验收
 

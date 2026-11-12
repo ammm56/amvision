@@ -1,6 +1,7 @@
 """Preview Worker 的专用内存交接，控制队列不承载大图字节。"""
 
 from multiprocessing.shared_memory import SharedMemory
+from queue import Empty, Full
 from threading import Lock, RLock
 from uuid import uuid4
 
@@ -16,14 +17,23 @@ class PreviewMemoryBridge:
         self.budget_lock = RLock()
         self.reservations = {}
         self.credit = 0
+        self.failed = False
 
     def call(self, action, **payload):
         """固定类型小消息；通道异常立即报告，不写磁盘或重试副作用。"""
         with self.lock:
+            if self.failed:
+                raise RuntimeError("preview_memory_channel_failed")
             request_id = uuid4().hex
-            self.responses.put(("memory", {"request_id": request_id, "action": action, **payload}), timeout=2)
-            response = self.replies.get(timeout=15)
+            try:
+                self.responses.put(("memory", {"request_id": request_id, "action": action, **payload}), timeout=2)
+                response = self.replies.get(timeout=15)
+            except (Empty, Full, EOFError, OSError) as error:
+                # 超时后的迟到回复不能用于下一次 RPC；整条通道退出，不重试业务。
+                self.failed = True
+                raise RuntimeError(f"preview_memory_channel_failed:{action}") from error
             if response.get("request_id") != request_id:
+                self.failed = True
                 raise RuntimeError("preview_memory_protocol_invalid")
             if response.get("error"):
                 raise ValueError(response["error"])

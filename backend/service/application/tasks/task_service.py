@@ -1806,9 +1806,19 @@ class SqlAlchemyTaskService:
     def execute_task_state_command(
         self,
         request: TaskStateCommandRequest,
+        *,
+        persist_result: Callable[[SqlAlchemyUnitOfWork], None] | None = None,
     ) -> TaskDetail:
-        """按显式状态矩阵和 attempt_no CAS 执行 Task 状态命令。"""
+        """按 CAS 执行状态命令；可选结果登记与成功状态在同一事务提交。"""
 
+        if persist_result is not None and (
+            request.target_state != "succeeded"
+            or request.expected_states != ("running",)
+            or request.fence is None
+        ):
+            raise InvalidRequestError(
+                "结果登记必须使用带执行凭证的 running → succeeded 命令"
+            )
         if not request.task_id.strip():
             raise InvalidRequestError("执行 Task 状态命令时 task_id 不能为空")
         if not request.expected_states:
@@ -1969,6 +1979,8 @@ class SqlAlchemyTaskService:
                 },
             )
             unit_of_work.tasks.save_task_event(event)
+            if persist_result is not None:
+                persist_result(unit_of_work)
             unit_of_work.commit()
 
         self._publish_task_event(event)
@@ -2010,9 +2022,7 @@ class SqlAlchemyTaskService:
         normalized_progress = (
             dict(progress_patch) if isinstance(progress_patch, dict) else {}
         )
-        normalized_result = (
-            dict(result_patch) if isinstance(result_patch, dict) else {}
-        )
+        normalized_result = dict(result_patch) if isinstance(result_patch, dict) else {}
         normalized_metadata = (
             dict(metadata_patch) if isinstance(metadata_patch, dict) else {}
         )
@@ -2329,6 +2339,15 @@ class SqlAlchemyTaskService:
                     "当前任务已经结束，不能取消",
                     details={"task_id": task_id, "state": current_task.state},
                 )
+            if (
+                current_task.task_kind in {"dataset-import", "dataset-export"}
+                and current_task.state == "running"
+            ):
+                # 现有导入/导出发布不支持中途原子取消；不能仅取消 Task 后让文件继续发布。
+                raise InvalidRequestError(
+                    "此数据集任务已开始处理，当前仅支持取消尚未开始的任务",
+                    details={"task_id": task_id, "state": current_task.state},
+                )
             if current_task.publication_state is not None:
                 raise InvalidRequestError(
                     "Conversion 已进入发布提交阶段，不能取消",
@@ -2426,6 +2445,12 @@ class SqlAlchemyTaskService:
                 },
             )
             unit_of_work.tasks.save_task_event(event)
+            if current_task.task_kind in {"dataset-import", "dataset-export"}:
+                from backend.service.application.datasets.cancellation import (
+                    cancel_pending_dataset_record,
+                )
+
+                cancel_pending_dataset_record(unit_of_work, current_task)
             unit_of_work.commit()
 
         self._publish_task_event(event)

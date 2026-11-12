@@ -129,6 +129,7 @@ export function useModelTrainingState(options: {
       options.resolvedTrainingModelType.value,
       options.trainingModelParameterValues,
       {
+        maxEpochs: options.maxEpochs.value,
         augmentationEnabled: options.trainingAugmentationEnabled.value,
         parameterSchema: options.trainingParameterSchema.value,
       },

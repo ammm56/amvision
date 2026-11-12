@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import mimetypes
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import Request
+from backend.service.api.deps.auth import AuthenticatedPrincipal
+from backend.service.api.rest.v1.routes.projects.access import project_resource_access
 
 from backend.service.application.project_summary import ProjectSummarySnapshot
+from backend.service.application.project_bootstrap import project_manifest_revision
 from backend.service.infrastructure.object_store.object_key_layout import (
     build_public_project_file_id,
 )
@@ -36,16 +40,34 @@ def build_project_catalog_item_response(
     request: Request,
     project_id: str,
     include_summary: bool,
+    principal: AuthenticatedPrincipal | None = None,
 ) -> ProjectCatalogItemResponse:
     """把 Project 目录配置和运行时 summary 组装为公开响应。"""
 
     catalog_item = find_project_catalog_item(request=request, project_id=project_id)
     project_manifest = find_project_manifest(request=request, project_id=project_id)
     summary = None
-    if include_summary:
-        summary = build_project_summary_response(
-            build_project_summary_service(request).get_project_summary(project_id)
+    access = (
+        project_resource_access(principal)
+        if principal
+        else dict.fromkeys(
+            ("datasets", "models", "apps", "runtimes", "deployments", "tasks"), True
         )
+    )
+    counts, resource_errors = {}, []
+    if include_summary:
+        service = build_project_summary_service(request)
+        counts, resource_errors = service.get_resource_counts(project_id, access)
+        if all(access.values()):
+            try:
+                summary = build_project_summary_response(
+                    service.get_project_summary(project_id)
+                )
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "读取项目旧版完整摘要失败 project=%s", project_id
+                )
+                resource_errors.append("summary")
     display_name = project_id
     if project_manifest is not None:
         display_name = project_manifest.display_name
@@ -70,7 +92,15 @@ def build_project_catalog_item_response(
         metadata=metadata,
         project_source=resolve_project_source(catalog_item=catalog_item),
         storage_prefix=f"projects/{project_id}",
-        summary=summary,
+        summary=summary if all(access.values()) else None,
+        resource_counts=counts,
+        resource_errors=resource_errors,
+        created_at=project_manifest.created_at if project_manifest else None,
+        updated_at=project_manifest.updated_at if project_manifest else None,
+        revision=project_manifest_revision(project_manifest)
+        if project_manifest and catalog_item is None
+        else None,
+        model_total=counts.get("models"),
     )
 
 
@@ -181,4 +211,3 @@ def guess_media_type(file_path: Path, *, object_key: str) -> str:
     if guessed_media_type is not None:
         return guessed_media_type
     return "application/octet-stream"
-

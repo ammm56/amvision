@@ -78,8 +78,20 @@ export async function decodePreviewBytes(data: RecordValue, signal: AbortSignal)
   const size=count(data.content_length),content=data.content
   if(typeof content!=='string'||content.length!==4*Math.ceil(size/3)||data.encoding!=='base64'||data.checksum_algorithm!=='sha256'||!/^[A-Za-z0-9+/]*={0,2}$/.test(content))throw new Error('cloud_preview_invalid')
   signal.throwIfAborted()
-  const raw=Uint8Array.from(atob(content),c=>c.charCodeAt(0))
-  if(raw.length!==size)throw new Error('cloud_preview_invalid')
+  // 按完整 Base64 四字符组解码，避免大字符串逐字符回调阻塞视图关闭和取消。
+  // 原始显示数组仍只分配一次，块间让出主线程；总预算由调用方继续持有。
+  const raw=new Uint8Array(size),chunkChars=256*1024
+  let offset=0
+  for(let start=0;start<content.length;start+=chunkChars){
+    signal.throwIfAborted()
+    const chunk=atob(content.slice(start,start+chunkChars))
+    if(offset+chunk.length>size)throw new Error('cloud_preview_invalid')
+    for(let i=0;i<chunk.length;i++)raw[offset+i]=chunk.charCodeAt(i)
+    offset+=chunk.length
+    if(start+chunkChars<content.length)await new Promise(resolve=>setTimeout(resolve,0))
+  }
+  if(offset!==size)throw new Error('cloud_preview_invalid')
+  signal.throwIfAborted()
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',raw)),b=>b.toString(16).padStart(2,'0')).join('')
   signal.throwIfAborted()
   if(hash!==data.checksum)throw new Error('cloud_preview_checksum')

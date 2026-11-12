@@ -25,11 +25,11 @@
 | `model_scale` | 必须属于所选模型的 scale |
 | `output_model_name` | 必填，最大 128 字符 |
 | `warm_start_model_version_id` | 可选，由训练 service 校验任务、模型和权重兼容性 |
-| `evaluation_interval` | `1..10000`，所有任务统一为顶层字段 |
-| `max_epochs` | `1..10000` |
-| `batch_size` | `1..4096` |
-| `precision` | `fp16` 或 `fp32` |
-| `input_size` | `{"width": W, "height": H}` |
+| `execution.max_epochs` | `1..10000`，默认 `100` |
+| `execution.validation.interval_epochs` | `1..10000`，默认 `5` |
+| `execution.batch` | `mode=auto/fixed`；固定模式使用 `size`；自动模式默认目标显存比例 `0.6` |
+| `execution.amp` | `mode=auto/enabled/disabled`；`dtype=auto/fp16/bf16`，根据设备解析 |
+| `execution.input_size` | `{"width": W, "height": H}` |
 | `parameters` | 按当前 `task_type / model_type` 解析的严格参数对象 |
 | `display_name` | 可选，最大 256 字符 |
 
@@ -131,7 +131,36 @@ YOLOv8、YOLO11、YOLO26 支持：
 
 YOLOX 的基础学习率和 optimizer 按 reference 实现由 batch size 解析，公开协议只提供实际生效的 `warmup_epochs`、`no_aug_epochs`、`min_lr_ratio` 和 `ema`。短训练会把未显式填写的默认 warmup/no-aug 解析成可执行值并写入任务；显式提交的不可能调度会直接拒绝。
 
+YOLOX 的轮数约束为 `warmup_epochs < execution.max_epochs`，且
+`warmup_epochs + no_aug_epochs < execution.max_epochs`。页面已填写的默认值也属于显式值，
+修改总轮数不会静默改写它们。例如 `20/5/15` 不合法，`20/2/3` 合法。
+关闭增强时 `no_aug_epochs` 解析为 `0`，但 warmup 约束仍然生效。
+前端在提交前校验；API 对冲突返回 422，不创建任务。
+
 RF-DETR 支持 `learning_rate`、`weight_decay`、`lr_scheduler=step | cosine`、`min_lr_ratio` 和 `grad_accum_steps`。`min_lr_ratio` 只在 cosine 下进入执行配置，step 模式不会保存无效字段。
+
+### YOLOX AutoBatch
+
+CUDA AutoBatch 使用带合成 targets 的真实训练 loss 执行 forward/backward，
+不能在训练模式下只调用 `model(images)`。探针按 `max_labels_per_image` 构造有界标签，
+使用配置允许的最大多尺度尺寸，并计入 L1 尾段；正式训练仍使用真实标注和原始输入尺寸配置。
+探针不执行 optimizer step，暂时冻结 BatchNorm 统计量；完成或异常退出时恢复各模块训练标志、
+L1 标志并清理梯度与临时张量。固定 batch、CPU fallback 和 checkpoint resume 不额外执行 CUDA 探针。
+AutoBatch 是启动时显存估计，不保证其他进程改变显存占用后仍然不发生 OOM；现有首轮 OOM 降批策略保持不变。
+
+### 可公开的校验原因
+
+错误仍使用统一 `error` 结构及 `request_validation_failed` code。
+`error.details.errors[]` 固定包含 `path`、`rule`、`reason`；以下 rule 使用固定安全文案，
+不回显 Pydantic 的原始 `msg`、`input` 或 `ctx`。页面按 rule 翻译成中、英、日、韩四种语言。
+
+| rule | 含义 |
+| --- | --- |
+| `yolox_warmup_epochs_invalid` | Warmup 必须小于总轮数 |
+| `yolox_epoch_schedule_invalid` | Warmup 与 no-aug 之和必须小于总轮数 |
+| `training_range_order_invalid` | 范围最小值不得大于最大值 |
+
+未列入安全文案目录的校验错误保留通用提示，不直接展示异常字符串。
 
 ## 数据增强隔离
 
@@ -145,15 +174,17 @@ RF-DETR 支持 `learning_rate`、`weight_decay`、`lr_scheduler=step | cosine`�
 
 RF-DETR 的增强预设、`scale_jitter`、`multi_scale` 和增强执行后端分别建模。`scale_jitter=true` 与参考实现一致，在直接 resize 与 resize→crop→resize 之间随机选择；关闭时只保留直接 resize。该开关不替代 `multi_scale`：前者控制随机裁剪分支，后者控制候选训练分辨率。`augmentation.enabled=false` 关闭颜色和几何增强预设，`scale_jitter` 仍按自己的显式值执行，避免一个总开关悄悄覆盖独立参数。
 
-## 验证指标与 best checkpoint
-
-YOLOX、YOLOv8、YOLO11 和 YOLO26 detection 统一从真实 `pycocotools.COCOeval.eval["precision"]` 提取 AP。AP50 和 AP50-95 必须使用同一个显式 `maxDets` 切片，不能读取把 `maxDets=100` 写死的 `stats[0] / stats[1]`。无检测结果按 0 处理；有评估结果但 precision 张量缺失或无有效单元时直接报错，不能把 `-1` 当成质量指标。
-
-所有任务的 best checkpoint 只接受业务范围内的有限指标。负数、NaN 和正负 Infinity 不参与比较；新指标必须严格优于历史值才会更新 best，平值保留原 checkpoint。latest/savepoint 仍按训练控制策略独立保存，不改变历史 best 的追溯语义。
-
 ### YOLOX detection
 
 YOLOX 使用独立增强 schema，保留 reference 默认 Mosaic scale、MixUp scale 和 `multiscale_range`。它不复用 YOLO 主线的 affine/multi-scale 字段名称。
+
+默认值为 Mosaic/MixUp/HSV 概率 `1`、水平翻转概率 `0.5`、Mosaic scale `0.1..2.0`、
+MixUp scale `0.5..1.5`、旋转 `10°`、平移比例 `0.1`、错切 `2°`、多尺度范围 `5`。
+多尺度生成的高宽下限为 `64`，均保持 `32` 的倍数；避免小输入配合单张批次时
+生成 `1×1` 特征图而导致 BatchNorm 失败。AutoBatch 探针覆盖同一尺寸上界，
+标准 `640×640` 输入仍按 `480..800` 采样；关闭多尺度不修改请求尺寸。
+这些是通用检测训练起点，不是工业条码数据的最佳精度保证。小目标可能被强缩放或裁剪削弱，
+应通过同一数据划分上的验证结果决定是否减弱增强，不能只凭一次短训练自动修改全局默认值。
 
 ### Classification
 
@@ -177,6 +208,12 @@ RF-DETR 不接收 YOLO 增强字段，使用：
 - `enabled`
 
 任意自定义 `aug_config` 不属于公开 v1 协议，避免未审计任意结构绕过参数校验。
+
+## 验证指标与 best checkpoint
+
+YOLOX、YOLOv8、YOLO11 和 YOLO26 detection 统一从真实 `pycocotools.COCOeval.eval["precision"]` 提取 AP。AP50 和 AP50-95 必须使用同一个显式 `maxDets` 切片，不能读取把 `maxDets=100` 写死的 `stats[0] / stats[1]`。无检测结果按 0 处理；有评估结果但 precision 张量缺失或无有效单元时直接报错，不能把 `-1` 当成质量指标。
+
+所有任务的 best checkpoint 只接受业务范围内的有限指标。负数、NaN 和正负 Infinity 不参与比较；新指标必须严格优于历史值才会更新 best，平值保留原 checkpoint。latest/savepoint 仍按训练控制策略独立保存，不改变历史 best 的追溯语义。
 
 ## 任务差异
 

@@ -5,8 +5,15 @@ from __future__ import annotations
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Executable
-from backend.service.infrastructure.persistence.model_transfer_repository import ModelTransferRepository
-from backend.service.infrastructure.persistence.resource_deletion_repository import ResourceDeletionRepository
+from backend.service.infrastructure.persistence.dataset_catalog_repository import (
+    DatasetCatalogRepository,
+)
+from backend.service.infrastructure.persistence.model_transfer_repository import (
+    ModelTransferRepository,
+)
+from backend.service.infrastructure.persistence.resource_deletion_repository import (
+    ResourceDeletionRepository,
+)
 
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.infrastructure.persistence.deployment_repository import (
@@ -79,6 +86,7 @@ class SqlAlchemyUnitOfWork:
         """
 
         self.session = session
+        self.dataset_catalog = DatasetCatalogRepository(session)
         self.model_transfers = ModelTransferRepository(session)
         self.resource_deletions = ResourceDeletionRepository(session)
         self.dataset_exports = SqlAlchemyDatasetExportRepository(session)

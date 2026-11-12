@@ -6,7 +6,7 @@ export interface NavigationItem {
 }
 
 export const navigationItems: NavigationItem[] = [
-  { labelKey: 'navigation.projects', path: '/projects', icon: 'FolderKanban', requiredScopes: ['workflows:read', 'models:read'] },
+  { labelKey: 'navigation.projects', path: '/projects', icon: 'FolderKanban', requiredScopes: [] },
   { labelKey: 'navigation.tasks', path: '/tasks', icon: 'ListChecks', requiredScopes: ['tasks:read'] },
   { labelKey: 'navigation.datasets', path: '/datasets', icon: 'Database', requiredScopes: ['datasets:read'] },
   { labelKey: 'navigation.models', path: '/models', icon: 'Cpu', requiredScopes: ['models:read'] },

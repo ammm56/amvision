@@ -104,6 +104,11 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_import is not None
         assert dataset_import.status == "completed"
         assert dataset_import.format_type == "coco"
+        assert (
+            dataset_import.metadata["uploaded_at"]
+            <= dataset_import.metadata["extracted_at"]
+            <= dataset_import.metadata["validated_at"]
+        )
         assert dataset_import.detected_profile["format_type"] == "coco"
         assert dataset_import.detected_profile["format_id"] == "coco-detection-v1"
         assert dataset_version is not None
@@ -215,8 +220,13 @@ def test_delete_completed_dataset_import_removes_import_files_only(
                 f"/api/v1/datasets/imports/{payload['dataset_import_id']}",
                 headers=_build_dataset_write_headers(),
             )
+            preserved_version_list_response = client.get(
+                "/api/v1/datasets/versions",
+                headers=_build_dataset_read_headers(),
+                params={"project_id": "project-1"},
+            )
 
-        assert delete_response.status_code == 204
+        assert delete_response.status_code == 204, delete_response.text
         assert not import_root.exists()
         assert version_root.is_dir()
 
@@ -228,12 +238,6 @@ def test_delete_completed_dataset_import_removes_import_files_only(
         assert deleted_import is None
         assert preserved_version is not None
 
-        with client:
-            preserved_version_list_response = client.get(
-                "/api/v1/datasets/versions",
-                headers=_build_dataset_read_headers(),
-                params={"project_id": "project-1"},
-            )
         assert preserved_version_list_response.status_code == 200
         assert [
             item["dataset_version_id"]
@@ -2126,27 +2130,26 @@ def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
             assert response.status_code == 202
             dataset_import_id = response.json()["dataset_import_id"]
 
-        QueueOutboxDispatcher(
-            session_factory=session_factory,
-            queue_backend=queue_backend,
-        ).dispatch_once()
-        task_manager = BackgroundTaskManager(
-            consumers=(
-                DatasetImportQueueWorker(
-                    session_factory=session_factory,
-                    dataset_storage=dataset_storage,
-                    queue_backend=queue_backend,
-                    worker_id="test-import-worker-auto",
+            QueueOutboxDispatcher(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+            ).dispatch_once()
+            task_manager = BackgroundTaskManager(
+                consumers=(
+                    DatasetImportQueueWorker(
+                        session_factory=session_factory,
+                        dataset_storage=dataset_storage,
+                        queue_backend=queue_backend,
+                        worker_id="test-import-worker-auto",
+                    ),
                 ),
-            ),
-            config=BackgroundTaskManagerConfig(
-                max_concurrent_tasks=1,
-                poll_interval_seconds=0.05,
-            ),
-        )
-        assert task_manager.run_available_tasks() == 1
+                config=BackgroundTaskManagerConfig(
+                    max_concurrent_tasks=1,
+                    poll_interval_seconds=0.05,
+                ),
+            )
+            assert task_manager.run_available_tasks() == 1
 
-        with client:
             detail_response = client.get(
                 f"/api/v1/datasets/imports/{dataset_import_id}",
                 headers=_build_dataset_read_headers(),
@@ -2172,6 +2175,8 @@ def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
 
 def _create_test_client(
     tmp_path: Path,
+    *,
+    enable_queue_outbox_dispatcher: bool = True,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定内存 SQLite 和临时本地文件存储的测试客户端。
 
@@ -2186,6 +2191,7 @@ def _create_test_client(
         tmp_path,
         database_name="amvision-test.db",
         enable_local_buffer_broker=False,
+        enable_queue_outbox_dispatcher=enable_queue_outbox_dispatcher,
     )
 
     return (

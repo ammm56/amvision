@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from backend.nodes.parameter_utils import is_empty_parameter
 
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
-    build_output_image_payload,
-    encode_png_image_bytes,
+    build_output_image_matrix_payload,
     load_image_matrix,
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
     require_non_negative_float,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes.opencv_nodes.shared.backend.runtime.imports import (
+    require_opencv_imports,
+)
 
 
 NODE_TYPE_ID = "custom.opencv.binary-threshold"
@@ -29,24 +32,26 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
 
     raw_threshold = request.parameters.get("threshold")
-    threshold = 127 if is_empty_parameter(raw_threshold) else require_non_negative_float(raw_threshold, field_name="threshold")
-    raw_max_value = request.parameters.get("max_value")
-    max_value = 255 if is_empty_parameter(raw_max_value) else require_non_negative_float(raw_max_value, field_name="max_value")
-    _, threshold_image = cv2_module.threshold(image_matrix, threshold, max_value, cv2_module.THRESH_BINARY)
-    encoded_image = encode_png_image_bytes(
-        request,
-        image_matrix=threshold_image,
-        error_message="OpenCV 二值化后无法编码输出图片",
+    threshold = (
+        127
+        if is_empty_parameter(raw_threshold)
+        else require_non_negative_float(raw_threshold, field_name="threshold")
     )
-    output_payload = build_output_image_payload(
+    raw_max_value = request.parameters.get("max_value")
+    max_value = (
+        255
+        if is_empty_parameter(raw_max_value)
+        else require_non_negative_float(raw_max_value, field_name="max_value")
+    )
+    _, threshold_image = cv2_module.threshold(
+        image_matrix, threshold, max_value, cv2_module.THRESH_BINARY
+    )
+    output_payload = build_output_image_matrix_payload(
         request,
         source_payload=image_payload,
-        content=encoded_image,
+        image_matrix=threshold_image,
         save_location=request.parameters.get("save_location"),
         variant_name="binary-threshold",
-        output_extension=".png",
-        width=int(threshold_image.shape[1]),
-        height=int(threshold_image.shape[0]),
-        media_type="image/png",
+        error_message="OpenCV 二值化后无法编码输出图片",
     )
     return {"image": output_payload}

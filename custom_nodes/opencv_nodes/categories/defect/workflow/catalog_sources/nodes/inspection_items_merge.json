@@ -1,0 +1,55 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.inspection-items-merge",
+  "version": "0.1.8",
+  "display_name": "Inspection Items Merge",
+  "category": "opencv.inspection.measurement",
+  "description": "按命名检查集合和 ROI ID 汇总，缺项、错位或空集合拒绝执行。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "checks",
+      "display_name": "Checks",
+      "payload_type_id": "value.v1",
+      "required": true
+    },
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1",
+      "required": true
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "required": true
+    },
+    {
+      "name": "regions",
+      "display_name": "Regions",
+      "payload_type_id": "regions.v1",
+      "required": true
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "capability_tags": [
+    "vision.inspection",
+    "opencv.measurement-items"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

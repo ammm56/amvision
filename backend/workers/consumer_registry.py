@@ -182,7 +182,9 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
     return _factory
 
 
-def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consumer_kind: str) -> BackgroundTaskConsumer:
+def _dynamic_inference_factory(
+    resources: BackgroundTaskConsumerResources, consumer_kind: str
+) -> BackgroundTaskConsumer:
     """构建动态推理 worker 工厂：worker_id 使用 consumer_kind。"""
     inference_worker_cls = _load_worker_class(
         "backend.workers.inference.inference_queue_worker",
@@ -206,8 +208,19 @@ def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consu
 # ── 声明式注册表 ──
 
 _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
-    "resource-cleanup": _std_factory("backend.workers.resource_cleanup", "ResourceCleanupWorker", "resource-cleanup"),
-    "model-deployment-transfer": _std_factory("backend.workers.model_deployment_transfers", "ModelDeploymentTransferWorker", "model-transfer"),
+    "dataset-workspace": _std_factory(
+        "backend.workers.datasets.workspace_queue_worker",
+        "DatasetWorkspaceQueueWorker",
+        "dataset-workspace",
+    ),
+    "resource-cleanup": _std_factory(
+        "backend.workers.resource_cleanup", "ResourceCleanupWorker", "resource-cleanup"
+    ),
+    "model-deployment-transfer": _std_factory(
+        "backend.workers.model_deployment_transfers",
+        "ModelDeploymentTransferWorker",
+        "model-transfer",
+    ),
     # 数据集
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT: _std_factory(
         "backend.workers.datasets.dataset_import_queue_worker",
@@ -230,7 +243,9 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
         "YoloXConversionQueueWorker",
         "yolox-conversion",
     ),
-    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE: _inference_factory("detection-inference"),
+    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE: _inference_factory(
+        "detection-inference"
+    ),
     # YOLOv8
     BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING: _std_factory(
         "backend.workers.training.yolov8_training_queue_worker",
@@ -325,12 +340,14 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
 }
 
 # 动态推理 worker（多个 consumer_kind 共享同一 worker 类，但 worker_id 不同）
-_DYNAMIC_INFERENCE_KINDS: frozenset[str] = frozenset({
-    BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
-    BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
-    BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
-    BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
-})
+_DYNAMIC_INFERENCE_KINDS: frozenset[str] = frozenset(
+    {
+        BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
+        BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
+        BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
+        BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
+    }
+)
 _CONVERSION_CONSUMER_KINDS = frozenset(
     {
         BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,

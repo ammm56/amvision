@@ -352,6 +352,7 @@
 </template>
 
 <script setup lang="ts">
+import { arrayStepUpdates } from '@/shared/ui/image-viewer/arrayInteraction'
 import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
 import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
 import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterCloudPreviewsKey, parameterNumericItemsKey, parameterDraftIssuesKey, type ParameterEditorSources } from '../parameters/editor-context'
@@ -2268,8 +2269,8 @@ function buildPreviewImageInteractionParameterUpdates(
       if (targetParameters.has('origin_y')) updates.origin_y = roundInteractionNumber(y1)
       if (targetParameters.has('roi_width')) updates.roi_width = roundInteractionNumber(width)
       if (targetParameters.has('roi_height')) updates.roi_height = roundInteractionNumber(height)
-      if (targetParameters.has('step_x')) updates.step_x = roundInteractionNumber(width)
-      if (targetParameters.has('step_y')) updates.step_y = roundInteractionNumber(height)
+      if (targetParameters.has('step_x') && (currentParameters.step_x == null || currentParameters.step_x === '')) updates.step_x = roundInteractionNumber(width)
+      if (targetParameters.has('step_y') && (currentParameters.step_y == null || currentParameters.step_y === '')) updates.step_y = roundInteractionNumber(height)
     }
     if (targetParameters.has('x')) updates.x = roundInteractionNumber(x1)
     if (targetParameters.has('y')) updates.y = roundInteractionNumber(y1)
@@ -2390,6 +2391,8 @@ function buildPreviewImageInteractionParameterUpdates(
     return updates
   }
   if (event.tool === 'line' && event.lineXyxy) {
+    const arrayUpdates = arrayStepUpdates(event.targetParameters, event.lineXyxy)
+    if (arrayUpdates) return { ...updates, ...arrayUpdates }
     const [x1, y1, x2, y2] = event.lineXyxy
     const length = Math.max(1, Math.hypot(x2 - x1, y2 - y1))
     const angleDeg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)

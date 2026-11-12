@@ -16,6 +16,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.yolox_core.cfg import (
     resolve_yolox_input_size,
 )
+from backend.service.application.models.yolox_core.data.dataloading import (
+    seed_yolox_augmentation,
+)
 from backend.service.application.models.yolox_core.data.datasets import (
     CocoDetectionExportDataset as _CocoDetectionExportDataset,
     VocDetectionExportDataset as _VocDetectionExportDataset,
@@ -60,6 +63,10 @@ from backend.service.application.models.training.checkpoint_policy import (
 )
 from backend.service.application.models.yolox_core.models.build import (
     build_yolox_detection_model,
+)
+from backend.service.application.models.yolox_core.training.batch_probe import (
+    yolox_probe_input_size,
+    yolox_probe_training_loss,
 )
 from backend.service.application.models.yolox_core.training.trainer import (
     YOLOX_DEFAULT_TRAIN_ENABLE_MIXUP,
@@ -416,6 +423,7 @@ def run_yolox_detection_training_execution(
         "evaluation_nms_threshold",
         default=YOLOX_CORE_DEFAULT_EVAL_NMS_THRESHOLD,
     )
+    seed_yolox_augmentation(random_seed)
     imports.torch.manual_seed(random_seed)
     if runtime.device.startswith("cuda"):
         imports.torch.cuda.manual_seed_all(random_seed)
@@ -562,12 +570,15 @@ def run_yolox_detection_training_execution(
         torch_module=imports.torch,
         model=base_model,
         device_name=runtime.device,
-        input_size=input_size,
+        input_size=yolox_probe_input_size(input_size, multiscale_range),
         dataset_size=len(train_dataset),
         requested_batch_size=request.batch_size,
         default_batch_size=YOLOX_CORE_DEFAULT_BATCH_SIZE,
         runtime_precision=precision,
         extra_options=extra_options,
+        training_loss_probe=lambda images: yolox_probe_training_loss(
+            base_model, images, max_labels=max_labels, num_classes=len(train_category_names)
+        ),
         resume_batch_size=read_resume_checkpoint_batch_size(
             torch_module=imports.torch,
             checkpoint_path=request.resume_checkpoint_path,
@@ -1090,6 +1101,8 @@ def _resolve_training_runtime(
         )
 
     if not imports.torch.cuda.is_available():
+        if requested_device is not None and requested_device.startswith("cuda"):
+            raise InvalidRequestError("当前运行环境没有可用 GPU，不能使用 CUDA 训练")
         if requested_gpu_count is not None:
             raise InvalidRequestError("当前运行环境没有可用 GPU，不能指定 gpu_count")
         return _ResolvedTrainingRuntime(

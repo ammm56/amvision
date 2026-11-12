@@ -306,6 +306,7 @@ class SnapshotExecutionService:
             build_node_execution_scope_template(
                 template=full_template,
                 target_node_id=target_node_id,
+                get_node_definition=self.runtime_registry.get_node_definition,
             )
             if target_node_id
             else full_template
@@ -474,6 +475,7 @@ class SnapshotExecutionService:
             build_node_execution_scope_template(
                 template=full_template,
                 target_node_id=target_node_id,
+                get_node_definition=self.runtime_registry.get_node_definition,
             )
             if target_node_id
             else full_template

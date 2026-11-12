@@ -15,12 +15,12 @@
             <div v-if="availableInteractionTools.length > 1" class="image-viewer__tool-tabs">
               <Button
                 v-for="toolItem in availableInteractionTools"
-                :key="toolItem.tool"
+                :key="interactionToolKey(toolItem)"
                 size="sm"
-                :variant="toolItem.tool === interactionTool ? 'primary' : 'secondary'"
+                :variant="toolItem === activeInteractionTool ? 'primary' : 'secondary'"
                 type="button"
                 :title="t('imageViewer.toolbar.switchTool', { tool: readInteractionToolItemLabel(toolItem) })"
-                @click="selectInteractionTool(toolItem.tool)"
+                @click="selectInteractionTool(toolItem)"
               >
                 {{ readInteractionToolItemLabel(toolItem) }}
               </Button>
@@ -310,7 +310,7 @@
               :canvas-width="imageCoordinateWidth"
               :canvas-height="imageCoordinateHeight"
               :bboxes="draftBboxesXyxy"
-              :polygons="draftPolygonsXy"
+              :polygons="editableDraftPolygons"
               :positive-points="positiveDraftPointPairs"
               :negative-points="negativeDraftPointPairs"
               @update:bboxes="updateDraftBboxes"
@@ -383,24 +383,26 @@
               :cy="draftCircle.centerY"
               :r="draftCircle.radius"
             />
-            <polygon
-              v-if="interactionTool === 'polygon' && draftPointPairs.length >= 3"
-              class="image-viewer__overlay-shape image-viewer__overlay-shape--draft"
-              :points="draftPointsText"
-            />
-            <polyline
-              v-else-if="draftPointPairs.length >= 2"
-              class="image-viewer__overlay-shape image-viewer__overlay-shape--draft-line"
-              :points="draftPointsText"
-            />
-            <circle
-              v-for="(point, index) in draftPointPairs"
-              :key="`draft-point-${index}`"
-              class="image-viewer__overlay-point"
-              :cx="point[0]"
-              :cy="point[1]"
-              r="4"
-            />
+            <template v-if="!usesSinglePolygonEditor">
+              <polygon
+                v-if="interactionTool === 'polygon' && draftPointPairs.length >= 3"
+                class="image-viewer__overlay-shape image-viewer__overlay-shape--draft"
+                :points="draftPointsText"
+              />
+              <polyline
+                v-else-if="draftPointPairs.length >= 2"
+                class="image-viewer__overlay-shape image-viewer__overlay-shape--draft-line"
+                :points="draftPointsText"
+              />
+              <circle
+                v-for="(point, index) in draftPointPairs"
+                :key="`draft-point-${index}`"
+                class="image-viewer__overlay-point"
+                :cx="point[0]"
+                :cy="point[1]"
+                r="4"
+              />
+            </template>
           </svg>
         </div>
         <div v-else class="image-viewer__empty">{{ t('imageViewer.empty') }}</div>
@@ -449,6 +451,7 @@ import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOu
 import Button from './Button.vue'
 import ImageGeometryAnnotations from '../image-viewer/ImageGeometryAnnotations.vue'
 import ImageGeometryEditorOverlay from '../image-viewer/ImageGeometryEditorOverlay.vue'
+import { interactionToolKey } from '../image-viewer/arrayInteraction'
 import { useImageGeometryAnnotations } from '../image-viewer/useImageGeometryAnnotations'
 import { dispatchImageViewerPreview } from '../image-viewer/dispatchImageViewerPreview'
 import {
@@ -470,6 +473,7 @@ interface ViewerImageCircleOverlay {
 
 interface ViewerImageOverlay {
   kind: string
+  pickable?: boolean
   id: string | null
   label: string | null
   pointsXy: Array<[number, number]>
@@ -712,7 +716,7 @@ const hasInteractionTools = computed(() => availableInteractionTools.value.lengt
 const activeInteractionTool = computed(() => {
   const tools = availableInteractionTools.value
   if (tools.length === 0) return null
-  return tools.find((tool) => tool.tool === selectedInteractionTool.value) ?? tools[0]
+  return tools.find((tool) => interactionToolKey(tool) === selectedInteractionTool.value) ?? tools[0]
 })
 // 交互子工具切换不能重置同一编辑会话中的草稿。例如 Point Prompt
 // 需要在 Positive 与 Negative 之间反复切换并共同提交。这里只跟踪服务端
@@ -840,6 +844,12 @@ const draftLineAngleGuideMin = computed(() => draftLineVisualGuide.value?.angleG
 const draftLineAngleGuideMax = computed(() => draftLineVisualGuide.value?.angleGuideMax ?? null)
 const draftLineGuideLabel = computed(() => draftLineVisualGuide.value?.label ?? null)
 const draftPointPairs = computed<Array<[number, number]>>(() => draftPoints.value.map((point) => [roundImageCoordinate(point.x), roundImageCoordinate(point.y)]))
+// 单个完整多边形由几何编辑器绘制，避免重复草稿层遮挡拖动手柄。
+const usesSinglePolygonEditor = computed(() => interactionTool.value === 'polygon'
+  && !activeInteractionTool.value?.collection && draftPointPairs.value.length >= 3)
+const editableDraftPolygons = computed(() => activeInteractionTool.value?.collection
+  ? draftPolygonsXy.value
+  : interactionTool.value === 'polygon' && draftPointPairs.value.length >= 3 ? [draftPointPairs.value] : [])
 const positiveDraftPointPairs = computed<Array<[number, number]>>(
   () => draftPointCollections.value['positive-point'] ?? [],
 )
@@ -1254,11 +1264,12 @@ function toggleInteraction(): void {
   if (!interactionActive.value) stopActiveDraftListeners()
 }
 
-function selectInteractionTool(tool: string): void {
-  if (!isSupportedInteractionTool(tool)) return
-  selectedInteractionTool.value = tool
+function selectInteractionTool(tool: ViewerImageInteractionTool): void {
+  if (!isSupportedInteractionTool(tool.tool)) return
+  selectedInteractionTool.value = interactionToolKey(tool)
   clearTransientShapeDrafts()
-  if (tool === 'mask') {
+  initializeSingleShapeDraft()
+  if (tool.tool === 'mask') {
     const configuredBrushSize = activeInteractionTool.value?.brushSize
     if (typeof configuredBrushSize === 'number' && configuredBrushSize > 0) {
       maskBrushSize.value = Math.min(128, Math.max(1, configuredBrushSize))
@@ -1268,7 +1279,26 @@ function selectInteractionTool(tool: string): void {
 }
 
 function readInteractionToolItemLabel(toolItem: ViewerImageInteractionTool): string {
+  const names: Record<string, string> = {
+    'Column Step': 'imageViewer.tools.columnStep',
+    'Row Step': 'imageViewer.tools.rowStep',
+    'First ROI Polygon': 'imageViewer.tools.firstRoiPolygon',
+  }
+  const key = names[toolItem.label ?? '']
+  if (key) return t(key)
   return toolItem.label || readInteractionToolLabel(toolItem.tool)
+}
+
+/** 单个多边形和行列向量重用现有拖动工具，初始化为节点当前几何。 */
+function initializeSingleShapeDraft(): void {
+  const tool = activeInteractionTool.value
+  const points = tool?.initialPointsXy ?? []
+  if (tool?.tool === 'polygon' && !tool.collection && points.length >= 3) {
+    draftPoints.value = points.map(([x, y]) => ({ x, y }))
+  }
+  if (tool?.tool === 'line' && points.length === 2) {
+    draftLine.value = { start: { x: points[0]![0], y: points[0]![1] }, current: { x: points[1]![0], y: points[1]![1] } }
+  }
 }
 
 function readInteractionToolLabel(tool: string): string {
@@ -1400,6 +1430,7 @@ function initializeCollectionDrafts(): void {
   draftPointCollections.value = pointCollections
   draftBboxesXyxy.value = initialBboxes
   draftPolygonsXy.value = initialPolygons
+  initializeSingleShapeDraft()
   const hasInitialGeometry = initialBboxes.length > 0
     || initialPolygons.length > 0
     || Object.values(pointCollections).some((points) => points.length > 0)
@@ -1454,6 +1485,10 @@ function updateDraftBboxes(value: ImageBboxTuple[]): void {
 }
 
 function updateDraftPolygons(value: ImagePointTuple[][]): void {
+  if (!activeInteractionTool.value?.collection) {
+    draftPoints.value = (value[0] ?? []).map(([x, y]) => ({ x, y }))
+    return
+  }
   draftPolygonsXy.value = value.map(
     (polygon) => polygon.map(([pointX, pointY]) => [pointX, pointY]),
   )
@@ -1891,7 +1926,7 @@ function handleOverlayMouseDown(overlay: ViewerImageOverlay, event: MouseEvent):
 function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteractionApplyEvent | null {
   const interaction = imageInteraction.value
   const nodeId = props.image?.nodeId
-  if (!overlayPickingActive.value || !interaction || !nodeId) return null
+  if (!overlayPickingActive.value || !interaction || !nodeId || overlay.pickable === false) return null
 
   const tool = interactionTool.value
   const targetParameters = overlay.targetParameters.length > 0 ? overlay.targetParameters : activeTargetParameters.value
@@ -2229,7 +2264,7 @@ onUnmounted(() => {
 
 <style scoped>
 .image-viewer--results { grid-template-rows:auto minmax(0,1fr) minmax(100px,var(--result-height,28vh)) auto; }
-.image-viewer__results { display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;overflow:hidden;background:var(--am-surface); }
+.image-viewer__results { display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;overflow:hidden;background:var(--am-surface);color:var(--am-text); }
 .image-viewer__results > :deep(*) { box-sizing:border-box; }
 .image-viewer__results-size { display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:2px 8px;font-size:11px;color:var(--am-text-muted); }
 .image-viewer__results-size input { width:100px; }

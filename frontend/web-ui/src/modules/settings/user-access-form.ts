@@ -1,5 +1,5 @@
 import type { CurrentUser, LocalAuthUser } from '@/shared/contracts'
-import { pageDefinitions } from '@/platform/auth/page-access'
+import { canAccessPage } from '@/platform/auth/page-access'
 import { hasScope } from '@/platform/auth/permissions'
 
 export const operationDefinitions = [{"id": "workflows:read"}, {"id": "workflows:invoke"}, {"id": "workflows:write"}, {"id": "projects:files:read"}, {"id": "projects:delete"}, {"id": "models:read"}, {"id": "models:write"}, {"id": "datasets:read"}, {"id": "datasets:write"}, {"id": "tasks:read"}, {"id": "tasks:write"}, {"id": "auth:read"}, {"id": "auth:write"}, {"id": "system:read"}]
@@ -10,8 +10,8 @@ export function userAccessDraft(user: LocalAuthUser): UserAccessDraft {
 }
 export function userAccessIssue(draft: UserAccessDraft): string | null {
   if (!draft.allProjects && !draft.projectIds.length) return 'selectProject'
-  const user = { scopes: draft.scopes } as CurrentUser
+  const user = { scopes: draft.scopes, allowed_pages: draft.pages } as CurrentUser
   if (hasScope(user, 'workflows:invoke') && !hasScope(user, 'workflows:read')) return 'invokeNeedsRead'
-  if (draft.pages?.some((id) => { const page = pageDefinitions.find((p) => p.id === id); return !page || page.scopes.some((scope) => !hasScope(user, scope)) })) return 'pageNeedsRead'
+  if (draft.pages?.some((id) => !canAccessPage(user, id))) return 'pageNeedsRead'
   return null
 }

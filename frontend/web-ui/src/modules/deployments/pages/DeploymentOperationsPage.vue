@@ -452,6 +452,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { Info, Play, RefreshCw, RotateCcw, Square, Trash2, Zap } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
@@ -516,6 +517,7 @@ import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
+const route = useRoute()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const { t } = useI18n()
@@ -1586,6 +1588,12 @@ async function refreshPage(): Promise<void> {
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
       statusDrawerOpen.value = false
+    }
+    // 项目概览的只读深链接只打开详情，不触发启停操作。
+    const requested = typeof route.query.deployment === 'string' ? route.query.deployment : ''
+    if (requested && deployments.value.some(item => item.deployment_instance_id === requested)) {
+      selectedDeploymentId.value = requested
+      statusDrawerOpen.value = true
     }
     await refreshRuntimeSnapshotsAndEvents()
   } catch (error) {

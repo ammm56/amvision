@@ -9,6 +9,7 @@ from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
@@ -29,7 +30,7 @@ from tests.api_test_support import build_test_headers, create_test_runtime
 from tests.yolox_test_support import seed_yolox_model_version
 
 
-def test_sdk_config_package_preview_and_download_include_project_resources(tmp_path: Path) -> None:
+def test_sdk_config_package_preview_and_download_include_project_resources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 Project 工作台配置包接口会导出 workflow、TriggerSource 和模型 deployment。"""
 
     client, session_factory, dataset_storage = _create_sdk_config_package_test_client(tmp_path)
@@ -76,6 +77,15 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
             )
             assert create_deployment_response.status_code == 201
 
+            from backend.service.application.sdk_config_packages import sdk_config_package_service as package_module
+            clock = {"second": 0}
+            class PackageClock:
+                """模拟跨秒生成，不等待真实时钟或改变服务进程的时间。"""
+                @staticmethod
+                def now(tz: object = None) -> datetime:
+                    """只控制配置包文件名和生成时间。"""
+                    return datetime(2026, 11, 4, 0, 0, clock["second"], tzinfo=timezone.utc)
+            monkeypatch.setattr(package_module, "datetime", PackageClock)
             preview_response = client.post(
                 "/api/v1/projects/project-1/sdk-config-packages/preview",
                 headers=_build_headers(),
@@ -84,14 +94,20 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
                     "include_disabled_trigger_sources": True,
                 },
             )
+            clock["second"] = 2
             download_response = client.post(
                 "/api/v1/projects/project-1/sdk-config-packages/download",
                 headers=_build_headers(),
                 json={
+                    "expected_revision": preview_response.json()["configuration_revision"],
                     "model_runtime_modes": ["sync"],
                     "include_disabled_trigger_sources": True,
                 },
             )
+            snapshot = client.get("/api/v1/projects/project-1/sdk-config-packages/current", headers=_build_headers())
+            clock["second"] = 4
+            unchanged = client.get("/api/v1/projects/project-1/sdk-config-packages/current", headers={**_build_headers(), "If-None-Match": snapshot.headers["etag"]})
+            assert unchanged.status_code == 304
     finally:
         session_factory.engine.dispose()
 
@@ -117,7 +133,8 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert "README.md" in names
     workflow_config_name = "Config/config_workflow-app-sdk-config.json"
     assert workflow_config_name in names
-    model_config_name = next(name for name in names if name.startswith("Config/config_model_deployment_"))
+    model_config_name = "Config/config_model_deployments.json"
+    assert model_config_name in names
 
     manifest = json.loads(archive.read("manifest.json"))
     assert manifest["format_id"] == "amvision.sdk-config-package.v1"

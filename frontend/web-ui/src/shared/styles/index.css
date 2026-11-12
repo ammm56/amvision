@@ -925,15 +925,15 @@ textarea:focus-visible {
 }
 
 .ui-button--danger {
-  border-color: var(--am-danger-border);
-  background: var(--am-danger-surface);
-  color: var(--am-danger-text);
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
 }
 
 .ui-button--danger:hover:not(:disabled) {
-  border-color: var(--am-danger-icon);
-  background: var(--am-danger-surface);
-  color: var(--am-danger-icon);
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
 }
 
 .ui-button--icon-only {
@@ -1264,10 +1264,10 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-.resource-table td span:not(.status-badge, .status-badge *) {
+.resource-table td > strong + span:not(.status-badge) {
   display: block;
   color: var(--am-text-muted);
-  font-size: 12px;
+  font-size: var(--am-type-caption);
 }
 
 .resource-table td .compact-info-value {
@@ -1526,6 +1526,8 @@ textarea:focus-visible {
 }
 
 .input-with-icon input {
+  min-width: 0;
+  width: 100%;
   min-height: 32px;
   border: 0;
   background: transparent;

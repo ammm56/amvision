@@ -384,8 +384,10 @@ class PreviewSessionManager:
                 self.buffers.reserve(session_id, "state:current", next_bytes)
                 destination[key] = payload
                 session.state_bytes = next_bytes
-                if old:
-                    for blob_id in _blob_ids(old) - self.referenced_blobs(session_id):
+                previous_blobs = _blob_ids(old)
+                if previous_blobs:
+                    # 普通值不持有 Blob，不能为每次循环更新扫描整个会话。
+                    for blob_id in previous_blobs - self.referenced_blobs(session_id):
                         self.buffers.release(session_id, blob_id)
             else:
                 raise PreviewSessionError("preview_event_invalid")
@@ -427,13 +429,13 @@ class PreviewSessionManager:
         """完整传输的接管凭证由 WS 校验；所有当前接收者接管后撤销 Blob 所有权。"""
         with self._lock:
             session = self._get(session_id)
-            if blob_id not in self.referenced_blobs(session_id):
+            referenced = self.referenced_blobs(session_id)
+            if blob_id not in referenced:
                 return
             if session.receipts.get(blob_id) != receipt:
                 raise ValueError("preview_receipt_invalid")
-            if sub not in session.subscriptions or blob_id not in self.referenced_blobs(session_id):
+            if sub not in session.subscriptions:
                 return
-            referenced = self.referenced_blobs(session_id)
             session.received = {key: value for key, value in session.received.items() if key in referenced}
             received = session.received.setdefault(blob_id, set())
             received.intersection_update(item.subscription_id for item in session.subscriptions)
@@ -467,11 +469,18 @@ class PreviewSessionManager:
 
 def _blob_ids(value):
     """从受控显示描述中提取 blob，替换旧显示时释放且不遍历任意执行对象。"""
-    if isinstance(value, dict):
-        found = {value["blob_id"]} if value.get("transport_kind") == "preview-memory" and value.get("blob_id") else set()
-        for item in value.values():
-            found.update(_blob_ids(item))
-        return found
-    if isinstance(value, list):
-        return set().union(*(_blob_ids(item) for item in value))
-    return set()
+    found = set()
+    pending = [value]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            if current.get("transport_kind") == "preview-memory" and current.get("blob_id"):
+                found.add(current["blob_id"])
+            children = current.values()
+        elif isinstance(current, list):
+            children = current
+        else:
+            continue
+        # 一个累加集合即可；标量不为每个字段分配空集合。
+        pending.extend(item for item in children if isinstance(item, (dict, list)))
+    return found

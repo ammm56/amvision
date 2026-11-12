@@ -14,7 +14,7 @@ from backend.service.domain.resource_deletion import (
     ResourceRef,
 )
 from backend.service.infrastructure.persistence.base import Base
-from backend.service.infrastructure.persistence.dataset_orm import DatasetVersionRecord
+from backend.service.infrastructure.persistence.dataset_orm import DatasetRecord, DatasetVersionRecord
 from backend.service.infrastructure.persistence.dataset_import_orm import (
     DatasetImportRecord,
 )
@@ -86,6 +86,7 @@ class ResourceDeletionRepository:
         """返回跨项目引用检查需要的聚合根字段，不包含 ORM 对象。"""
         tables = {
             **RESOURCE_TABLES,
+            "dataset": DatasetRecord,
             "workflow-version": WorkflowAppVersionRecord,
             "workflow-runtime": WorkflowAppRuntimeRecord,
             "deployment-state": DeploymentRuntimeStateRecord,
@@ -102,8 +103,29 @@ class ResourceDeletionRepository:
             for kind, table in tables.items()
         }
 
-    def delete_records(self, references: list[ResourceRef]) -> None:
+    def delete_records(self, references: list[ResourceRef], *, project_id: str) -> None:
         """按外键顺序删除业务聚合和精确关联 Outbox。"""
+        for reference in references:
+            if reference.kind == "dataset-export-files":
+                row = self.session.get(DatasetExportRecord, reference.resource_id)
+                if row is not None:
+                    # 与清理提交同一事务。原始格式、类别、计数和导出时间保留。
+                    metadata = dict(row.metadata_json or {})
+                    metadata["files_cleaned_at"] = datetime.now(
+                        timezone.utc
+                    ).isoformat()
+                    for key in ("package_file_name", "package_size"):
+                        if metadata.get(key) is not None:
+                            target = "historical_package_name" if key == "package_file_name" else "historical_package_size"
+                            metadata[target] = metadata[key]
+                    for key in (
+                        "package_object_key",
+                        "package_file_name",
+                        "package_size",
+                        "packaged_at",
+                    ):
+                        metadata.pop(key, None)
+                    row.metadata_json = metadata
         removed_files = {
             ref.resource_id for ref in references if ref.kind == "model-file"
         }
@@ -131,8 +153,32 @@ class ResourceDeletionRepository:
                     continue
                 row = self.session.get(RESOURCE_TABLES[kind], reference.resource_id)
                 if row is not None:
+                    if kind == "dataset-import" and row.dataset_version_id:
+                        version = self.session.get(
+                            DatasetVersionRecord, row.dataset_version_id
+                        )
+                        if (
+                            version is not None
+                            and row.validation_report_json
+                            and "validation_report" not in (version.metadata_json or {})
+                            and (version.metadata_json or {}).get("source_import_id") == row.dataset_import_id
+                        ):
+                            # 旧版本也保留真实校验事实，导入记录清理不抹除版本质量报告。
+                            version.metadata_json = {
+                                **(version.metadata_json or {}),
+                                "validation_report": deepcopy(
+                                    row.validation_report_json
+                                ),
+                            }
                     self.session.delete(row)
             self.session.flush()
+
+        for ref in references:
+            if ref.kind == "dataset":
+                # 数据集与版本独立登记，只在整集删除时清除该项目的目录项。
+                dataset = self.session.get(DatasetRecord, (project_id, ref.resource_id))
+                if dataset is not None:
+                    self.session.delete(dataset)
 
     def save(self, operation: ResourceDeletionOperation) -> None:
         """保存可恢复状态，提交状态与业务删除使用同一事务。"""

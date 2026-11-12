@@ -1,4 +1,5 @@
 import { bootstrapApplication } from './app/bootstrap'
+import '@fontsource-variable/noto-sans-sc'
 import './shared/styles/tokens/brand.css'
 import './shared/styles/tokens/semantic.css'
 import './shared/styles/tokens/light.css'

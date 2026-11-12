@@ -62,6 +62,20 @@ def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
             raise InvalidRequestError("Columns 需要唯一 Key 和显示名称，最多 32 列")
         if any(column.get("format", "value") not in ("value", "unit", "result", "decision-state", "validity", "reason") for column in columns):
             raise InvalidRequestError("Columns Format 需要 value/unit/result/decision-state/validity/reason")
+        if any("path" in column and (not isinstance(column["path"], str) or not column["path"].strip()) for column in columns):
+            raise InvalidRequestError("Columns Path 必须是非空字段路径")
+        # 显式列路径只生成显示字段，保留业务 ID 和原始行，避免破坏几何关联。
+        if any("path" in column for column in columns):
+            rows = [
+                {
+                    **row,
+                    **{
+                        column["key"]: try_extract_value_by_path(root=row, path=column["path"])[1]
+                        for column in columns if "path" in column
+                    },
+                }
+                for row in rows
+            ]
         if isinstance(preview_value, dict) and preview_value.get("format_id") == "amvision.limit-check.v1":
             # 三态摘要显式声明列语义，不将不可放行的 bool 显示成产品 NG。
             columns = [
@@ -162,7 +176,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "type": "object",
             "properties": {
                 "display_mode": {"type": "string", "title": "Display Mode", "enum": ["json", "table"], "default": "json"},
-                "columns": {"type": "array", "title": "Columns", "maxItems": 32, "x-ui-widget": "object-rows", "items": {"type": "object", "required": ["key", "label"], "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Key"}, "label": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Label"}, "format": {"type": "string", "title": "Format", "default": "value", "enum": ["value", "unit", "result", "decision-state", "validity", "reason"]}}}},
+                "columns": {"type": "array", "title": "Columns", "maxItems": 32, "x-ui-widget": "object-rows", "items": {"type": "object", "required": ["key", "label"], "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Key"}, "label": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Label"}, "path": {"type": "string", "minLength": 1, "maxLength": 512, "title": "Field Path"}, "format": {"type": "string", "title": "Format", "default": "value", "enum": ["value", "unit", "result", "decision-state", "validity", "reason"]}}}},
                 "title": {
                     "type": "string",
                     "minLength": 1,

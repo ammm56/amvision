@@ -17,6 +17,8 @@ class DatasetVersionSummary:
     category_count: int
     split_names: tuple[str, ...]
     metadata: dict[str, object] = field(default_factory=dict)
+    # 持久化版本序号，与排序、删除及随机资源 id 无关。
+    version_number: int = 1
 
 
 __all__ = ["DatasetVersionSummary"]

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections import deque
+from typing import Callable
 
 from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
+    WorkflowGraphEdge,
     WorkflowGraphTemplate,
 )
 from backend.service.application.errors import InvalidRequestError
@@ -139,6 +141,7 @@ def build_node_execution_scope_template(
     *,
     template: WorkflowGraphTemplate,
     target_node_id: str,
+    get_node_definition: Callable[[str], NodeDefinition],
 ) -> WorkflowGraphTemplate:
     """构造只包含目标节点祖先闭包的节点级 Preview 模板。"""
 
@@ -146,19 +149,70 @@ def build_node_execution_scope_template(
         template=template,
         target_node_id=target_node_id,
     )
+    from backend.service.application.workflows.execution.foreach_plans import (
+        build_for_each_execution_plans,
+    )
+
+    # 先验证完整循环，避免把原本缺少 End 的图修补成可执行图。
+    for_each_plans = build_for_each_execution_plans(
+        template=template,
+        topological_order=build_topological_node_order(template=template),
+        get_node_definition=get_node_definition,
+    )
+    open_loops = [
+        plan
+        for plan in for_each_plans.values()
+        if plan.start_node_id in scoped_node_ids
+        and plan.end_node_id not in scoped_node_ids
+    ]
+    scoped_node_ids = scoped_node_ids | frozenset(
+        plan.end_node_id for plan in open_loops
+    )
+    open_loop_end_ids = {plan.end_node_id for plan in open_loops}
+    scoped_edges = [
+        edge
+        for edge in template.edges
+        if edge.source_node_id in scoped_node_ids
+        and edge.target_node_id in scoped_node_ids
+        and edge.target_node_id not in open_loop_end_ids
+    ]
+    for plan in open_loops:
+        # 临时 End 仅收集当前 item，不引入目标之后的检测、保存等业务节点。
+        # 复用原 End 输入边的 id，避免和任意用户边 id 冲突。
+        end_edge = next(
+            edge
+            for edge in template.edges
+            if edge.target_node_id == plan.end_node_id and edge.target_port == "result"
+        )
+        scoped_edges.append(
+            WorkflowGraphEdge(
+                edge_id=end_edge.edge_id,
+                source_node_id=plan.start_node_id,
+                source_port="item",
+                target_node_id=plan.end_node_id,
+                target_port="result",
+            )
+        )
     # 完整图先校验并行配对；目标位于分支内部时，Start 在此 scope 中仅转发输入。
     # 不补跑其他分支，也不把缺少 End 的非法完整图当作合法图。
-    from backend.service.application.workflows.execution.parallel import build_parallel_execution_plans
+    from backend.service.application.workflows.execution.parallel import (
+        build_parallel_execution_plans,
+    )
+
     parallel_plans = build_parallel_execution_plans(
-        template=template, topological_order=build_topological_node_order(template=template))
-    open_parallel_starts = [plan.start_node_id for plan in parallel_plans.values()
-                            if plan.start_node_id in scoped_node_ids and plan.end_node_id not in scoped_node_ids]
+        template=template,
+        topological_order=build_topological_node_order(template=template),
+    )
+    open_parallel_starts = [
+        plan.start_node_id
+        for plan in parallel_plans.values()
+        if plan.start_node_id in scoped_node_ids
+        and plan.end_node_id not in scoped_node_ids
+    ]
     scoped_groups = []
     for group in template.groups:
         member_node_ids = tuple(
-            node_id
-            for node_id in group.member_node_ids
-            if node_id in scoped_node_ids
+            node_id for node_id in group.member_node_ids if node_id in scoped_node_ids
         )
         if not member_node_ids:
             continue
@@ -176,12 +230,7 @@ def build_node_execution_scope_template(
             "nodes": tuple(
                 node for node in template.nodes if node.node_id in scoped_node_ids
             ),
-            "edges": tuple(
-                edge
-                for edge in template.edges
-                if edge.source_node_id in scoped_node_ids
-                and edge.target_node_id in scoped_node_ids
-            ),
+            "edges": tuple(scoped_edges),
             "template_inputs": tuple(
                 item
                 for item in template.template_inputs

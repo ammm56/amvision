@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="64mm"
+   height="64mm"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   sodipodi:docname="favicon.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="5.4198242"
+     inkscape:cx="120.85263"
+     inkscape:cy="120.94488"
+     inkscape:window-width="2033"
+     inkscape:window-height="1546"
+     inkscape:window-x="1815"
+     inkscape:window-y="352"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="图层 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-39.676197,-71.18856)">
+    <rect
+       style="fill:#00d99b;fill-opacity:1;stroke-width:0.264583"
+       id="rect1"
+       width="64"
+       height="64"
+       x="39.676197"
+       y="71.18856"
+       rx="16" />
+    <path
+       d="m 70.86591,115.3098 h -5.324745 l -2.116669,-5.50665 h -9.690373 l -2.000914,5.50665 h -5.192453 l 9.442327,-24.242472 h 5.175916 z m -9.012379,-9.59116 -3.340367,-8.995838 -3.274222,8.995838 z M 73.39599,115.3098 V 91.067328 h 7.325658 L 85.12035,107.6038 89.469443,91.067328 h 7.342195 V 115.3098 H 92.264107 V 96.226708 L 87.451993,115.3098 H 82.739098 L 77.943521,96.226708 V 115.3098 Z"
+       id="text1"
+       style="font-weight:bold;font-size:33.8667px;font-family:Arial;-inkscape-font-specification:'Arial Bold';fill:#10221d;stroke-width:0.264583"
+       aria-label="AM" />
+  </g>
+</svg>

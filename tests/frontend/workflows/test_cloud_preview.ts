@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { decodeCloudPreview, rendererUsage, reserveGpu } from '@/workflows/workflow-editor/point-cloud/preview-data'
+import { decodeCloudPreview, decodePreviewBytes, rendererUsage, reserveGpu } from '@/workflows/workflow-editor/point-cloud/preview-data'
 
 const policy = { max_points: 100, max_data_bytes: 8192, max_cpu_bytes: 65536, max_gpu_bytes: 65536, max_canvas_pixels: 65536, max_position_error: .0001 }
 beforeEach(async () => { const {webcrypto} = await vi.importActual<{webcrypto: Crypto}>('node:crypto'); vi.stubGlobal('crypto', webcrypto) })
@@ -76,6 +76,24 @@ it('validates multi-megabyte base64 without regex stack overflow and releases on
   const input=await body()
   input.data.content='AAAA'.repeat(4_000_000);input.data.content_length=12_000_000
   await expect(decodeCloudPreview(input,{...policy,max_data_bytes:12_000_000,max_cpu_bytes:100_000_000},new AbortController().signal)).rejects.toThrow('cloud_preview_checksum')
+})
+
+it('allows cancellation between decode blocks and releases the complete reservation',async()=>{
+  const input=await body(),controller=new AbortController()
+  input.data.content='AAAA'.repeat(4_000_000);input.data.content_length=12_000_000
+  const timer=setTimeout(()=>controller.abort(new Error('cancelled-during-decode')),0)
+  try{
+    await expect(decodeCloudPreview(input,{...policy,max_data_bytes:12_000_000,max_cpu_bytes:100_000_000},controller.signal)).rejects.toThrow('cancelled-during-decode')
+  }finally{clearTimeout(timer)}
+})
+
+it.each([196608,196609,196610])('keeps all bytes and padding across a Base64 block boundary (%i bytes)',async size=>{
+  const raw=Uint8Array.from({length:size},(_,i)=>i%251)
+  const content=btoa(Array.from(raw,value=>String.fromCharCode(value)).join(''))
+  const checksum=[...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('')
+  const decoded=await decodePreviewBytes({content_length:size,content,encoding:'base64',checksum_algorithm:'sha256',checksum},new AbortController().signal)
+  expect(decoded.length).toBe(raw.length)
+  expect(decoded.every((value,index)=>value===raw[index])).toBe(true)
 })
 
 it.each(['source','generated'])('decodes ordered %s identities without conflating generated vertices with source rows',async kind=>{

@@ -7,7 +7,7 @@ from typing import Literal
 
 
 # 最小支持的数据集任务类型。
-DatasetTaskType = Literal["detection", "segmentation", "semantic-segmentation", "pose", "classification", "obb"]
+DatasetTaskType = Literal["detection", "segmentation", "semantic-segmentation", "pose", "classification", "obb", "anomaly", "connector-reference", "rgbd", "point-cloud"]
 
 
 # 最小支持的数据集 split 名称。
@@ -257,3 +257,5 @@ class DatasetVersion:
     samples: tuple[DatasetSample, ...]
     task_type: DatasetTaskType
     metadata: dict[str, object] = field(default_factory=dict)
+    # 仓储自动分配，外部提交的序号不能覆盖已发布版本。
+    version_number: int = 1

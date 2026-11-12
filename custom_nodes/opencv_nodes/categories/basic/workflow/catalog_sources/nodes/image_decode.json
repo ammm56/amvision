@@ -1,0 +1,23 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.image-decode",
+  "version": "0.1.10",
+  "display_name": "Image Decode",
+  "category": "opencv.image.basic",
+  "description": "显式解码图片为当前执行内共享的原始矩阵，保留像素类型和通道；执行结束释放。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "parameter_schema": {"type": "object", "properties": {
+    "decode_method": {
+      "type": "string", "enum": ["opencv", "bmp-bgr24"], "default": "opencv",
+      "title": "Decode Method",
+      "description": "opencv 支持普通图片输入；bmp-bgr24 解码未压缩 24 位 BMP，本地/ObjectStore 文件通过短期映射读取，上传或协议输入从编码缓冲区读取；保留全部像素，格式不匹配时明确报错。"
+    }
+  }, "additionalProperties": false},
+  "capability_tags": ["opencv.image-decode", "vision.opencv"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.10"
+}

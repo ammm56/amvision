@@ -78,6 +78,19 @@ it.each([['read-cloud', 'file_options'], ['cloud-preview', 'color']] as const)('
   try { expect(w.get('textarea').element.value).toBe(JSON.stringify(value, null, 2)); expect(w.find('input').exists()).toBe(false) } finally { w.unmount() }
 })
 
+it('keeps original-point detail preparation opt-in and dispatches the current Catalog checkbox', async () => {
+  const { w, f } = render('cloud-preview', 'prepare_details', undefined)
+  try {
+    expect(f.default_value).toBe(false)
+    const checkbox = w.get('input[type="checkbox"]')
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false)
+    await checkbox.setValue(true)
+    const event = w.emitted('update-checkbox')?.[0]?.[2] as Event
+    expect((event.target as HTMLInputElement).checked).toBe(true)
+    expect(w.find('textarea').exists()).toBe(false)
+  } finally { w.unmount() }
+})
+
 it('does not flatten multi-branch unions or unknown schemas into primitive controls', () => {
   const p = parameters()
   for (const schema of [{}, { oneOf: [{ type: 'string' }, { type: 'object' }] }, { anyOf: [{ type: 'number' }, { type: 'string' }, { type: 'null' }] }, { type: ['string', 'object', 'null'] }]) {

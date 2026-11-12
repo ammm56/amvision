@@ -1,0 +1,116 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.mapped-roi-crop",
+  "version": "0.1.10",
+  "display_name": "Mapped ROI Crop",
+  "category": "opencv.image.transform",
+  "description": "按参考变换裁剪校正矩形图；roi、rois 或 roi_items 仅连接一个。可连接父裁图局部窗口，直接采样窗口而不生成完整父裁图。坐标倍率显式配置，越界拒绝。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "concurrency_policy": "thread-safe",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1",
+      "required": true
+    },
+    {
+      "name": "transform",
+      "display_name": "Transform",
+      "payload_type_id": "planar-transform.v1",
+      "required": true
+    },
+    {
+      "name": "roi_items",
+      "display_name": "Roi Items",
+      "payload_type_id": "value.v1",
+      "required": false
+    },
+    {
+      "name": "selected_ids",
+      "display_name": "Selected Ids",
+      "payload_type_id": "value.v1",
+      "required": false
+    },
+    {
+      "name": "window_roi",
+      "display_name": "Local Window ROI",
+      "payload_type_id": "roi.v1",
+      "required": false
+    },
+    {
+      "name": "rois",
+      "display_name": "ROIs",
+      "payload_type_id": "roi-list.v1",
+      "required": false
+    },
+    {
+      "name": "roi",
+      "display_name": "ROI",
+      "payload_type_id": "roi.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "crops",
+      "display_name": "Crops",
+      "payload_type_id": "image-refs.v1",
+      "required": true
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "required": true
+    }
+  ],
+  "parameter_schema": {
+    "additionalProperties": false,
+    "description": "ROI 使用参考原图坐标，coordinate_scale 明确声明定位图到原图的等比倍率。",
+    "properties": {
+      "coordinate_scale": {
+        "default": 1,
+        "exclusiveMinimum": 0,
+        "maximum": 64,
+        "type": "number"
+      },
+      "interpolation": {
+        "default": "linear",
+        "enum": [
+          "nearest",
+          "linear",
+          "cubic"
+        ],
+        "type": "string"
+      },
+      "maximum_total_pixels": {
+        "default": 25000000,
+        "maximum": 100000000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "roi_coordinate_scale": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 64,
+        "default": 1,
+        "title": "ROI 坐标到原图倍率"
+      }
+    },
+    "type": "object"
+  },
+  "capability_tags": [
+    "opencv.mapped-roi-crop",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.10"
+}
