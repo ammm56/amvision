@@ -9,6 +9,7 @@ Text = Annotated[
 ]
 Unit = Literal["mm", "m"]
 MEDIA_TASKS = ("anomaly", "connector-reference", "rgbd", "point-cloud")
+SOURCE_ASSETS = ("cloud", "depth", "mask", "calibration")
 
 
 class MediaFields(BaseModel):

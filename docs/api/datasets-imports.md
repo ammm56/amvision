@@ -40,6 +40,15 @@
 
 ## 接口清单
 
+### 上传草稿与生命周期
+
+- `POST /api/v1/datasets/upload-drafts` 接收 multipart `project_id` 和 `package`，返回 `draft_id/name/size`。`POST /imports` 的 `package` 与 `draft_id` 必须显式二选一。
+- 草稿属于当前项目和登录主体，不可跨用户/项目消费；有效期为 24 小时。领取采用原子重命名，提交失败归还，成功删除。过期、已消费或旧布局的回执返回 404，`details.resource=upload_draft`，须重新上传。
+- `DELETE /api/v1/datasets/upload-drafts/{token}?project_id=...` 幂等撤销未提交草稿；不会删除正在提交的输入。
+- 上传、撤销和提交沿用 Project mutation 准入。项目删除时已有活动操作阻止删除；删除状态禁止新的上传写入。草稿位于 `projects/{project_id}/dataset-upload-drafts/{主体摘要}/`，随项目既有隔离、提交、回滚及清理流程处理。
+- 活动上传/提交持有现有跨进程共享句柄锁，维护只在获得排他锁后回收，同一草稿的正文与元数据全部过期才删除。进程异常退出由操作系统释放锁，不通过 PID 快照猜测是否活动。
+- 版本更新部署须停止旧服务后替换代码。旧根目录 `dataset-upload-drafts/` 不再提供消费兼容，过期文件通过统一维护清理；业务数据集版本与已入队导入记录不迁移、不删除。详见 [维护说明](../deployment/backend-maintenance.md#cleanup-runtime-storage)。
+
 ### POST /api/v1/datasets/imports
 
 上传 zip 数据集压缩包，登记一条 received 状态的 DatasetImport 并提交到本地队列；worker 后续再解析并生成 DatasetVersion。

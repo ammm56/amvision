@@ -582,6 +582,11 @@ def cleanup_runtime_storage(
             dataset_storage=dataset_storage,
             cutoff_datetime=cutoff_datetime,
         )
+        from backend.service.application.datasets.imports.upload_draft_cleanup import cleanup_upload_drafts
+        deleted_upload_draft_files = cleanup_upload_drafts(
+            dataset_storage,
+            now=(_parse_iso_datetime_text(_normalize_cutoff_time(now_iso))).timestamp(),
+        )
     finally:
         unit_of_work.close()
         session_factory.engine.dispose()
@@ -590,6 +595,7 @@ def cleanup_runtime_storage(
         len(deleted_runtime_input_entries)
         + len(deleted_workflow_run_dirs)
         + len(deleted_orphan_app_runtime_dirs)
+        + len(deleted_upload_draft_files)
     )
     return {
         "command": WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
@@ -598,6 +604,7 @@ def cleanup_runtime_storage(
         "deleted_runtime_input_entries": deleted_runtime_input_entries,
         "deleted_workflow_run_dirs": deleted_workflow_run_dirs,
         "deleted_orphan_app_runtime_dirs": deleted_orphan_app_runtime_dirs,
+        "deleted_upload_draft_files": deleted_upload_draft_files,
         "deleted_count": deleted_count,
     }
 

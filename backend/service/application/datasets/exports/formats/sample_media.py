@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from backend.contracts.datasets.sample_media import ENTRY_TYPES
+from backend.contracts.datasets.sample_media import ENTRY_TYPES, SOURCE_ASSETS
 from backend.service.application.errors import InvalidRequestError
 from .common import _build_version_image_relative_path
 
@@ -69,7 +69,7 @@ def write_media_files(storage, version, split_samples, result):
         source = _build_version_image_relative_path(
             dataset_version=version, sample=sample
         )
-        for kind in ("image", "cloud", "depth", "mask", "calibration"):
+        for kind in ("image", *SOURCE_ASSETS):
             if kind in entry:
                 key = source if kind == "image" else f"{source}.asset-{kind}"
                 storage.copy_file(

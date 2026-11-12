@@ -5,83 +5,36 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-_TYPES = {
-    "char": "i1",
-    "uchar": "u1",
-    "short": "i2",
-    "ushort": "u2",
-    "int": "i4",
-    "uint": "u4",
-    "float": "f4",
-    "double": "f8",
-    "int8": "i1",
-    "uint8": "u1",
-    "int16": "i2",
-    "uint16": "u2",
-    "int32": "i4",
-    "uint32": "u4",
-    "float32": "f4",
-    "float64": "f8",
-}
+from backend.service.infrastructure.controlled_dependencies import (
+    require_controlled_distribution,
+)
 
 
 def read_vertices(path: Path):
-    """仅解析第一个 vertex 元素，忽略后续面；不加载任意 PLY 扩展代码。"""
+    """复用受控 PLY 解析器，完整验证单一 vertex 元素后返回原精度字段。"""
+    require_controlled_distribution("trimesh", "5.1.1+amvision.2")
+    from trimesh.exchange.ply import read_ply_data, read_ply_header
+
     with path.open("rb") as stream:
-        if stream.readline(16).strip() != b"ply":
-            raise ValueError("点云必须是 PLY 文件")
-        encoding = ""
-        element = ""
-        count = 0
-        fields = []
-        for _ in range(512):
-            line = stream.readline(2048)
-            if not line or len(line) >= 2048:
-                raise ValueError("PLY 头部无效")
-            parts = line.decode("ascii").split()
-            if not parts or parts[0] in {"comment", "obj_info"}:
-                continue
-            if parts == ["end_header"]:
-                break
-            if parts[0] == "format" and len(parts) == 3 and parts[2] == "1.0":
-                encoding = parts[1]
-            elif parts[0] == "element" and len(parts) == 3:
-                element = parts[1]
-                if not count:
-                    if element != "vertex" or not 1 <= int(parts[2]) <= 2_000_000:
-                        raise ValueError("PLY 首元素须为 1 至 200 万个顶点")
-                    count = int(parts[2])
-                elif element == "vertex":
-                    raise ValueError("PLY vertex 定义重复")
-            elif parts[0] == "property" and element == "vertex":
-                if len(parts) != 3 or parts[1] not in _TYPES or len(fields) >= 32:
-                    raise ValueError("PLY 顶点仅支持标量属性")
-                fields.append((parts[2], _TYPES[parts[1]]))
-        else:
-            raise ValueError("PLY 头部过长")
-        dtype = np.dtype(fields)
-        if not count or not {"x", "y", "z"}.issubset(dtype.names or ()):
+        header = read_ply_header(stream, max_header_bytes=512 * 2048)
+        if len(header.elements) != 1 or header.elements[0].name != "vertex":
+            raise ValueError("点云 PLY 只支持单一 vertex 元素，不接受面或其他元素")
+        vertex = header.elements[0]
+        if not 1 <= vertex.count <= 2_000_000:
+            raise ValueError("PLY 顶点数须为 1 至 200 万")
+        if len(vertex.properties) > 32 or any(
+            p.count_dtype is not None for p in vertex.properties
+        ):
+            raise ValueError("PLY 顶点仅支持至多 32 个标量属性")
+        if not {"x", "y", "z"}.issubset(p.name for p in vertex.properties):
             raise ValueError("PLY 缺少 XYZ 坐标")
-        if dtype.itemsize * count > 128 * 1024**2:
-            raise ValueError("点云顶点数据超过 128 MiB")
-        if encoding == "ascii":
-
-            def rows():
-                for _ in range(count):
-                    line = stream.readline(2048)
-                    if not line.strip() or len(line) >= 2048:
-                        raise ValueError("PLY 顶点行无效")
-                    yield line
-
-            data = np.loadtxt(rows(), dtype=dtype, ndmin=1, comments=None)
-        elif encoding in {"binary_little_endian", "binary_big_endian"}:
-            endian = "<" if encoding == "binary_little_endian" else ">"
-            data = np.fromfile(stream, dtype=dtype.newbyteorder(endian), count=count)
-        else:
-            raise ValueError("不支持的 PLY 编码")
-        if len(data) != count:
-            raise ValueError("PLY 顶点数量与头部不符")
-    return data
+        return read_ply_data(
+            stream,
+            header,
+            max_decoded_bytes=128 * 1024**2,
+            chunk_rows=65536,
+            chunk_bytes=1024**2,
+        )
 
 
 def make_cloud_preview(path: Path, preview: Path, points: Path) -> dict:
@@ -93,6 +46,11 @@ def make_cloud_preview(path: Path, preview: Path, points: Path) -> dict:
     has_color = all(k in data.dtype.names for k in rgb_fields)
     if not has_color and any(k in data.dtype.names for k in rgb_fields):
         raise ValueError("PLY 颜色必须同时提供 red、green 和 blue")
+    if has_color:
+        for field in rgb_fields:
+            values = data[field]
+            if not np.isfinite(values).all() or values.min() < 0 or values.max() > 255:
+                raise ValueError("PLY RGB 数值应在 0 至 255 之间")
     meta = {
         "point_count": len(data),
         "valid_count": len(valid),
@@ -114,8 +72,6 @@ def make_cloud_preview(path: Path, preview: Path, points: Path) -> dict:
             if has_color
             else np.full(pos.shape, 190)
         )
-        if not np.isfinite(colors).all() or colors.min() < 0 or colors.max() > 255:
-            raise ValueError("PLY RGB 数值应在 0 至 255 之间")
         np.concatenate((pos, colors / 255), axis=1).astype("<f4").tofile(points)
         pixels = np.array(image)
         x = np.clip(240 + 135 * (pos[:, 0] - 0.45 * pos[:, 1]), 0, 479).astype(int)

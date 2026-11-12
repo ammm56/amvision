@@ -446,6 +446,19 @@ class CleanupInterruptedWorkflowRuntimeInputsStep:
         runtime.dataset_storage.delete_tree("workflows/runtime-inputs")
 
 
+class CleanupExpiredDatasetUploadDraftsStep:
+    """启动时按维护规则回收所有项目的过期草稿，保留活动句柄所有者。"""
+
+    def get_step_name(self) -> str:
+        """返回独立的数据集启动维护步骤名称。"""
+        return "cleanup-expired-dataset-upload-drafts"
+
+    def run(self, runtime: BackendServiceRuntime) -> None:
+        """不等待上传锁，不删除新鲜草稿或受管数据集版本。"""
+        from backend.service.application.datasets.imports.upload_draft_cleanup import cleanup_upload_drafts
+        cleanup_upload_drafts(runtime.dataset_storage)
+
+
 class BackendServiceBootstrap(
     RuntimeBootstrap[BackendServiceSettings, BackendServiceRuntime]
 ):
@@ -1116,6 +1129,7 @@ class BackendServiceBootstrap(
             RecoverIncompleteWorkflowAppVersionsStep(),
             MigrateLegacyWorkflowAppRuntimeVersionsStep(),
             CleanupInterruptedWorkflowRuntimeInputsStep(),
+            CleanupExpiredDatasetUploadDraftsStep(),
         )
 
     def _build_seeders(self) -> tuple[BackendServiceSeeder, ...]:

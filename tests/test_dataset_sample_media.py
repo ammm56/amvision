@@ -1,6 +1,7 @@
 """专用数据集 ZIP 的输入边界、深度单位、附件归属及 PLY 预览回归。"""
 
 import json
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,10 @@ from backend.service.application.datasets.imports.formats.sample_media import (
     parse_sample_media,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.datasets.imports.formats.media_cloud import (
+    read_vertices,
+)
 
 
 def parse(root: Path, kind: str, **entry):
@@ -126,3 +131,87 @@ def test_rejects_invalid_reference_without_fabricating_data(tmp_path, kind, row)
     Image.new("RGB", (2, 2)).save(tmp_path / "part.png")
     with pytest.raises(InvalidRequestError):
         parse(tmp_path, kind, **row)
+
+
+def ply_bytes(body=b"1 2 3\n", *, encoding="ascii", count=1, extra=""):
+    """构造独立字节真值，不使用被测 writer。"""
+    return (
+        f"ply\nformat {encoding} 1.0\nelement vertex {count}\n"
+        "property float x\nproperty float y\nproperty float z\n"
+        f"{extra}end_header\n"
+    ).encode() + body
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        ply_bytes(b""),
+        ply_bytes(b"1 2\n"),
+        ply_bytes(b"1 2 3\n", count=2),
+        ply_bytes(b"1 2 3\n4 5 6\n"),
+        ply_bytes(b"1 2 3 4\n"),
+        ply_bytes(b"1oops 2 3\n"),
+        ply_bytes(b"1e39 2 3\n"),
+        ply_bytes(extra="element face 1\nproperty list uchar int vertex_indices\n"),
+        ply_bytes(extra="property float x\n"),
+        ply_bytes(extra="property list uchar float values\n"),
+        ply_bytes(b"1 2 3 256\n", extra="property uchar intensity\n"),
+        ply_bytes(b"1 2 3 -1\n", extra="property uchar intensity\n"),
+        ply_bytes(b"1 2 3 1.1\n", extra="property uchar intensity\n"),
+        ply_bytes(struct.pack("<fff", 1, 2, 3)[:-1], encoding="binary_little_endian"),
+        ply_bytes(struct.pack(">fff", 1, 2, 3) + b"x", encoding="binary_big_endian"),
+    ],
+)
+def test_cloud_strict_import_rejects_malformed_content(tmp_path, contents):
+    """正式清单入口不得把截断、冗余记录、坏字段标记为导入成功。"""
+    (tmp_path / "a.ply").write_bytes(contents)
+    with pytest.raises(InvalidRequestError):
+        parse(tmp_path, "point-cloud", cloud="a.ply", unit="mm", frame="sensor")
+
+
+@pytest.mark.parametrize(
+    "encoding,endian",
+    [("ascii", "<"), ("binary_little_endian", "<"), ("binary_big_endian", ">")],
+)
+def test_cloud_strict_reader_preserves_all_fields(tmp_path, encoding, endian):
+    """全字段保留声明精度；原始附件逐字节保持不变。"""
+    value = np.nextafter(1.0, 2.0)
+    header = (
+        f"ply\nformat {encoding} 1.0\nelement vertex 1\n"
+        "property double x\nproperty float y\nproperty float z\nproperty uint64 source\nend_header\n"
+    ).encode()
+    body = (
+        b"1.0000000000000002 2 3 18446744073709551615\n"
+        if encoding == "ascii"
+        else struct.pack(endian + "dffQ", value, 2, 3, 2**64 - 1)
+    )
+    path = tmp_path / "a.ply"
+    path.write_bytes(header + body)
+    data = read_vertices(path)
+    assert data.dtype.names == ("x", "y", "z", "source")
+    assert data.dtype["x"].itemsize == 8 and data.dtype["y"].itemsize == 4
+    assert data["x"][0] == value and int(data["source"][0]) == 2**64 - 1
+    item = parse(tmp_path, "point-cloud", cloud="a.ply", unit="mm", frame="sensor")
+    assert asset_path(item.source_image_path, "cloud").read_bytes() == header + body
+
+
+def test_cloud_dependency_mismatch_is_configuration_error(tmp_path, monkeypatch):
+    """依赖错配不伪装为坏文件，也不退回自建解析器。"""
+    from backend.service.infrastructure import controlled_dependencies
+
+    monkeypatch.setattr(controlled_dependencies, "version", lambda _: "5.1.1")
+    (tmp_path / "a.ply").write_bytes(ply_bytes())
+    with pytest.raises(ServiceConfigurationError):
+        parse(tmp_path, "point-cloud", cloud="a.ply", unit="mm", frame="sensor")
+
+
+def test_cloud_invalid_coordinate_does_not_hide_bad_rgb(tmp_path):
+    """无效 XYZ 被显示过滤前仍须验证所有源字段。"""
+    (tmp_path / "a.ply").write_bytes(
+        ply_bytes(
+            b"nan 2 3 256 0 0\n",
+            extra="property float red\nproperty float green\nproperty float blue\n",
+        )
+    )
+    with pytest.raises(InvalidRequestError, match="RGB"):
+        parse(tmp_path, "point-cloud", cloud="a.ply", unit="mm", frame="sensor")

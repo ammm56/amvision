@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from contextlib import nullcontext
-from uuid import UUID
+from uuid import UUID, uuid4
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.application.datasets.imports.upload_draft import DatasetUploadDrafts, UploadDraft
 from backend.service.application.project_access import require_explicit_project_access
 from pydantic import ValidationError
@@ -82,10 +83,14 @@ def upload_draft(
     package: Annotated[UploadFile, File()],
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
     storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 ) -> UploadDraft:
     """上传到当前主体的临时目录；不提交导入任务或分配版本。"""
     require_explicit_project_access(visible_project_ids=principal.project_ids, project_id=project_id)
-    return DatasetUploadDrafts(storage, project_id, principal.principal_id).upload(package.filename or "", package.file)
+    with ProjectMutationAdmissionService(session_factory).operation(
+        project_id=project_id, mutation_kind="dataset-upload", resource_id=uuid4().hex,
+    ):
+        return DatasetUploadDrafts(storage, project_id, principal.principal_id).upload(package.filename or "", package.file)
 
 
 @dataset_imports_router.delete("/upload-drafts/{token}", status_code=204)
@@ -94,10 +99,14 @@ def discard_upload_draft(
     project_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
     storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 ) -> Response:
     """丢弃当前主体尚未提交的 ZIP。"""
     require_explicit_project_access(visible_project_ids=principal.project_ids, project_id=project_id)
-    DatasetUploadDrafts(storage, project_id, principal.principal_id).discard(token)
+    with ProjectMutationAdmissionService(session_factory).operation(
+        project_id=project_id, mutation_kind="dataset-upload", resource_id=uuid4().hex,
+    ):
+        DatasetUploadDrafts(storage, project_id, principal.principal_id).discard(token)
     return Response(status_code=204)
 
 
@@ -180,7 +189,9 @@ def import_dataset_zip(
         nullcontext((package.filename or "dataset.zip", package.file)) if package is not None
         else DatasetUploadDrafts(dataset_storage, project_id, principal.principal_id).consume(draft_id)
     )
-    with source as (source_name, source_stream):
+    with ProjectMutationAdmissionService(session_factory).operation(
+        project_id=project_id, mutation_kind="dataset-upload", resource_id=uuid4().hex,
+    ), source as (source_name, source_stream):
         submitted_import = service.submit_dataset_import(
             DatasetImportRequest(
                 project_id=project_id,

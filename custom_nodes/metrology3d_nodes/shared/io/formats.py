@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
 from typing import BinaryIO, Callable
 
 import numpy as np
 
 from backend.contracts.workflows.point_cloud import CloudFileOptions, PcdSourceMetadata
 from backend.service.application.workflows.point_cloud.policy import PointCloudIoPolicy
-from backend.service.application.errors import ServiceConfigurationError
+from backend.service.infrastructure.controlled_dependencies import require_controlled_distribution
 from custom_nodes.metrology3d_nodes.shared.io.input_errors import format_mismatch
 from custom_nodes.metrology3d_nodes.shared.io.xyz import inspect_xyz, read_xyz
 
@@ -23,23 +22,6 @@ class InspectedCloudFile:
     dtype: np.dtype
     source_metadata: PcdSourceMetadata | None
     read: Callable[[], np.ndarray]
-
-
-def require_controlled_distribution(name: str, expected: str) -> None:
-    """只接受本项目锁定的修复发行版本。"""
-    try:
-        actual = version(name)
-    except PackageNotFoundError:
-        actual = None
-    if actual != expected:
-        raise ServiceConfigurationError(
-            "点云读取依赖不满足受控版本要求",
-            details={
-                "distribution": name,
-                "expected_version": expected,
-                "actual_version": actual,
-            },
-        )
 
 
 def inspect_cloud_file(

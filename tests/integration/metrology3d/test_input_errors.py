@@ -13,7 +13,7 @@ from backend.service.application.workflows.graph_executor import WorkflowGraphEx
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from custom_nodes.metrology3d_nodes.shared.io.formats import (
+from backend.service.infrastructure.controlled_dependencies import (
     require_controlled_distribution,
 )
 from custom_nodes.metrology3d_nodes.shared.io.input_errors import parsing_input

@@ -9,6 +9,8 @@ from time import time
 from typing import BinaryIO, Iterator
 from uuid import UUID, uuid4
 
+from backend.service.application.datasets.content import content_access
+from backend.service.application.workflows.documents.storage import normalize_identifier
 from backend.service.application.errors import (
     InvalidRequestError,
     ResourceNotFoundError,
@@ -33,26 +35,24 @@ class DatasetUploadDrafts:
     ttl_seconds = 24 * 3600
 
     def __init__(self, storage: LocalDatasetStorage, project: str, principal: str):
-        owner = sha256(json.dumps([project, principal]).encode()).hexdigest()
+        project = normalize_identifier(project, "project_id")
+        owner = sha256(principal.encode()).hexdigest()
         self.storage = storage
-        self.prefix = f"dataset-upload-drafts/{owner}"
+        self.prefix = f"projects/{project}/dataset-upload-drafts/{owner}"
         self.root = storage.resolve(self.prefix)
 
     def _path(self, token: UUID) -> Path:
         return self.root / token.hex
 
     def prune(self) -> None:
-        """下次操作时回收超过一天的闲置草稿及上次退出时未完成的文件。"""
-        if self.root.is_dir():
-            for path in self.root.iterdir():
-                try:
-                    if (
-                        path.is_file()
-                        and time() - path.stat().st_mtime > self.ttl_seconds
-                    ):
-                        path.unlink(missing_ok=True)
-                except (FileNotFoundError, PermissionError):
-                    continue
+        """操作前复用全局维护使用的同一回收逻辑；活动所有者直接跳过。"""
+        from .upload_draft_cleanup import prune_owner
+
+        prune_owner(self.storage, self.prefix, cutoff=time() - self.ttl_seconds)
+
+    def access(self):
+        """持有已有跨进程共享句柄锁，阻止维护清理，不阻止同一用户并行上传。"""
+        return content_access(self.storage, f"upload-drafts:{self.prefix}")
 
     def upload(self, name: str, stream: BinaryIO) -> UploadDraft:
         """分块保存 ZIP；写入未完成前不会发给调用者可用回执。"""
@@ -62,29 +62,33 @@ class DatasetUploadDrafts:
         self.prune()
         token = uuid4()
         path = self._path(token)
-        try:
-            size = self.storage.write_stream(
-                f"{self.prefix}/{token.hex}",
-                stream,
-                max_bytes=self.storage.settings.max_import_package_bytes,
-            )
-            if not size:
-                raise InvalidRequestError("ZIP 文件为空")
-            self.storage.write_json(f"{self.prefix}/{token.hex}.json", {"name": name})
-            return UploadDraft(token.hex, name, size)
-        except Exception:
-            path.unlink(missing_ok=True)
-            path.with_suffix(".json").unlink(missing_ok=True)
-            raise
+        with self.access():
+            try:
+                size = self.storage.write_stream(
+                    f"{self.prefix}/{token.hex}",
+                    stream,
+                    max_bytes=self.storage.settings.max_import_package_bytes,
+                )
+                if not size:
+                    raise InvalidRequestError("ZIP 文件为空")
+                self.storage.write_json(
+                    f"{self.prefix}/{token.hex}.json", {"name": name}
+                )
+                return UploadDraft(token.hex, name, size)
+            except BaseException:
+                path.unlink(missing_ok=True)
+                path.with_suffix(".json").unlink(missing_ok=True)
+                raise
 
     def discard(self, token: UUID) -> None:
         """撤销未提交的文件；已消费的回执可重复撤销。"""
         path = self._path(token)
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            return
-        path.with_suffix(".json").unlink(missing_ok=True)
+        with self.access():
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                return
+            path.with_suffix(".json").unlink(missing_ok=True)
 
     @contextmanager
     def consume(self, token: UUID) -> Iterator[tuple[str, BinaryIO]]:
@@ -92,25 +96,29 @@ class DatasetUploadDrafts:
         self.prune()
         path = self._path(token)
         claimed = path.with_suffix(".submitting")
-        try:
-            path.rename(claimed)
-        except FileNotFoundError as error:
-            raise ResourceNotFoundError(
-                "上传文件已过期、已提交或不存在，请重新选择 ZIP",
-                details={"resource": "upload_draft"},
-            ) from error
-        try:
-            name = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))[
-                "name"
-            ]
-            with claimed.open("rb") as stream:
-                yield name, stream
-        except Exception:
-            claimed.rename(path)
-            raise
-        else:
-            for finished in (claimed, path.with_suffix(".json")):
-                try:
-                    finished.unlink(missing_ok=True)
-                except PermissionError:
-                    pass  # 版本提交已经完成，文件由下一次过期清理回收。
+        with self.access():
+            try:
+                # 回收冲突不会延长有效期；仍须在领取时检查文件本身。
+                if time() - path.stat().st_mtime > self.ttl_seconds:
+                    raise FileNotFoundError(path)
+                path.rename(claimed)
+            except FileNotFoundError as error:
+                raise ResourceNotFoundError(
+                    "上传文件已过期、已提交或不存在，请重新选择 ZIP",
+                    details={"resource": "upload_draft"},
+                ) from error
+            try:
+                name = json.loads(
+                    path.with_suffix(".json").read_text(encoding="utf-8")
+                )["name"]
+                with claimed.open("rb") as stream:
+                    yield name, stream
+            except BaseException:
+                claimed.rename(path)
+                raise
+            else:
+                for finished in (claimed, path.with_suffix(".json")):
+                    try:
+                        finished.unlink(missing_ok=True)
+                    except PermissionError:
+                        pass  # 提交已完成，由维护回收锁保护下的残留文件。

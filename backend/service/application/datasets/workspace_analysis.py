@@ -11,6 +11,7 @@ from PIL import Image
 from backend.service.application.datasets.content import content_key
 
 from backend.contracts.datasets.workspace_jobs import DatasetDerivation
+from backend.contracts.datasets.sample_media import ENTRY_TYPES, SOURCE_ASSETS
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
@@ -223,8 +224,35 @@ def stable_sample_id(sample):
     return str(sample.metadata.get("origin_sample_id") or sample.sample_id)
 
 
+def _media_comparison(storage, version, sample, tick):
+    """读取原始附件摘要及公开语义字段；不比较派生预览或包内文件名。"""
+    media = sample.metadata.get("sample_media", {})
+    if not media and version.task_type not in ENTRY_TYPES:
+        return {}, {}
+    kind = media.get("kind")
+    if kind != version.task_type or kind not in ENTRY_TYPES:
+        raise InvalidRequestError("样本媒体类型与数据集不一致，不能可靠比较")
+    from .imports.formats.sample_media import asset_path
+
+    declared = set(media.get("assets", ()))
+    required = {"point-cloud": {"cloud"}, "rgbd": {"depth"}}.get(kind, set())
+    if not required.issubset(declared):
+        raise InvalidRequestError("样本缺少必需的原始附件声明，不能可靠比较")
+    path = image_path(storage, version, sample)
+    digests = {
+        name: file_digest(asset_path(path, name), tick)
+        for name in SOURCE_ASSETS if name in declared
+    }
+    fields = ENTRY_TYPES[kind].model_fields.keys() - {
+        "id", "origin_id", "split", "image", *SOURCE_ASSETS,
+    }
+    semantic = {name: media.get(name) for name in fields}
+    semantic["kind"] = kind
+    return digests, semantic
+
+
 def compare_versions(storage, before, after, tick):
-    """分别报告图像、标注、类别和划分变化；不自动合并版本。"""
+    """比较原始图片/附件、物理语义、标注、类别和划分，不用预览代替原件。"""
     left = {stable_sample_id(s): s for s in before.samples}
     right = {stable_sample_id(s): s for s in after.samples}
     if len(left) != len(before.samples) or len(right) != len(after.samples):
@@ -261,9 +289,16 @@ def compare_versions(storage, before, after, tick):
                 for ann in (*a.annotations, *b.annotations)
             ):
                 kinds.append("categories")
-            if file_digest(image_path(storage, before, a), tick) != file_digest(
-                image_path(storage, after, b), tick
-            ):
+            left_assets, left_fields = _media_comparison(storage, before, a, tick)
+            right_assets, right_fields = _media_comparison(storage, after, b, tick)
+            for name in SOURCE_ASSETS:
+                if left_assets.get(name) != right_assets.get(name):
+                    kinds.append(name)
+            if left_fields != right_fields:
+                kinds.append("media_metadata")
+            if before.task_type != "point-cloud" and after.task_type != "point-cloud" and file_digest(
+                image_path(storage, before, a), tick
+            ) != file_digest(image_path(storage, after, b), tick):
                 kinds.append("image")
         if kinds:
             counts.update(kinds)

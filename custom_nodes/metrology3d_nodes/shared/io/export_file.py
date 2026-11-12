@@ -16,7 +16,7 @@ from backend.contracts.workflows.cloud_normal_info import NORMAL_STATES
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
 )
-from custom_nodes.metrology3d_nodes.shared.io.formats import (
+from backend.service.infrastructure.controlled_dependencies import (
     require_controlled_distribution,
 )
 

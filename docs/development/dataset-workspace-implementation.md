@@ -139,7 +139,7 @@
 
 ## 数据集传输向导和详情（2026-11-10）
 
-- 上传草稿：`POST /api/v1/datasets/upload-drafts` 接收 multipart 的 `package` 和 `project_id`，返回 `draft_id`、文件名、大小。草稿按项目及主体隔离，24 小时后过期，下次操作时清理。取消和换文件时用 `DELETE /api/v1/datasets/upload-drafts/{draft_id}?project_id=…` 释放。
+- 上传草稿：`POST /api/v1/datasets/upload-drafts` 接收 multipart 的 `package` 和 `project_id`，返回 `draft_id`、文件名、大小。草稿按项目及主体隔离，24 小时后过期；操作前、服务启动及统一维护命令均使用同一回收逻辑。全局维护不依赖原用户再次登录。取消和换文件时用 `DELETE /api/v1/datasets/upload-drafts/{draft_id}?project_id=…` 释放。
 - 提交导入：`POST /api/v1/datasets/imports` 接受原有的文件上传或一个 `draft_id`，二选一。提交成功消费草稿。创建版本时可通过三项同名 `split_ratios` 表单字段和 `split_seed` 请求可复现的 train、val、test 重新划分。当前版本追加沿用原接口。
 - 导出：`POST /api/v1/datasets/exports` 可传 `included_splits`、`package_name` 和 `source_category_ids`。类别数组按目标 ID 从 0 连续排列，`category_names` 给出对应输出名称。对象检测、分割、关键点与旋转框允许排除类别；在所选划分内保留图像，仅输出勾选类别的标注。图像级任务保留完整类别集合。文件名仅控制下载名称。参数省略时采用原有语义。
 - 详情使用执行时保存的类别和划分统计，已清理的导出保留顶层清单摘要及已生成 ZIP 的名称和大小。后端存储在已有元数据字段中。历史记录缺少快照时显示未保存或未知。

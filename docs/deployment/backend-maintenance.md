@@ -68,6 +68,19 @@
 - schema 已经位于当前 head 时不会重复备份或写库
 - full 根启动器会在 daemon、service、worker 启动前自动执行，失败时禁止继续启动
 
+### cleanup-runtime-storage
+
+- 沿用现有运行目录回收命令，同时全局扫描所有项目、所有主体的过期数据集上传草稿。输出增加 `deleted_upload_draft_files`；`deleted_count` 包含实际删除的草稿文件数量。
+- 草稿有效期固定为既有的 24 小时，不被运行目录的 `--retention-hours` 参数缩短；`--now-iso` 同时用于两类清理的时间核对。
+- 新草稿属于 `projects/{project_id}/dataset-upload-drafts/`，随项目既有删除/回滚流程回收；升级前根目录 `dataset-upload-drafts/` 只做过期回收，不保留旧回执读取分支。升级前须停止旧服务，旧回执需重新上传。
+- 上传、提交持共享句柄锁；维护只尝试排他锁，活动操作直接跳过，不等待、不删正在使用的 `.submitting` 文件。正文和元数据按同一回执分组，全部过期后才回收。异常退出释放锁后可由下一次维护回收。
+- 服务启动会执行同一草稿扫描；持续运行环境应将本命令纳入既有定期运维计划。本轮不增加常驻清理线程或另一套调度器。文件权限导致的删除失败保留待下次处理。
+
+```powershell
+conda activate amvision
+python -m backend.maintenance.main cleanup-runtime-storage --output json
+```
+
 ### rebuild-pycache
 
 - 删除并重新生成 Python `__pycache__` 字节码缓存
