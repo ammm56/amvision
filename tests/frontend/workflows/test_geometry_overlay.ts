@@ -6,6 +6,16 @@ import type {TransformControls} from 'three/addons/controls/TransformControls.js
 const policy={max_points:1000,max_data_bytes:100000,max_cpu_bytes:10000000,max_gpu_bytes:10000000,max_canvas_pixels:1000000,max_position_error:.001}
 const payload={observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[1000000,0,0],max:[1000004,4,4]}}
 const roi={roi_id:'r',frame_id:'fixture',length_unit:'mm',kind:'box',geometry:{center:[1000002,2,2],size:[2,2,2],rotation:[[1,0,0],[0,1,0],[0,0,1]]}}
+it('focuses one measured record or a real pair through existing geometry without voxel corners',()=>{
+  const overlay=createGeometryOverlay(new Scene(),new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})
+  try{
+    overlay.update({payload,edgePoints:[[1000001,2,3]]});expect(overlay.focus('edge')!.center.toArray()).toEqual([1,2,3])
+    overlay.update({payload,edgePoints:[[1000001,2,3],[1000003,2,3]]});expect(overlay.focus('edge')!.center.toArray()).toEqual([2,2,3]);expect(overlay.focus('edge')!.radius).toBe(1)
+    overlay.evidenceVisibility(false);expect(overlay.focus('edge')).toBeNull()
+    overlay.update({payload,edgePoints:null});expect(overlay.focus('edge')).toBeNull()
+  }finally{overlay.dispose()}
+  expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+})
 it('hides measurement evidence independently of ROI without rebuilding or retaining old objects',()=>{
   const scene=new Scene(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})
   const body={...payload,geometry:{format_id:'amvision.geometry-preview.v1',observation_id:'obs',frame_id:'fixture',length_unit:'mm',curves:[],planes:[{feature_id:'plane',valid:true,geometry:{normal:[0,0,1],offset:-2},support_bounds:payload.bounds}]}}

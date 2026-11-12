@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.contracts.workflows.boundary3d import ExtractBoundaryNodeParameters
+from backend.contracts.workflows.edge_extraction import BoundaryExtractionNodeParameters
 from backend.contracts.workflows.boundary3d_debug import (
     DebugBinary,
     BoundaryDebugReference,
@@ -15,12 +15,12 @@ from tests.integration.metrology3d.test_boundary_extraction import extract_param
 def test_capture_is_strict_off_by_default_and_outside_method():
     """不隐式启用、不接受字符串 bool，不把显示开关写入方法摘要。"""
     settings = extract_parameters()
-    disabled = ExtractBoundaryNodeParameters(settings=settings)
-    enabled = ExtractBoundaryNodeParameters(settings=settings, capture_debug=True)
+    disabled = BoundaryExtractionNodeParameters(settings=settings)
+    enabled = BoundaryExtractionNodeParameters(settings=settings, capture_debug=True)
     assert disabled.capture_debug is False
     assert parameter_digest(disabled.settings) == parameter_digest(enabled.settings)
     with pytest.raises(ValidationError):
-        ExtractBoundaryNodeParameters(settings=settings, capture_debug="true")
+        BoundaryExtractionNodeParameters(settings=settings, capture_debug="true")
 
 
 def test_reference_requires_call_identity():

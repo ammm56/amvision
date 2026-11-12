@@ -46,7 +46,7 @@ def test_missing_dependency_stays_visible_but_not_executable(monkeypatch):
     original = module.distribution_version
 
     def version(name):
-        if name == "open3d":
+        if name in {"open3d", "open3d-cpu"}:
             raise module.PackageNotFoundError(name)
         return original(name)
 
@@ -68,8 +68,10 @@ def test_missing_dependency_stays_visible_but_not_executable(monkeypatch):
     assert manifest.compatibility.current_incompatibilities() == (
         {
             "field": "pythonDistributions",
-            "distribution": "open3d",
-            "required": "==0.20.0",
+            "distribution": "open3d"
+            if module.platform.system().lower() == "windows"
+            else "open3d-cpu",
+            "required": "==0.20.0+amvision.1",
             "actual": None,
         },
     )

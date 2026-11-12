@@ -15,7 +15,7 @@ def test_ransac_refits_and_preserves_original_inlier_rows():
     """真实 Open3D 候选、正交重拟合及内点原始行号。"""
     import open3d
 
-    assert open3d.__version__ == "0.20.0"
+    assert open3d.__version__ == "0.20.0+amvision.1"
     grid = np.array([(x, y, 5) for x in range(8) for y in range(8)], dtype=np.float32)
     points = np.concatenate(([[0, 0, 30]], grid, [[1, 1, -20]])).astype(np.float32)
     scope, runtime, cloud = make_cloud(

@@ -41,7 +41,9 @@ def coarse_register_arrays(
     cancel,
 ):
     """按配方完成全部批次；不使用默认双向匹配降级、不隐式下采样。"""
-    import open3d as o3d
+    from custom_nodes.metrology3d_nodes.shared.native_geometry import require_open3d
+
+    o3d = require_open3d()
 
     search = parameters.search
     cancel()

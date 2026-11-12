@@ -34,13 +34,22 @@ from backend.contracts.workflows.boundary3d_observations import BoundaryEvidence
 from backend.contracts.workflows.raster3d import RasterSource
 from backend.contracts.workflows.profile3d import ProfileSource
 from backend.contracts.workflows.height_map_evidence import HeightMapEvidence
+from backend.contracts.workflows.edge_sampling_evidence import SamplingEvidence
+from backend.contracts.workflows.edge_evidence import EdgeEvidence
 
 
 class CloudBlob(Contract):
     """仅允许格式规定的成员，实际对象键由服务生成。"""
 
     role: Literal[
-        "original", "data", "indices", "lineage", "profile-rows", "height-map"
+        "original",
+        "data",
+        "indices",
+        "lineage",
+        "profile-rows",
+        "height-map",
+        "sampling",
+        "edge",
     ]
     name: Literal[
         "original.bin",
@@ -49,6 +58,8 @@ class CloudBlob(Contract):
         "lineage.bin",
         "profile-rows.bin",
         "height-map.bin",
+        "sampling.bin",
+        "edge.bin",
     ]
     content_length: JsonCount
     sha256: Sha256
@@ -65,6 +76,8 @@ class CloudBlob(Contract):
                 "lineage": "lineage.bin",
                 "profile-rows": "profile-rows.bin",
                 "height-map": "height-map.bin",
+                "sampling": "sampling.bin",
+                "edge": "edge.bin",
             }[self.role]
         ):
             raise ValueError("点云数据块角色与名称不一致")
@@ -251,7 +264,7 @@ class CloudAssetBase(Contract):
     source: AssetSource
     spatial: CloudSpatial
     provenance: AssetProvenance
-    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=4)]
+    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=6)]
     source_field_names: tuple[CloudSourceNames, ...]
     parent_assets: tuple[ResourceReference, ...]
     point_count: JsonCount
@@ -263,6 +276,10 @@ class CloudAssetBase(Contract):
     height_map: HeightMapEvidence | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
+    sampling: SamplingEvidence | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    edge: EdgeEvidence | None = Field(default=None, exclude_if=lambda v: v is None)
 
     def original_observation(self) -> tuple[AssetSource, int]:
         """返回持久内容中的原始观测及记录总数，不解析外部父资产。"""
@@ -272,6 +289,33 @@ class CloudAssetBase(Contract):
     def check_common(self) -> Self:
         """不允许遗漏属性映射、伪造父保留或组织点数。"""
         unique_ids([b.role for b in self.blobs], "blobs")
+        edge_blob = next((b for b in self.blobs if b.role == "edge"), None)
+        if (self.edge is None) != (edge_blob is None):
+            raise ValueError("实测边证据与数据块不一致")
+        if self.edge is not None:
+            e = self.edge
+            if (
+                self.representation != "array-blocks"
+                or self.vertex_kind != "source"
+                or e.input_count != self.point_count
+                or (e.evaluation.frame_id, e.evaluation.length_unit)
+                != (self.spatial.frame_id, self.spatial.length_unit)
+                or edge_blob.content_length != e.byte_length()
+                or (e.method.kind == "height-jump" and self.height_map is None)
+                or (e.method.kind == "normal-crease" and self.normal_info is None)
+            ):
+                raise ValueError("实测边必须随同一完整输入及评价来源保存")
+        sampling_blob = next((b for b in self.blobs if b.role == "sampling"), None)
+        if (self.sampling is None) != (sampling_blob is None):
+            raise ValueError("采样诊断证据与数据块不一致")
+        if self.sampling is not None and (
+            self.representation != "array-blocks"
+            or self.normal_info is None
+            or self.sampling.input_count != self.point_count
+            or self.sampling.vertex_kind != self.vertex_kind
+            or sampling_blob.content_length != self.sampling.byte_length()
+        ):
+            raise ValueError("采样诊断必须与参与计算的完整点云及法向一同保存")
         height_blob = next((b for b in self.blobs if b.role == "height-map"), None)
         if (self.height_map is None) != (height_blob is None):
             raise ValueError("高度图证据与数据块不一致")

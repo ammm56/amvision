@@ -1,8 +1,25 @@
 """边界指标的固定字段和单位；限值判定仍由既有比较器负责。"""
 
+from pydantic import Field
+from backend.contracts.workflows.metrology import Contract, Identifier
+from backend.contracts.workflows.geometry3d_quality import GeometryQuality
+
+
+class SegmentQuality(Contract):
+    """每个实测段独立质量，由所有边界方法共同使用。"""
+
+    segment_id: Identifier
+    group_id: Identifier | None = Field(default=None, exclude_if=lambda v: v is None)
+    quality: GeometryQuality
+
 
 def boundary_metric_units(kind, unit):
     """返回各方法实际公开的完整指标集合。"""
+    if kind in ("height-jump", "normal-crease"):
+        result = dict(support_count="1", length=unit, max_pair_distance=unit)
+        if kind == "height-jump":
+            result["max_planar_gap"] = unit
+        return result
     if kind in ("boundary", "visible-envelope"):
         result = dict(
             input_count="1",

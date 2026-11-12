@@ -122,8 +122,13 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     // OrbitControls 在构造时冻结 up 的变换，换轴必须同步重建控制器。
     bindControls(); controls!.target.set(0, 0, 0); controls!.update(); publishView(); schedule()
   }
-  function focusBounds(bounds:{center:Vector3;radius:number}|null|undefined){
+  function focusBounds(bounds:{center:Vector3;radius:number}|null|undefined,preserveScale=false){
     if(closed||!bounds)return
+    if(preserveScale){
+      // 实测记录只平移视野，避免单点零尺寸导致过度放大并丢失周围支持。
+      camera.position.add(bounds.center.clone().sub(controls!.target))
+      controls!.target.copy(bounds.center);controls!.update();schedule();return
+    }
     viewRadius=bounds.radius
     const direction=camera.position.clone().sub(controls!.target).normalize()
     const distance=viewRadius*3/Math.min(1,width/height)
@@ -209,7 +214,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
         if(closed)return
         try{active=value;pointDown=null;detailChanged?.();const box=host.getBoundingClientRect();resize(box.width,box.height)}catch(error){dispose();failed(error as Error)}
       },
-      focus(kind:GeometryFocus){focusBounds(overlay?.focus(kind))},
+      focus(kind:GeometryFocus){focusBounds(overlay?.focus(kind),kind==='edge')},
       focusVoxel(corners:number[][]){
         if(corners.length!==8||corners.some(v=>v.length!==3||v.some(n=>!Number.isFinite(n))))throw new Error('cloud_preview_invalid')
         const box=new Box3().setFromPoints(corners.map(v=>new Vector3(...v as [number,number,number]).sub(new Vector3(...data.origin as [number,number,number]))))

@@ -38,8 +38,9 @@ export interface DimensionFeatureChoice {id:string;kind:string;segments:string[]
 export function dimensionFeatureChoices(sources:ParameterEditorSources):DimensionFeatureChoice[]{
   return (sources.features??[]).flatMap(source=>{
     const p=object(source.parameters.settings)
+    const targets=['height-jump','normal-crease'].includes(String(object(p.method).kind))?object(p.selection).targets:p.targets
     const kind=source.nodeTypeId==='custom.metrology3d.fit-circle'?'circle':source.nodeTypeId==='custom.metrology3d.fit-line'?'line':source.nodeTypeId==='custom.metrology3d.extract-boundary'?'boundary':null
-    if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&object(p.method).kind==='visible-envelope'?[...profileSides]:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>object(t).segment_id).filter(id) as string[]:[],groups:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>object(t).group_id).filter(id) as string[]:[],nodeId:source.nodeId}]
+    if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&object(p.method).kind==='visible-envelope'?[...profileSides]:kind==='boundary'&&Array.isArray(targets)?targets.map(t=>object(t).segment_id).filter(id) as string[]:[],groups:kind==='boundary'&&Array.isArray(targets)?targets.map(t=>object(t).group_id).filter(id) as string[]:[],nodeId:source.nodeId}]
     // 恢复资产的身份只取该连线端口本次输出，不能借用其他预览窗口的同名特征。
     const output=object(source.previewOutput)
     if(output.format_id!=='amvision.features3d.v1'||!Array.isArray(output.items))return []

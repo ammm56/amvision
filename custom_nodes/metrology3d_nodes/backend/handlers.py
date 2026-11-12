@@ -79,6 +79,7 @@ def read(request):
     env = require_node_runtime(request)
     env.cancel()
     evidence = None
+    document = None
     if p.source.kind == "file":
         cloud = read_file_reference(
             runtime=env.runtime,
@@ -99,9 +100,8 @@ def read(request):
             policy=env.policy.assets(),
             cancel=env.cancel,
         )
-        evidence = env.service.read(
-            p.source.reference, project_id=env.project_id
-        ).content.point_cloud.boundary
+        document = env.service.read(p.source.reference, project_id=env.project_id)
+        evidence = document.content.point_cloud.boundary
     result = {"cloud": cloud.model_dump(mode="json")}
     if p.source.kind != "file":
         from custom_nodes.metrology3d_nodes.shared.height_map_assets import (
@@ -114,16 +114,45 @@ def read(request):
         saved = read_height_map(
             env.runtime,
             cloud,
-            document=env.service.read(p.source.reference, project_id=env.project_id),
+            document=document,
             service=env.service,
             project_id=env.project_id,
             policy=env.policy.assets(),
             cancel=env.cancel,
         )
-        if saved is not None:
-            result["height_map"] = publish_height_map(env.runtime, saved).model_dump(
-                mode="json"
-            )
+        height_ref = (
+            publish_height_map(env.runtime, saved) if saved is not None else None
+        )
+        if height_ref is not None:
+            result["height_map"] = height_ref.model_dump(mode="json")
+        from custom_nodes.metrology3d_nodes.shared.edge_assets import read_edge
+        from custom_nodes.metrology3d_nodes.shared.edge_sampling_assets import (
+            read_sampling,
+        )
+        from custom_nodes.metrology3d_nodes.shared.edge_reference import (
+            publish_edge_diagnostic,
+        )
+
+        arguments = dict(
+            document=document,
+            service=env.service,
+            project_id=env.project_id,
+            policy=env.policy.assets(),
+            cancel=env.cancel,
+        )
+        edge = read_edge(env.runtime, cloud, **arguments)
+        sampling = read_sampling(env.runtime, cloud, **arguments)
+        if edge is not None or sampling is not None:
+            result["diagnostics"] = publish_edge_diagnostic(
+                env.runtime,
+                cloud,
+                edge,
+                sampling_result=sampling,
+                height_map=height_ref
+                if document.content.point_cloud.edge is not None
+                and document.content.point_cloud.edge.method.kind == "height-jump"
+                else None,
+            ).model_dump(mode="json")
     # 未确认物理空间的原件只能输出 cloud，不伪造 Features3d 的单位或坐标。
     if cloud.spatial.frame_id is not None and cloud.spatial.length_unit is not None:
         from custom_nodes.metrology3d_nodes.shared.boundary_assets import (
@@ -131,6 +160,23 @@ def read(request):
         )
 
         result["features"] = restore_boundary(cloud, evidence).model_dump(mode="json")
+        if document is not None and document.content.point_cloud.edge is not None:
+            parameters = document.content.point_cloud.edge.extraction
+            if parameters is not None:
+                from custom_nodes.metrology3d_nodes.shared.edge_extraction import (
+                    edge_features,
+                )
+
+                result["features"] = edge_features(
+                    env.runtime,
+                    cloud,
+                    parameters,
+                    edge,
+                    height_map=height_ref
+                    if parameters.method.kind == "height-jump"
+                    else None,
+                    cancel=env.cancel,
+                ).model_dump(mode="json")
     return result
 
 
@@ -188,6 +234,15 @@ def preview(request):
     base_policy = preview_base_policy(
         env.runtime, request.input_values, env.policy.preview, cancel=env.cancel
     )
+    from custom_nodes.metrology3d_nodes.shared.edge_preview import (
+        edge_base_policy,
+        attach_edge_diagnostic,
+    )
+
+    diagnostic_policy = base_policy
+    base_policy = edge_base_policy(
+        env.runtime, cloud, request.input_values.get("diagnostics"), base_policy
+    )
     from custom_nodes.metrology3d_nodes.shared.height_map_preview import (
         attach_height_map,
         height_map_base_policy,
@@ -226,6 +281,14 @@ def preview(request):
         policy=base_policy,
         cancel=env.cancel,
     )
+    body = attach_edge_diagnostic(
+        env.runtime,
+        cloud,
+        body,
+        request.input_values.get("diagnostics"),
+        policy=diagnostic_policy,
+        cancel=env.cancel,
+    )
     return {
         "body": attach_debug(
             env.runtime,
@@ -255,6 +318,20 @@ def save(request):
         if value is not None
         else None
     )
+    from custom_nodes.metrology3d_nodes.shared.edge_reference import (
+        resolve_edge_diagnostic,
+    )
+
+    edge = sampling = None
+    diagnostic_value = request.input_values.get("diagnostics")
+    if diagnostic_value is not None:
+        ref, edge, sampling = resolve_edge_diagnostic(
+            env.runtime, diagnostic_value, cloud=cloud
+        )
+        if ref.height_map is not None:
+            if value is not None and ref.height_map.model_dump(mode="json") != value:
+                raise InvalidRequestError("保存输入的高度图与边诊断不属于同次计算")
+            height_map = resolve_height_map(env.runtime, ref.height_map, cloud=cloud)
     reference = save_cloud(
         env.runtime,
         cloud,
@@ -268,6 +345,8 @@ def save(request):
         cancel=env.cancel,
         features=request.input_values.get("features"),
         height_map=height_map,
+        edge=edge,
+        sampling=sampling,
     )
     return {"resource": reference.model_dump(mode="json")}
 

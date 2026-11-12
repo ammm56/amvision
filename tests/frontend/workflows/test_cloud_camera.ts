@@ -21,6 +21,30 @@ vi.mock('three',async importOriginal=>{
 })
 vi.stubGlobal('ResizeObserver',class{constructor(callback:ResizeObserverCallback){captured.resize=callback}observe(){}disconnect(){}})
 const policy={max_points:10,max_data_bytes:1000,max_cpu_bytes:10000,max_gpu_bytes:10000000,max_canvas_pixels:1000000,max_position_error:.001}
+
+it('centers diagnostic points without changing the current scale or orientation',()=>{
+  vi.useFakeTimers()
+  const host=document.createElement('div')
+  vi.spyOn(host,'getBoundingClientRect').mockReturnValue({width:600,height:400} as DOMRect)
+  const data={positions:new Float32Array([-1,-1,0,1,1,0]),colors:new Float32Array(6),origin:[0,0,0]} as CloudDisplayData
+  const failed=vi.fn(),view=createCloudRenderer(host,data,policy,()=>{},failed,()=>{})
+  try{
+    for(const orthographic of [true,false]){
+      view.projection(orthographic);view.zoom(true);vi.advanceTimersByTime(20)
+      const control=captured.controls.at(-1)!,camera=control.object as OrthographicCamera|PerspectiveCamera
+      const zoom=camera.zoom,offset=camera.position.clone().sub(control.target),rotation=camera.quaternion.clone(),matrix=camera.projectionMatrix.clone()
+      for(const points of [[[7,8,9]],[[7,8,9],[9,8,9]]]){
+        view.geometry({payload:{spatial:{frame_id:'fixture',length_unit:'mm'}},edgePoints:points})
+        view.focus('edge');vi.advanceTimersByTime(20)
+        expect(control.target.distanceTo(new Vector3(points.length===1?7:8,8,9))).toBeLessThan(1e-12)
+        expect(camera.position.clone().sub(control.target).distanceTo(offset)).toBeLessThan(1e-12)
+        expect(camera.quaternion.angleTo(rotation)).toBeLessThan(1e-7)
+        expect(camera.zoom).toBe(zoom);expect(camera.projectionMatrix.equals(matrix)).toBe(true)
+      }
+    }
+    expect(failed).not.toHaveBeenCalled()
+  }finally{view.dispose()}
+})
 afterEach(()=>{vi.useRealTimers();captured.controls=[];expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})})
 it('does not restart detail loading on unchanged ResizeObserver notifications',()=>{
   vi.useFakeTimers()

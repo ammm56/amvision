@@ -221,6 +221,8 @@ def save_cloud(
     actor_id=None,
     features=None,
     height_map=None,
+    sampling=None,
+    edge=None,
 ):
     """保存原件或全部派生字段；已提交版本由服务拥有，不归运行 Scope 删除。"""
     if mode not in ("original", "derived"):
@@ -241,7 +243,7 @@ def save_cloud(
     with runtime.producing(), ExitStack() as stack:
         view = stack.enter_context(runtime.borrow(selected))
         if selected.source.kind == "asset" and (
-            height_map is None
+            (height_map is None and sampling is None and edge is None)
             or isinstance(
                 service.read(
                     selected.source.reference, project_id=project_id
@@ -502,6 +504,49 @@ def save_cloud(
             ] + [blob.model_dump(mode="json")]
             content = MeasurementResourceContent.model_validate(payload)
             streams[blob.name] = stream
+        if sampling is not None:
+            from custom_nodes.metrology3d_nodes.shared.edge_sampling_assets import (
+                prepare_sampling,
+            )
+
+            evidence, blob, stream = stack.enter_context(
+                prepare_sampling(
+                    runtime,
+                    selected,
+                    sampling,
+                    mode=mode,
+                    chunk_bytes=policy.chunk_bytes,
+                    cancel=cancel,
+                )
+            )
+            payload = content.model_dump(mode="json")
+            payload["point_cloud"]["sampling"] = evidence.model_dump(mode="json")
+            payload["point_cloud"]["blobs"] = [
+                b for b in payload["point_cloud"]["blobs"] if b["role"] != "sampling"
+            ] + [blob.model_dump(mode="json")]
+            content = MeasurementResourceContent.model_validate(payload)
+            streams[blob.name] = stream
+        if edge is not None:
+            from custom_nodes.metrology3d_nodes.shared.edge_assets import prepare_edge
+
+            evidence, blob, stream = stack.enter_context(
+                prepare_edge(
+                    runtime,
+                    selected,
+                    edge,
+                    mode=mode,
+                    chunk_bytes=policy.chunk_bytes,
+                    cancel=cancel,
+                    height_evidence=content.point_cloud.height_map,
+                )
+            )
+            payload = content.model_dump(mode="json")
+            payload["point_cloud"]["edge"] = evidence.model_dump(mode="json")
+            payload["point_cloud"]["blobs"] = [
+                b for b in payload["point_cloud"]["blobs"] if b["role"] != "edge"
+            ] + [blob.model_dump(mode="json")]
+            content = MeasurementResourceContent.model_validate(payload)
+            streams[blob.name] = stream
         return service.save_cloud(
             project_id=project_id,
             name=name,
@@ -708,8 +753,8 @@ def _read_blocks(runtime, document, service, policy, cancel):
                 elif blob.role == "profile-rows":
                     for value in profile_arrays.values():
                         _fill(checked, value, policy.chunk_bytes, cancel)
-                elif blob.role == "height-map":
-                    # 高度图由读取方按需恢复；此处仍完整校验，不能漏掉坏数据块。
+                elif blob.role in {"height-map", "sampling", "edge"}:
+                    # 附属证据由读取方按需恢复；此处仍完整校验，不能漏掉坏数据块。
                     checked = CheckedBlobStream(snapshot.stream, blob, cancel, cloud)
                     while checked.read(policy.chunk_bytes):
                         pass

@@ -1,9 +1,13 @@
 """M3.2 三节点接线；复用既有 Scope、参数 Schema 和执行控制。"""
 
 from backend.contracts.workflows.boundary3d import (
-    ExtractBoundaryNodeParameters,
     FitLineNodeParameters,
     FitCircleNodeParameters,
+)
+from backend.contracts.workflows.edge_extraction import (
+    BoundaryExtractionNodeParameters,
+    MeasuredEdgeParameters,
+    SamplingExtractionParameters,
 )
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
@@ -21,13 +25,81 @@ from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
 
 
 def extract(request):
-    """只有等高方法接受基准平面端口；不猜第一个平面。"""
-    node_parameters = ExtractBoundaryNodeParameters.model_validate(request.parameters)
+    """按显式方法校验输入；未连接的多输入端口由执行器传空列表。"""
+    node_parameters = BoundaryExtractionNodeParameters.model_validate(
+        request.parameters
+    )
     parameters = node_parameters.settings
     env = require_node_runtime(request)
     values = request.input_values
     groups = [Features3d.model_validate(raw) for raw in values.get("features") or ()]
     reference = cloud_input(request, env.runtime)
+    if isinstance(parameters, (MeasuredEdgeParameters, SamplingExtractionParameters)):
+        if values.get("pose") is not None or any(
+            values.get(key) not in (None, [], ()) for key in ("features", "evidence")
+        ):
+            raise InvalidRequestError(
+                "实测边和采样诊断不接受额外的平面、位姿或尺寸输入"
+            )
+        if isinstance(parameters, SamplingExtractionParameters):
+            if values.get("height_map") is not None:
+                raise InvalidRequestError("采样诊断不接受高度图")
+            from custom_nodes.metrology3d_nodes.shared.edge_sampling import (
+                sampling_candidates,
+            )
+            from custom_nodes.metrology3d_nodes.shared.edge_sampling_context import (
+                sampling_context,
+            )
+            from custom_nodes.metrology3d_nodes.shared.edge_reference import (
+                publish_edge_diagnostic,
+            )
+
+            candidates = sampling_candidates(
+                env.runtime, reference, parameters.method, cancel=env.cancel
+            )
+            result = None
+            try:
+                result = sampling_context(env.runtime, candidates, cancel=env.cancel)
+                diagnostic = publish_edge_diagnostic(
+                    env.runtime, reference, sampling_result=result
+                )
+            except BaseException:
+                if result is not None:
+                    env.runtime.storage_scope.close_resource(result.resource_key)
+                env.runtime.storage_scope.close_resource(candidates.resource_key)
+                raise
+            return {
+                "cloud": reference.model_dump(mode="json"),
+                "source_cloud": reference.model_dump(mode="json"),
+                "diagnostics": diagnostic.model_dump(mode="json"),
+            }
+        from backend.contracts.workflows.height_map_reference import HeightMapReference
+        from custom_nodes.metrology3d_nodes.shared.edge_extraction import (
+            extract_measured_edge,
+        )
+
+        height = (
+            HeightMapReference.model_validate(values["height_map"])
+            if values.get("height_map") is not None
+            else None
+        )
+        result, diagnostic = extract_measured_edge(
+            env.runtime, reference, parameters, height_map=height, cancel=env.cancel
+        )
+        feature = result.items[0]
+        cloud = (
+            feature.support
+            if feature.valid
+            else feature.support.unavailable(feature.reason)
+        )
+        return {
+            "cloud": cloud.model_dump(mode="json"),
+            "source_cloud": reference.model_dump(mode="json"),
+            "features": result.model_dump(mode="json"),
+            "diagnostics": diagnostic.model_dump(mode="json"),
+        }
+    if values.get("height_map") is not None:
+        raise InvalidRequestError("该边界方法不接受高度图")
     pose = (
         Pose3d.model_validate(values["pose"])
         if values.get("pose") is not None

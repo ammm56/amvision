@@ -432,15 +432,6 @@ class BoundaryTopology(Contract):
         return self
 
 
-class ExtractBoundaryNodeParameters(Contract):
-    """边界参数编辑器使用平台既有 settings 字段。"""
-
-    settings: ExtractBoundaryParameters = Field(
-        json_schema_extra={"x-ui-widget": "boundary-settings"}
-    )
-    capture_debug: StrictBool = Field(default=False, title="捕获边界调试证据")
-
-
 class FitLineNodeParameters(Contract):
     """直线参数与 Catalog 共用一个 Schema。"""
 

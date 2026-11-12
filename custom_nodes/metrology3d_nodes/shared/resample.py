@@ -18,7 +18,9 @@ def voxel_resample(
     points, identities, settings, *, max_working_bytes, chunk_rows, cancel
 ):
     """完整格分区只限制原生工作集；trace 是实际分组来源，不平均分块质心。"""
-    import open3d as o3d
+    from custom_nodes.metrology3d_nodes.shared.native_geometry import require_open3d
+
+    o3d = require_open3d()
 
     count = len(points)
     base = count * 192

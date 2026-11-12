@@ -5,10 +5,16 @@ import {evaluationIssues,axisDirection} from './evaluation-form'
 import {newEnvelope,envelopeIssues} from './envelope-form'
 import {fragmentIssues,selectionIssues,robustIssues} from './circle-form'
 import {dimensionFeatureChoices} from './dimension-form'
+import {edgeIssues,isEdge} from './edge-form'
 
 export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const kind=node.node_type_id.split('.').at(-1)!,p=object(node.parameters.settings),issues=boundaryIssues(kind,p)
   if(kind==='extract-boundary'){
+    if(isEdge(p)){
+      if(sources.features?.length||sources.pose?.length||sources.evidence?.length)issues.push(zh?'实测边 / 采样诊断不接受平面、位姿或尺寸端口':'Edge diagnostics do not accept plane, pose or measurement ports')
+      if((object(p.method).kind==='height-jump')?(sources.height_map?.length!==1):!!sources.height_map?.length)issues.push(zh?'高度图连接与提取方法不一致':'Height map connection differs from extraction method')
+      return issues
+    }
     const m=object(p.method),e=object(p.evaluation),h=object(m.height),dynamic=['pose-contour','visible-envelope'].includes(String(m.kind)),ratio=dynamic&&h.kind==='measurement-ratio'
     if((m.kind==='contour'||dynamic)!==!!sources.features?.length)issues.push(zh?'等高提取需要当前平面特征':'Contour extraction requires current plane features')
     if(dynamic?(sources.pose?.length!==1):!!sources.pose?.length)issues.push(zh?'评价来源与位姿连接不一致':'Evaluation source and pose connection differ')
@@ -55,9 +61,10 @@ const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)
 const positive=(v:unknown)=>finite(v)&&v>0
 const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v)
 const unit=(v:unknown)=>vector(v)&&Math.abs(v.reduce((a,b)=>a+b*b,0)-1)<=1e-8
-function regionErrors(value:unknown,e:Form):string[]{const r=object(value),rois=Array.isArray(r.rois)?r.rois.map(object):[];return !rois.length||!rois.some(i=>i.roi_id===r.roi_id)?['ROI']: [...roiIssues(rois),...(rois.some(i=>i.frame_id!==e.frame_id||i.length_unit!==e.length_unit)?['ROI / space']:[])]}
+export function regionErrors(value:unknown,e:Form):string[]{const r=object(value),rois=Array.isArray(r.rois)?r.rois.map(object):[];return !rois.length||!rois.some(i=>i.roi_id===r.roi_id)?['ROI']: [...roiIssues(rois),...(rois.some(i=>i.frame_id!==e.frame_id||i.length_unit!==e.length_unit)?['ROI / space']:[])]}
 /** 表单只做现有规则的前置反馈，最终完整 Schema 与算法准入由后端校验。 */
 export function boundaryIssues(kind:string,value:unknown):string[]{
+  if(kind==='extract-boundary'&&isEdge(value))return edgeIssues(value)
   const p=object(value),e=object(p.evaluation),q=object(p.quality_policy),issues:string[]=[]
   if(!id(p.feature_id))issues.push('feature')
   issues.push(...evaluationIssues(e,kind==='extract-boundary'?['pose']:['feature']))

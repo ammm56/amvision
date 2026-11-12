@@ -33,7 +33,7 @@ export function boundaryArcEdit(kind:string,draft:Form,target:Form|undefined,pay
     if(extract){
       const method=object(draft.method)
       identity.push(method)
-      if(method.kind==='projection'&&!evaluation.kind)plane=evaluation
+      if(['projection','normal-crease'].includes(String(method.kind))&&!evaluation.kind)plane=evaluation
       else {
         const feature=curveItems(payload).find(f=>f.kind==='boundary'&&f.feature_id===draft.feature_id)
         const parameters=object(feature?.method.parameters),resolution=object(feature?.method.resolution)

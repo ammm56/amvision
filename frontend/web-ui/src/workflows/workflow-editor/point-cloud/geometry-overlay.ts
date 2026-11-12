@@ -15,11 +15,12 @@ import {buildDebugOverlay} from './debug-overlay'
 import type {DebugEvidence,DebugLayers,DebugSelection} from './boundary-debug'
 
 export type RoiValue=Record<string,unknown>
-export type GeometryFocus='roi'|'measurement'|'feature'|'plane'|'arc'|'debug'
+export type GeometryFocus='roi'|'measurement'|'feature'|'plane'|'arc'|'debug'|'edge'
 export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'|'scale'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[];selectedCurve?:string;selectedSegment?:string;curveColorMode?:CurveColorMode;curveSelected?:(featureId:string,segmentId:string)=>void;measurementSelected?:(id:string)=>void;arc?:ArcEdit;arcChanged?:(key:string,value:ArcValues)=>void }
 export interface GeometryOverlayInput {debug?:DebugEvidence;debugLayers?:DebugLayers;debugSelection?:DebugSelection|null;debugSelected?:(selection:DebugSelection)=>void;debugFailed?:(error:Error)=>void}
 export interface GeometryOverlayInput {selectedCurvePoint?:number|null;curvePointSelected?:(featureId:string,segmentId:string,index:number)=>void}
 export interface GeometryOverlayInput {hiddenRoiIds?:ReadonlySet<string>;roiScope?:string}
+export interface GeometryOverlayInput {edgePoints?:number[][]|null}
 const vec=(v:unknown)=>{if(!Array.isArray(v)||v.length!==3||v.some(n=>typeof n!=='number'||!Number.isFinite(n)))throw new Error('cloud_preview_invalid');return new Vector3(v[0],v[1],v[2])}
 function matrix(v:unknown,size:number){if(!Array.isArray(v)||v.length!==size||v.some(r=>!Array.isArray(r)||r.length!==size||r.some(n=>typeof n!=='number'||!Number.isFinite(n))))throw new Error('cloud_preview_invalid');return v as number[][]}
 const positive=(n:unknown)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0)throw new Error('cloud_preview_invalid');return n}
@@ -227,7 +228,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     // 取消手势已经恢复对象；父表单回传同一恢复值时不重建其他证据。
     if(restoredInput&&same){
       const restored=restoredInput;restoredInput=undefined
-      const keys=['payload','selectedId','mode','roiScope','selectedMeasurement','selectedPlane','candidate','selectedCurve','selectedSegment','curveColorMode','selectedCurvePoint','debug','debugLayers','debugSelection'] as const
+      const keys=['payload','selectedId','mode','roiScope','selectedMeasurement','selectedPlane','candidate','selectedCurve','selectedSegment','curveColorMode','selectedCurvePoint','debug','debugLayers','debugSelection','edgePoints'] as const
       if(keys.every(key=>restored[key]===next[key])&&JSON.stringify(restored.arc)===JSON.stringify(next.arc)&&JSON.stringify(restored.rois)===JSON.stringify(next.rois)){input=next;roiGraph=next.rois??[];visibility(next.hiddenRoiIds??hidden);return}
     }
     restoredInput=undefined
@@ -236,6 +237,11 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     clear()
     try {
       scene.add(root);buildEvidence(next.payload);buildMeasurements(next);buildCurves(next)
+      if(next.edgePoints?.length){
+        if(next.edgePoints.length>2)throw new Error('cloud_preview_invalid')
+        const points=next.edgePoints.map(vec),markers=new Points(pointGeometry(points),new PointsMaterial({color:0xe64672,size:9,sizeAttenuation:false,depthTest:false}));markers.userData.edge=true;root.add(markers);account(markers)
+        if(points.length===2)lines(points,0xe64672)
+      }
       evidenceObjects=[...root.children];evidenceVisibility(evidenceVisible)
       if(next.debug&&next.debugLayers){
         const layer=new Group(),owned:(()=>void)[]=[]
@@ -297,6 +303,8 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     if(kind==='roi'){
       const id=input.selectedId??'',leaves=new Set(roiLeaves(roiGraph,id)),section=roiGraph.find(r=>r.roi_id===id)?.kind==='section-band'
       for(const instance of roiInstances)if(leaves.has(instance.id)&&instance.target.visible&&(!section||instance.sections.some(s=>s.roi_id===id)))expandRoiDisplayBounds(bounds,instance.target)
+    }else if(kind==='edge'){
+      root.traverse(o=>{if(o.userData.edge&&o.visible)bounds.expandByObject(o)})
     }
     else root.traverse(o=>{const c=o.userData.curve;if(kind==='debug'&&o.userData.debug?.id===input?.debug?.id||kind==='arc'&&o.userData.arc||kind==='plane'&&!!input?.selectedPlane&&o.userData.plane===input.selectedPlane||kind==='measurement'&&!!input?.selectedMeasurement&&o.userData.measurement===input.selectedMeasurement||kind==='feature'&&!!input?.selectedCurve&&c?.featureId===input.selectedCurve&&(!input.selectedSegment||c.segmentId===input.selectedSegment||c.groupId===input.selectedSegment))bounds.expandByObject(o)})
     return bounds.isEmpty()?null:{center:bounds.getCenter(new Vector3()),radius:Math.max(bounds.getSize(new Vector3()).length()/2,1e-6)}

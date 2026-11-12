@@ -58,7 +58,6 @@ from custom_nodes.metrology3d_nodes.shared.parameters import (
     ExportCloudParameters,
 )
 from backend.contracts.workflows.boundary3d import (
-    ExtractBoundaryNodeParameters,
     FitLineNodeParameters,
     FitCircleNodeParameters,
 )
@@ -72,6 +71,8 @@ from backend.contracts.workflows.height_map_reference import (
     HeightMapReference,
     HeightMapNodeParameters,
 )
+from backend.contracts.workflows.edge_reference import EdgeDiagnosticReference
+from backend.contracts.workflows.edge_extraction import BoundaryExtractionNodeParameters
 
 
 def build_custom_node_catalog_document():
@@ -87,6 +88,7 @@ def build_custom_node_catalog_document():
         for key, title, model in (
             ("point-cloud-ref.v1", "Point Cloud", CloudReference),
             ("height-map-ref.v1", "Height Map", HeightMapReference),
+            ("edge-diagnostic-ref.v1", "Edge Diagnostics", EdgeDiagnosticReference),
             ("calibrated-raster.v1", "Calibrated Raster", WorkflowTriggerRasterInputV1),
             (
                 "calibrated-profiles.v1",
@@ -227,14 +229,20 @@ def build_custom_node_catalog_document():
             "extract-boundary",
             "Extract Boundary",
             "metrology3d.geometry",
-            ExtractBoundaryNodeParameters,
+            BoundaryExtractionNodeParameters,
             [
                 cloud,
                 port("features", "features3d.v1", False, True),
                 port("pose", "pose3d.v1", False),
                 port("evidence", "measurement-evidence3d.v1", False, True),
+                port("height_map", "height-map-ref.v1", False),
             ],
-            [cloud, port("features", "features3d.v1")],
+            [
+                cloud,
+                port("source_cloud", "point-cloud-ref.v1", False),
+                port("features", "features3d.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
+            ],
         ),
         (
             "fit-line",
@@ -326,6 +334,7 @@ def build_custom_node_catalog_document():
                 cloud,
                 port("features", "features3d.v1", False),
                 port("height_map", "height-map-ref.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
             ],
         ),
         (
@@ -379,6 +388,7 @@ def build_custom_node_catalog_document():
                 port("pose", "pose3d.v1", False),
                 port("evidence", "measurement-evidence3d.v1", False, True),
                 port("height_map", "height-map-ref.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
             ],
             [port("body", "response-body.v1")],
         ),
@@ -391,6 +401,7 @@ def build_custom_node_catalog_document():
                 cloud,
                 port("features", "features3d.v1", False),
                 port("height_map", "height-map-ref.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
             ],
             [port("resource", "measurement-resource-ref.v1")],
         ),

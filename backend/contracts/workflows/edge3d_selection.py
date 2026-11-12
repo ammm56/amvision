@@ -5,7 +5,7 @@ from typing import Annotated, Self
 from pydantic import Field, model_validator
 
 from backend.contracts.workflows.boundary3d import BoundaryTarget, BoundaryTopology
-from backend.contracts.workflows.boundary3d_observations import SegmentQuality
+from backend.contracts.workflows.boundary3d_quality import SegmentQuality
 from backend.contracts.workflows.boundary3d_selection import BoundaryFragmentTarget
 from backend.contracts.workflows.geometry3d import GeometryQualityPolicy, Positive
 from backend.contracts.workflows.metrology import Contract, Identifier, unique_ids

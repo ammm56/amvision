@@ -3,5 +3,6 @@
 # --find-links runtimes/third_party/python-geometry -r custom_nodes/metrology3d_nodes/requirements.txt
 -r ../../runtimes/python_patches/requirements-io.txt
 scipy==1.18.0
-open3d==0.20.0
+open3d==0.20.0+amvision.1; sys_platform == "win32"
+open3d-cpu==0.20.0+amvision.1; sys_platform == "linux"
 Pillow==12.2.0

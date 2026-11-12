@@ -204,7 +204,9 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 - 如依赖特定推理后端、厂商 SDK 或操作系统能力，也应显式声明
 - 升级时若超出兼容范围，backend-service 应拒绝启用或要求人工确认
 
-可选 `compatibility.pythonDistributions` 声明已安装 Python 发行包的版本要求，例如 `["open3d==0.20.0", "trimesh==5.1.1+amvision.2"]`。每项必须包含唯一包名和版本范围，拒绝 URL、extras、环境条件和重复包名。未声明时没有额外 Python 包检查。
+可选 `compatibility.pythonDistributions` 声明所有目标共用的 Python 发行包版本要求，例如 `["trimesh==5.1.1+amvision.2"]`。每项必须包含唯一包名和版本范围，拒绝 URL、extras、环境条件和重复包名。未声明时没有额外公共 Python 包检查。
+
+可选 `compatibility.platformPythonDistributions` 声明不同平台的发行名或版本。例如三维包使用 `{"windows":["open3d==0.20.0+amvision.1"],"linux":["open3d-cpu==0.20.0+amvision.1"]}`。声明时键必须完整覆盖 `operatingSystems`，每个平台非空且与公共依赖合并后不得重复；不能靠环境条件静默跳过准入。运行加载器按当前平台检查，发行装配器按明确目标平台检查，不按构建宿主猜测目标。未声明该字段的既有 manifest 序列化不增加空字段，不改变其发布指纹。
 
 加载器只查询发行包元数据，不导入重型算法库，也不下载依赖。缺包、版本不符或无效版本会进入既有兼容性诊断，记录 `distribution / required / actual`，并阻止注册可执行节点。该检查不是原生库加载测试、文件内容签名或完整离线发行验收；这些仍由安装与发布验证负责。
 
