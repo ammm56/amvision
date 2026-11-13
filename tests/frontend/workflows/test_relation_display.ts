@@ -26,6 +26,29 @@ it('does not call a rejected nonunique relation valid',()=>{
   try{expect(wrapper.text()).toContain('最近点对不唯一');expect(wrapper.text()).not.toContain('距离有效')}finally{wrapper.unmount()}
 })
 
+it('shows rejected closest-pair evidence even when invalid results have no drawable geometry',()=>{
+  const base=measurementItems(payload())[0]!
+  for(const value of [0,1,null]){
+    const item={...base,valid:false,value:null,reason:'insufficient_quality',geometry:null,quality:{...base.quality,metrics:{observation_id:'obs',items:[{item_id:'contacts_unique',unit:'1',valid:value!==null,value,reason:value===null?'unavailable':null}]}}}
+    const wrapper=mount(RelationEvidenceSummary,{props:{item,zh:true}})
+    try{
+      expect(wrapper.text().includes('最近点对不唯一')).toBe(value===0)
+      expect(wrapper.text()).not.toContain('距离有效')
+    }finally{wrapper.unmount()}
+  }
+})
+
+it('keeps zero and negative values visible and never replaces an invalid value with zero',()=>{
+  for(const value of [0,-.7071067811865475]){
+    const item={...measurementItems(payload())[0]!,value}
+    const wrapper=mount(MeasurementSummary,{props:{items:[item],selected:'relation',unit:'mm'},global:{plugins:[createI18n({legacy:false,locale:'zh-CN'})]}})
+    try{expect(wrapper.text()).toContain(value.toFixed(4))}finally{wrapper.unmount()}
+  }
+  const item={...measurementItems(payload())[0]!,valid:false,value:null,reason:'outside_support'}
+  const wrapper=mount(MeasurementSummary,{props:{items:[item],selected:'relation',unit:'mm'},global:{plugins:[createI18n({legacy:false,locale:'zh-CN'})]}})
+  try{expect(wrapper.text()).not.toContain('0.0000');expect(wrapper.text()).toContain('outside_support')}finally{wrapper.unmount()}
+})
+
 it('reads relation evidence and separates angle units from distances',()=>{
   const value=payload(),before=JSON.stringify(value)
   expect(measurementItems(value)[0]).toMatchObject({kind:'measure-relation',value:5,component:'distance',query:null})

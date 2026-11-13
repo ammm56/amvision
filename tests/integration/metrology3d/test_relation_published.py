@@ -6,21 +6,21 @@ from backend.contracts.workflows.workflow_graph import WorkflowGraphTemplate
 from tests.integration.metrology3d.published_support import published_system
 from tests.integration.metrology3d.test_dimension_nodes import dimension_documents
 from tests.integration.metrology3d.test_published_runtime import invoke_cloud
-from tests.test_metrology3d_relations import parameters
 from tests.test_point_cloud_trigger import descriptor
+from tests.integration.metrology3d.relation_risk_cases import (
+    CASES,
+    add_models,
+    definition,
+)
 
 
-def documents(resource=None):
+def documents(resource=None, *, case="line-line", file=False):
     """复用真实截面及拟线图；关系消费模型，保存节点消费同次完整支持。"""
-    (template, app), desc, points = dimension_documents("edge-pair")
+    (template, app), desc, points = dimension_documents("edge-pair", file=file)
     graph = template.model_dump(mode="json")
     node = next(n for n in graph["nodes"] if n["node_id"] == "dimension")
     node["node_type_id"] = "custom.metrology3d.measure-relation"
-    node["parameters"] = {
-        "settings": parameters("line-line", support_mode="finite").model_dump(
-            mode="json"
-        )
-    }
+    node["parameters"] = {"settings": definition(case)[0].model_dump(mode="json")}
 
     def link(a, b, c, d):
         graph["edges"].append(
@@ -34,6 +34,7 @@ def documents(resource=None):
         )
 
     if resource is None:
+        add_models(graph, case, link)
         link("filter", "cloud", "dimension", "cloud")
         graph["nodes"].append(
             dict(
@@ -78,7 +79,10 @@ def documents(resource=None):
     )
 
 
-def test_published_relation_saves_generated_support_and_restores_after_stop(tmp_path):
+@pytest.mark.parametrize("case", CASES)
+def test_published_relation_saves_generated_support_and_restores_after_stop(
+    tmp_path, case
+):
     """原 worker 退出后，新版从持久成员恢复，未复用旧运行权限或拟合节点。"""
     from backend.service.application.workflows.documents.measurement_resources import (
         MeasurementResourceService,
@@ -89,14 +93,19 @@ def test_published_relation_saves_generated_support_and_restores_after_stop(tmp_
     )
 
     with published_system(tmp_path) as system:
-        doc, desc, points = documents()
+        doc, desc, points = documents(case=case)
+        _, expected, reason = definition(case)
         version = system.publish(documents=doc)
         system.start(version)
         generation = system.enable_source(create=True)
         reply = invoke_cloud(system, generation, desc, points.tobytes())
         assert reply["state"] == "succeeded", reply
         item = reply["response_payload"]["results"]["body"]["measurements"]["items"][0]
-        assert item["valid"] and item["value"] == pytest.approx(4)
+        assert item["valid"] == (reason is None), item
+        assert item["reason"] == reason
+        assert item["value"] == (
+            pytest.approx(expected, abs=1e-10, rel=0) if expected is not None else None
+        )
         system.assert_reclaimed()
         service = MeasurementResourceService(
             LocalDatasetStorage(
@@ -111,11 +120,13 @@ def test_published_relation_saves_generated_support_and_restores_after_stop(tmp_
         saved = service.read(
             resource, project_id="project-1"
         ).content.point_cloud.relation
-        assert any(s.kind == "generated" for s in saved.steps)
+        assert saved.items[0].evidence.value == item["value"]
+        if case.startswith("line") or case.startswith("point-line"):
+            assert any(s.kind == "generated" for s in saved.steps)
         stopped = system.call("POST", f"/app-runtimes/{system.runtime_id}/stop")
         assert stopped["observed_state"] == "stopped"
         system.call("POST", f"/trigger-sources/{system.source_id}/disable")
-        next_doc, _, _ = documents(resource)
+        next_doc, _, _ = documents(resource, case=case)
         next_version = system.publish(documents=next_doc)
         system.call(
             "POST",
@@ -129,7 +140,11 @@ def test_published_relation_saves_generated_support_and_restores_after_stop(tmp_
         item2 = restored["response_payload"]["results"]["body"]["measurements"][
             "items"
         ][0]
-        assert item2["valid"] and item2["value"] == pytest.approx(4)
+        assert item2["valid"] == item["valid"]
+        assert item2["reason"] == item["reason"]
+        assert item2["value"] == (
+            pytest.approx(expected, abs=1e-10, rel=0) if expected is not None else None
+        )
         assert (
             item2["quality"]["metrics"]["observation_id"]
             != item["quality"]["metrics"]["observation_id"]
