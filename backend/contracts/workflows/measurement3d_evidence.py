@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, model_validator
 from backend.contracts.workflows.arc3d_evidence import ArcEvidenceItem
 from backend.contracts.workflows.relation3d_evidence import RelationEvidenceItem
+from backend.contracts.workflows.deviation3d_evidence import DeviationEvidenceItem
 from backend.contracts.workflows.dimension3d_parameters import arc_output_unit
 
 from backend.contracts.workflows.measurement3d_directional import (
@@ -42,7 +43,8 @@ class MeasurementEvidence3d(Contract):
                 | EdgePairEvidenceItem
                 | HoleEvidenceItem
                 | ArcEvidenceItem
-                | RelationEvidenceItem,
+                | RelationEvidenceItem
+                | DeviationEvidenceItem,
                 Field(discriminator="kind"),
             ],
             ...,

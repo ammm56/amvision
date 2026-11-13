@@ -220,7 +220,7 @@ def save_cloud(runtime, reference, **kwargs):
     raw = kwargs.get("evidence")
     evidence = MeasurementEvidence3d.model_validate(raw) if raw is not None else None
     if evidence is not None and any(
-        i.kind == "measure-relation" for i in evidence.items
+        i.kind in {"measure-relation", "measure-deviation"} for i in evidence.items
     ):
         from custom_nodes.metrology3d_nodes.shared.relation_assets import (
             save_relation_asset,

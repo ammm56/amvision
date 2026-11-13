@@ -6,7 +6,7 @@
 
 - 数据：Read Cloud、Raster to Cloud、Profiles to Cloud、Cloud to Height Map、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
 - 定位与特征：Fit Plane、Build Frame、Invert Pose、Compose Poses、Register Cloud、Extract Boundary、Fit Line、Fit Circle。
-- 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole、Measure Arc、Measure Relation。
+- 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole、Measure Arc、Measure Relation、Measure Datum Deviation。
 - 显示：Cloud Preview。
 
 既有严格截线与轴向跨度保持原定义。Extract Boundary 已接通显式 `visible-envelope` 栅格剖面，Measure Extents 已接通 `robust-profile-spans`；前端、来源与保存读取同步。F4 已接通多片段拟圆、实际距离分区及基准应用范围，当前工件 50 项均几何有效，S2 当前方法已获工程使用确认，不再以旧稳定性诊断阻塞交付。最终十秒节拍尚未验收通过。无效量值保持 null 并保留原因，几何有效不表示产品合格或实体精度认证；正式配方另经 Check Limits 输出 OK/NG/INVALID。
@@ -15,7 +15,11 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前 `0.1.33` 为二十九个节点，新增 Measure Relation。当前云接 `cloud`，已有平面/直线/圆集合接多输入 `features`，在参数工作区显式选择六种关系、A/B、空间/投影、有限支持或无限模型及质量条件。原始行号、拟合圆心、指定坐标不混为同类实测点；不重新拟合。需要复算资产时，将 Measure Relation 的 `cloud/features/evidence` 同接 derived 模式 Save Cloud，Read Cloud 恢复同一原云及实际 A/B 派生链，输出三端口继续测量。不能拆开读取两云再修改观测 ID。交换 PLY/PCD/XYZ 不包含关系模型和证据，应使用无损资源包搬运。详见[B13 规格与验证](../../docs/development/3d-metrology-relations.md#9-ab-事务资产与公开链路2026-11-13)。
+当前包 `0.1.34`，共三十节点。新增 Measure Datum Deviation（基准偏差）：Crop ROI.cloud 接 `cloud`，Fit Plane.features 接 `features`；参数显式提供基准 ID、空间/单位、支持半径、实测/有限延伸、原支持质量及五项量值 ID。`measurements` 接既有 Check Limits/结果记录，`evidence` 接 Cloud Preview；Preview.body 接 HTTP Response.body，其 response 接应用输出。五项为最小、最大、峰谷、均值、RMS，任一点支持失败则全部无效，诊断数值不作为有效值。
+
+正常使用无需 Save Cloud。确需保留复算支持时，`cloud/features/evidence` 同接 derived 模式 Save Cloud，Read Cloud 恢复三端口。参数工作区、完整目标失败计数、原始极值行号和三维极值选择同批接通，不将峰谷叫作正式平面度。详见[B17 使用与验证](../../docs/development/3d-metrology-datum-deviation.md#11-公开节点与日常使用2026-11-13)。下文 0.1.33 及更早段落是前批能力说明。
+
+前批 `0.1.33` 为二十九个节点，新增 Measure Relation。当前云接 `cloud`，已有平面/直线/圆集合接多输入 `features`，在参数工作区显式选择六种关系、A/B、空间/投影、有限支持或无限模型及质量条件。原始行号、拟合圆心、指定坐标不混为同类实测点；不重新拟合。需要复算资产时，将 Measure Relation 的 `cloud/features/evidence` 同接 derived 模式 Save Cloud，Read Cloud 恢复同一原云及实际 A/B 派生链，输出三端口继续测量。不能拆开读取两云再修改观测 ID。交换 PLY/PCD/XYZ 不包含关系模型和证据，应使用无损资源包搬运。详见[B13 规格与验证](../../docs/development/3d-metrology-relations.md#9-ab-事务资产与公开链路2026-11-13)。
 
 前批 Measure Arc 的接线和定义不变：Fit Circle.features → Measure Arc，显式选择连续开弧或支持角区并集；不重复拟圆、不跨缺口补边。连续法输出端点、方向、扫角及模型弧长，并集法输出去重覆盖及模型支持弧长；实测折线、原支持端点与投影构造点分别显示。保存时 Fit Circle.cloud/features 和 Measure Arc.evidence 同接 Save Cloud；Read Cloud 恢复云、圆和量值证据，可直接重新测量而不拟圆。该圆弧保存范围仍为同支持云的唯一拟合圆。详见[B10 规格与验证](../../docs/development/3d-metrology-arc-measurement.md)。
 
@@ -54,7 +58,7 @@ python -m pip check
 python -m custom_nodes.metrology3d_nodes.workflow.generate_catalog
 ```
 
-manifest 锁定 NumPy 2.4.4、SciPy 1.18.0、Open3D 0.20.0、Pillow 12.2.0、trimesh 5.1.1+amvision.2、pypcd4 1.5.1+amvision.2、python-neo-lzf 0.3.5。缺包或版本不符时包仍显示在节点管理中，但不注册可执行节点；安装不会由业务请求或节点自动触发。发行包的 bundled Python 必须安装同一组依赖及其传递依赖，不能只复制节点目录。
+manifest 锁定 NumPy 2.4.4、SciPy 1.18.0、Open3D 0.20.0+amvision.1、Pillow 12.2.0、trimesh 5.1.1+amvision.2、pypcd4 1.5.1+amvision.2、python-neo-lzf 0.3.5。受控 Open3D 安装位置和离线复制见[开发环境说明](../../docs/development/README.md)。缺包或版本不符时包仍显示在节点管理中，但不注册可执行节点；安装不会由业务请求或节点自动触发。发行包的 bundled Python 必须安装同一组依赖及其传递依赖，不能只复制节点目录。
 
 Windows/Ubuntu x64 为当前支持范围。Ubuntu Open3D 需要可加载的 `libusb-1.0.so.0`；开发环境须满足该依赖，当前 CPU 离线包已将受控 libusb 及许可随包装配，不依赖临时 sysroot 或现场 apt 安装。实际发行验收覆盖 Windows x64 / WSL Ubuntu 24.04 x64，见[CPU 离线发行](../../docs/deployment/cpu-offline-release.md)，不外推任意 Linux。Ubuntu 运行数据库、锁、共享内存及输出目录使用原生文件系统，不使用 `/mnt/w` 的 DrvFS。源码与输入样本可以从挂载盘只读访问。
 

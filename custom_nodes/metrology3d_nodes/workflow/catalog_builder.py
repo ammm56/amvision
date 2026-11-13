@@ -43,6 +43,7 @@ from backend.contracts.workflows.pose3d_operations import (
 )
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.contracts.workflows.relation3d_parameters import RelationNodeParameters
+from backend.contracts.workflows.deviation3d_evidence import DeviationNodeParameters
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightNodeParameters,
     StepNodeParameters,
@@ -128,6 +129,19 @@ def build_custom_node_catalog_document():
     cloud = port("cloud", "point-cloud-ref.v1")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "measure-deviation",
+            "Measure Datum Deviation",
+            "metrology3d.measurement",
+            DeviationNodeParameters,
+            [cloud, port("features", "features3d.v1", multiple=True)],
+            [
+                cloud,
+                port("features", "features3d.v1"),
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+            ],
+        ),
         (
             "cloud-to-height-map",
             "Cloud to Height Map",
@@ -445,7 +459,10 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.33"
+                version="0.1.34"
+                if key
+                in {"measure-deviation", "read-cloud", "save-cloud", "cloud-preview"}
+                else "0.1.33"
                 if key
                 in {"measure-relation", "read-cloud", "save-cloud", "cloud-preview"}
                 else "0.1.32"

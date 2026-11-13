@@ -2,8 +2,9 @@
 import {object} from './preview-data'
 import {validateDimensionGeometry} from './dimension-display'
 import {validateRelationGeometry} from './relation-display'
+import {validateDeviation} from './deviation-display'
 import {queryDisplay,type QueryDisplay} from './query-display'
-export type MeasurementKind='height-query'|'measure-step'|'measure-extents'|'measure-edge-pair'|'measure-hole'|'measure-arc'|'measure-relation'
+export type MeasurementKind='height-query'|'measure-step'|'measure-extents'|'measure-edge-pair'|'measure-hole'|'measure-arc'|'measure-relation'|'measure-deviation'
 export interface MeasurementDisplay { kind:MeasurementKind;component:string|null;item_id:string;valid:boolean;value:number|null;reason:string|null;geometry:Record<string,unknown>|null;support:Record<string,unknown>[];quality:Record<string,unknown>;method:Record<string,unknown>;query:QueryDisplay|null;diagnostic?:Record<string,unknown> }
 export interface ReferenceExtensionDisplay {state:'covered'|'used'|'limit-exceeded'|'unavailable';distance:number|null;max_distance:number;source_index:number|null;datum_point:number[]|null;projected_support_point:number[]|null;nearest_support_point:number[]|null}
 export function referenceExtension(support:Record<string,unknown>[]):ReferenceExtensionDisplay|null {
@@ -28,7 +29,7 @@ export function measurementItems(payload:Record<string,unknown>):MeasurementDisp
   const ids=new Set<string>()
   return body.items.map(raw=>{
     const item=object(raw),valid=item.valid
-    if(typeof item.item_id!=='string'||!item.item_id||ids.has(item.item_id)||typeof valid!=='boolean'||!Array.isArray(item.support)||!['height-query','measure-step','measure-extents','measure-edge-pair','measure-hole','measure-arc','measure-relation'].includes(String(item.kind))||object(item.method).method_id!==item.kind||object(item.method).method_version!==1)throw new Error('cloud_preview_invalid')
+    if(typeof item.item_id!=='string'||!item.item_id||ids.has(item.item_id)||typeof valid!=='boolean'||!Array.isArray(item.support)||!['height-query','measure-step','measure-extents','measure-edge-pair','measure-hole','measure-arc','measure-relation','measure-deviation'].includes(String(item.kind))||object(item.method).method_id!==item.kind||object(item.method).method_version!==1)throw new Error('cloud_preview_invalid')
     ids.add(item.item_id)
     if(valid?(typeof item.value!=='number'||!Number.isFinite(item.value)||item.reason!==null||!item.geometry):(item.value!==null||item.geometry!==null||typeof item.reason!=='string'||!item.reason))throw new Error('cloud_preview_invalid')
     const quality=object(item.quality)
@@ -40,9 +41,11 @@ export function measurementItems(payload:Record<string,unknown>):MeasurementDisp
     const geometry=valid?object(item.geometry):null
     const extension=referenceExtension(support)
     if(extension&&(dimensions||geometry?.kind==='statistic-difference'))throw new Error('cloud_preview_invalid')
-    if(item.kind==='measure-relation')validateRelationGeometry(item,geometry,support,spatial)
+    if(item.kind==='measure-deviation')validateDeviation(item,geometry,payload)
+    else if(item.kind==='measure-relation')validateRelationGeometry(item,geometry,support,spatial)
     else if(dimensions)validateDimensionGeometry(item,geometry,support)
     else if(geometry&&(!['directional-distance','statistic-difference'].includes(String(geometry.kind))||geometry.kind==='statistic-difference'&&geometry.endpoints!==null))throw new Error('cloud_preview_invalid')
-    return {kind:item.kind as MeasurementKind,component:dimensions||item.kind==='measure-relation'?String(item.component):null,item_id:item.item_id,valid,value:item.value as number|null,reason:item.reason as string|null,geometry,support,quality,method:object(item.method),query:dimensions||item.kind==='measure-relation'?null:queryDisplay(item,payload),diagnostic:item.kind==='measure-relation'&&item.diagnostic!==null?object(item.diagnostic):undefined}
+    const generic=dimensions||item.kind==='measure-relation'||item.kind==='measure-deviation'
+    return {kind:item.kind as MeasurementKind,component:generic?String(item.component):null,item_id:item.item_id,valid,value:item.value as number|null,reason:item.reason as string|null,geometry,support,quality,method:object(item.method),query:generic?null:queryDisplay(item,payload),diagnostic:item.kind==='measure-deviation'?object(item.summary):item.kind==='measure-relation'&&item.diagnostic!==null?object(item.diagnostic):undefined}
   })
 }

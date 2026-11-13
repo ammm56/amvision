@@ -3,6 +3,7 @@ import {object} from './preview-data'
 import type {MeasurementDisplay} from './measurement-display'
 import {relationMethod} from './relation-display'
 export function measurementMethod(item:MeasurementDisplay,zh:boolean):string {
+  if(item.kind==='measure-deviation')return zh?'完整目标到基准平面的有符号法向偏差':'Signed normal deviation of complete target from datum plane'
   if(item.kind==='height-query')return zh?'局部实测面高度':'Local measured-surface height'
   if(item.kind==='measure-edge-pair')return zh?'有限边段方向间距':'Directional distance of finite edges'
   const p=object(item.method.parameters)
@@ -20,6 +21,8 @@ export function measurementMethod(item:MeasurementDisplay,zh:boolean):string {
 }
 export function measurementReason(reason:string|null,zh:boolean):string {
   if(!reason)return ''
+  const deviation:Record<string,string>={target_support_failed:'完整目标未全部满足支持条件',target_unavailable:'目标点云不可用',empty_target:'目标点云为空',reference_unavailable:'基准平面不可用'}
+  if(zh&&deviation[reason])return `${deviation[reason]} (${reason})`
   const labels:Record<string,string>={outside_support:'查询位置不在实测支持内',query_pose_unavailable:'本次基准坐标不可用',reference_extension_limit_exceeded:'基准延伸超过上限',quality_failed:'几何质量条件未通过',requires_single_open_segment:'连续开弧必须选择一条开放实测段',requires_open_sweep:'连续开弧不能覆盖整周',angular_support_gap:'实测相邻点角步超限',nonmonotonic_arc:'实测段存在角度回折或无有效转角',overlapping_arc:'实测段重复绕圈',incomplete_closed_arc:'闭合拓扑未形成完整单周',degenerate_arc_edge:'实测边存在重复端点'}
   return zh&&labels[reason]?`${labels[reason]} (${reason})`:reason
 }

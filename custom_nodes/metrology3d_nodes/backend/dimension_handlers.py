@@ -20,6 +20,30 @@ from custom_nodes.metrology3d_nodes.shared.node_runtime import cloud_input
 from custom_nodes.metrology3d_nodes.shared.relation_result import relation_evidence
 from backend.contracts.workflows.relation3d_parameters import RelationNodeParameters
 from backend.contracts.workflows.geometry3d_observations import Features3d
+from backend.contracts.workflows.deviation3d_evidence import DeviationNodeParameters
+from custom_nodes.metrology3d_nodes.shared.deviation_result import deviation_evidence
+
+
+def deviation(request):
+    """现有平面到完整目标的五项偏差，透传来源供显式保存与查看。"""
+    p = DeviationNodeParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    cloud, groups = cloud_input(request, env.runtime), _groups(request)
+    evidence = deviation_evidence(
+        env.runtime, cloud, groups, p.settings, cancel=env.cancel
+    )
+    features = Features3d(
+        run_id=cloud.run_id,
+        observation_id=cloud.observation_id,
+        frame_id=p.settings.frame_id,
+        length_unit=p.settings.length_unit,
+        items=tuple(f for group in groups for f in group.items),
+    )
+    return {
+        **_outputs(evidence),
+        "cloud": cloud.model_dump(mode="json"),
+        "features": features.model_dump(mode="json"),
+    }
 
 
 def extents(request):

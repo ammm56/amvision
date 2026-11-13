@@ -13,6 +13,7 @@ from custom_nodes.metrology3d_nodes.backend.height_map_handler import (
 )
 
 HANDLERS = {
+    "measure-deviation": dimension_handlers.deviation,
     "cloud-to-height-map": cloud_to_height_map_node,
     "raster-to-cloud": raster_to_cloud,
     "profiles-to-cloud": profiles_to_cloud,

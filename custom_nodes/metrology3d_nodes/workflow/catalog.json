@@ -55336,6 +55336,678 @@
             "title": "DatumRegistrationSettings",
             "type": "object"
           },
+          "DeviationCounts": {
+            "additionalProperties": false,
+            "description": "互斥终态完整覆盖目标；计数不是产品 OK/NG 判定。",
+            "properties": {
+              "covered": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Covered",
+                "type": "integer"
+              },
+              "extended": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Extended",
+                "type": "integer"
+              },
+              "invalid_target": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Invalid Target",
+                "type": "integer"
+              },
+              "invalid_reference": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Invalid Reference",
+                "type": "integer"
+              },
+              "outside_support": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Outside Support",
+                "type": "integer"
+              },
+              "support_quality_failed": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Support Quality Failed",
+                "type": "integer"
+              },
+              "extension_limit_exceeded": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Extension Limit Exceeded",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "covered",
+              "extended",
+              "invalid_target",
+              "invalid_reference",
+              "outside_support",
+              "support_quality_failed",
+              "extension_limit_exceeded"
+            ],
+            "title": "DeviationCounts",
+            "type": "object"
+          },
+          "DeviationEvidenceItem": {
+            "additionalProperties": false,
+            "description": "完整摘要可独立显示/记录，详细逐点数组不是生产输出的前提。",
+            "properties": {
+              "kind": {
+                "const": "measure-deviation",
+                "default": "measure-deviation",
+                "title": "Kind",
+                "type": "string"
+              },
+              "item_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Item Id",
+                "type": "string"
+              },
+              "component": {
+                "enum": [
+                  "min",
+                  "max",
+                  "peak-to-valley",
+                  "mean",
+                  "rms"
+                ],
+                "title": "Component",
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Value"
+              },
+              "valid": {
+                "title": "Valid",
+                "type": "boolean"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              },
+              "support": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/DeviationSupport"
+                  },
+                  {
+                    "$ref": "#/$defs/DeviationSupport"
+                  }
+                ],
+                "title": "Support",
+                "type": "array"
+              },
+              "method": {
+                "$ref": "#/$defs/DeviationMethod"
+              },
+              "summary": {
+                "$ref": "#/$defs/DeviationSummary"
+              },
+              "geometry": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DeviationGeometry"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "item_id",
+              "component",
+              "value",
+              "valid",
+              "reason",
+              "quality",
+              "support",
+              "method",
+              "summary",
+              "geometry"
+            ],
+            "title": "DeviationEvidenceItem",
+            "type": "object"
+          },
+          "DeviationExtreme": {
+            "additionalProperties": false,
+            "description": "并列极值显示代表按原行号再按逻辑行号选择，不声称唯一位置。",
+            "properties": {
+              "logical_index": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Logical Index",
+                "type": "integer"
+              },
+              "source_index": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Source Index",
+                "type": "integer"
+              },
+              "tie_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Tie Count",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "logical_index",
+              "source_index",
+              "tie_count"
+            ],
+            "title": "DeviationExtreme",
+            "type": "object"
+          },
+          "DeviationGeometry": {
+            "additionalProperties": false,
+            "description": "两端是最小/最大偏差的实测点，不是两点距离或平面度。",
+            "properties": {
+              "kind": {
+                "const": "datum-deviation",
+                "default": "datum-deviation",
+                "title": "Kind",
+                "type": "string"
+              },
+              "endpoints": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  }
+                ],
+                "title": "Endpoints",
+                "type": "array"
+              }
+            },
+            "required": [
+              "endpoints"
+            ],
+            "title": "DeviationGeometry",
+            "type": "object"
+          },
+          "DeviationMethod": {
+            "additionalProperties": false,
+            "description": "五项共用一份明确参数。",
+            "properties": {
+              "method_id": {
+                "const": "measure-deviation",
+                "default": "measure-deviation",
+                "title": "Method Id",
+                "type": "string"
+              },
+              "method_version": {
+                "const": 1,
+                "default": 1,
+                "title": "Method Version",
+                "type": "integer"
+              },
+              "parameters": {
+                "$ref": "#/$defs/DeviationParameters"
+              },
+              "parameters_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Parameters Sha256",
+                "type": "string"
+              }
+            },
+            "required": [
+              "parameters",
+              "parameters_sha256"
+            ],
+            "title": "DeviationMethod",
+            "type": "object"
+          },
+          "DeviationOutput": {
+            "additionalProperties": false,
+            "description": "每个统计量有独立量值 ID，不允许关闭其中一项来掩盖缺测。",
+            "properties": {
+              "component": {
+                "enum": [
+                  "min",
+                  "max",
+                  "peak-to-valley",
+                  "mean",
+                  "rms"
+                ],
+                "title": "Component",
+                "type": "string"
+              },
+              "item_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Item Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "component",
+              "item_id"
+            ],
+            "title": "DeviationOutput",
+            "type": "object"
+          },
+          "DeviationParameters": {
+            "additionalProperties": false,
+            "description": "显式目标在上游选择，正方向只来自现有基准平面法向。",
+            "properties": {
+              "support_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Support Radius",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "reference_policy": {
+                "discriminator": {
+                  "mapping": {
+                    "measured-support": "#/$defs/MeasuredReference",
+                    "plane-extension": "#/$defs/ExtendedReference"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/MeasuredReference"
+                  },
+                  {
+                    "$ref": "#/$defs/ExtendedReference"
+                  }
+                ],
+                "title": "Reference Policy"
+              },
+              "reference_feature_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Reference Feature Id",
+                "type": "string"
+              },
+              "frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "outputs": {
+                "items": {
+                  "$ref": "#/$defs/DeviationOutput"
+                },
+                "maxItems": 5,
+                "minItems": 5,
+                "title": "Outputs",
+                "type": "array"
+              }
+            },
+            "required": [
+              "support_radius",
+              "quality_policy",
+              "reference_policy",
+              "reference_feature_id",
+              "frame_id",
+              "length_unit",
+              "outputs"
+            ],
+            "title": "DeviationParameters",
+            "type": "object"
+          },
+          "DeviationStatistics": {
+            "additionalProperties": false,
+            "description": "全部可计算目标点的等权统计，RMS 不去均值，不删除失败支持点。",
+            "properties": {
+              "count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Count",
+                "type": "integer"
+              },
+              "minimum": {
+                "title": "Minimum",
+                "type": "number"
+              },
+              "maximum": {
+                "title": "Maximum",
+                "type": "number"
+              },
+              "peak_to_valley": {
+                "minimum": 0,
+                "title": "Peak To Valley",
+                "type": "number"
+              },
+              "mean": {
+                "title": "Mean",
+                "type": "number"
+              },
+              "rms": {
+                "minimum": 0,
+                "title": "Rms",
+                "type": "number"
+              },
+              "minimum_source": {
+                "$ref": "#/$defs/DeviationExtreme"
+              },
+              "maximum_source": {
+                "$ref": "#/$defs/DeviationExtreme"
+              }
+            },
+            "required": [
+              "count",
+              "minimum",
+              "maximum",
+              "peak_to_valley",
+              "mean",
+              "rms",
+              "minimum_source",
+              "maximum_source"
+            ],
+            "title": "DeviationStatistics",
+            "type": "object"
+          },
+          "DeviationSummary": {
+            "additionalProperties": false,
+            "description": "完整目标摘要，供公开量值、显示及显式保存读取共用。",
+            "properties": {
+              "observation_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Observation Id",
+                "type": "string"
+              },
+              "parameters": {
+                "$ref": "#/$defs/DeviationParameters"
+              },
+              "parameters_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Parameters Sha256",
+                "type": "string"
+              },
+              "target_state": {
+                "enum": [
+                  "ready",
+                  "unavailable"
+                ],
+                "title": "Target State",
+                "type": "string"
+              },
+              "target_reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Target Reason"
+              },
+              "target_count": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Target Count",
+                "type": "integer"
+              },
+              "source_point_count": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Source Point Count",
+                "type": "integer"
+              },
+              "reference_valid": {
+                "title": "Reference Valid",
+                "type": "boolean"
+              },
+              "reference_reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reference Reason"
+              },
+              "counts": {
+                "$ref": "#/$defs/DeviationCounts"
+              },
+              "valid": {
+                "title": "Valid",
+                "type": "boolean"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "target_unavailable",
+                      "empty_target",
+                      "reference_unavailable",
+                      "target_support_failed"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "diagnostic": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DeviationStatistics"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "diagnostic_only": {
+                "title": "Diagnostic Only",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "observation_id",
+              "parameters",
+              "parameters_sha256",
+              "target_state",
+              "target_reason",
+              "target_count",
+              "source_point_count",
+              "reference_valid",
+              "reference_reason",
+              "counts",
+              "valid",
+              "reason",
+              "diagnostic",
+              "diagnostic_only"
+            ],
+            "title": "DeviationSummary",
+            "type": "object"
+          },
+          "DeviationSupport": {
+            "additionalProperties": false,
+            "description": "完整目标可含坏点；仅此契约允许无包围盒，并由摘要逐项核对。",
+            "properties": {
+              "role": {
+                "enum": [
+                  "reference",
+                  "target"
+                ],
+                "title": "Role",
+                "type": "string"
+              },
+              "content_sha256": {
+                "anyOf": [
+                  {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Content Sha256"
+              },
+              "point_count": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Point Count"
+              },
+              "source_point_count": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Source Point Count"
+              },
+              "sample_origin": {
+                "anyOf": [
+                  {
+                    "const": "measured",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Sample Origin"
+              },
+              "bounds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/SupportBounds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "plane": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PlaneSupportEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "feature": {
+                "default": null,
+                "title": "Feature",
+                "type": "null"
+              },
+              "coverage": {
+                "default": null,
+                "title": "Coverage",
+                "type": "null"
+              },
+              "statistic": {
+                "default": null,
+                "title": "Statistic",
+                "type": "null"
+              },
+              "extension": {
+                "default": null,
+                "title": "Extension",
+                "type": "null"
+              }
+            },
+            "required": [
+              "role",
+              "content_sha256",
+              "point_count",
+              "source_point_count",
+              "sample_origin",
+              "bounds",
+              "plane"
+            ],
+            "title": "DeviationSupport",
+            "type": "object"
+          },
           "DimensionDiagnostic": {
             "additionalProperties": false,
             "description": "无效量只保留阶段和有限候选摘要，不输出可使用的尺寸几何。",
@@ -63718,6 +64390,7 @@
                 "mapping": {
                   "height-query": "#/$defs/MeasurementEvidenceItem",
                   "measure-arc": "#/$defs/ArcEvidenceItem",
+                  "measure-deviation": "#/$defs/DeviationEvidenceItem",
                   "measure-edge-pair": "#/$defs/EdgePairEvidenceItem",
                   "measure-extents": "#/$defs/ExtentsEvidenceItem",
                   "measure-hole": "#/$defs/HoleEvidenceItem",
@@ -63744,6 +64417,9 @@
                 },
                 {
                   "$ref": "#/$defs/RelationEvidenceItem"
+                },
+                {
+                  "$ref": "#/$defs/DeviationEvidenceItem"
                 }
               ]
             },
@@ -63766,6 +64442,314 @@
     }
   ],
   "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.metrology3d.measure-deviation",
+      "display_name": "Measure Datum Deviation",
+      "category": "metrology3d.measurement",
+      "description": "Measure Datum Deviation",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.34",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "features3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": true,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "features3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "numeric-table.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "evidence",
+          "display_name": "Evidence",
+          "payload_type_id": "measurement-evidence3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "正式节点参数；目标裁剪由现有上游节点完成。",
+        "properties": {
+          "settings": {
+            "additionalProperties": false,
+            "description": "显式目标在上游选择，正方向只来自现有基准平面法向。",
+            "properties": {
+              "support_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Support Radius",
+                "type": "number"
+              },
+              "quality_policy": {
+                "additionalProperties": false,
+                "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                "properties": {
+                  "policy_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Policy Id",
+                    "type": "string"
+                  },
+                  "policy_version": {
+                    "minimum": 1,
+                    "title": "Policy Version",
+                    "type": "integer"
+                  },
+                  "rules": {
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                      "properties": {
+                        "item_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Item Id",
+                          "type": "string"
+                        },
+                        "unit": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Unit",
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "default": true,
+                          "title": "Enabled",
+                          "type": "boolean"
+                        },
+                        "required": {
+                          "default": true,
+                          "title": "Required",
+                          "type": "boolean"
+                        },
+                        "lower": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Lower"
+                        },
+                        "upper": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Upper"
+                        },
+                        "include_lower": {
+                          "default": true,
+                          "title": "Include Lower",
+                          "type": "boolean"
+                        },
+                        "include_upper": {
+                          "default": true,
+                          "title": "Include Upper",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "item_id",
+                        "unit"
+                      ],
+                      "title": "LimitRule",
+                      "type": "object"
+                    },
+                    "maxItems": 8192,
+                    "minItems": 1,
+                    "title": "Rules",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "policy_id",
+                  "policy_version",
+                  "rules"
+                ],
+                "title": "GeometryQualityPolicy",
+                "type": "object"
+              },
+              "reference_policy": {
+                "discriminator": {
+                  "mapping": {
+                    "measured-support": "#/$defs/MeasuredReference",
+                    "plane-extension": "#/$defs/ExtendedReference"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "基准交点必须有满足原质量条件的实际支持。",
+                    "properties": {
+                      "kind": {
+                        "const": "measured-support",
+                        "title": "Kind",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "title": "MeasuredReference",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "只延伸有效基准平面，距离上限来自配方而不是默认值。",
+                    "properties": {
+                      "kind": {
+                        "const": "plane-extension",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "max_extension_distance": {
+                        "exclusiveMinimum": 0,
+                        "title": "Max Extension Distance",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "max_extension_distance"
+                    ],
+                    "title": "ExtendedReference",
+                    "type": "object"
+                  }
+                ],
+                "title": "Reference Policy"
+              },
+              "reference_feature_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Reference Feature Id",
+                "type": "string"
+              },
+              "frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "outputs": {
+                "items": {
+                  "additionalProperties": false,
+                  "description": "每个统计量有独立量值 ID，不允许关闭其中一项来掩盖缺测。",
+                  "properties": {
+                    "component": {
+                      "enum": [
+                        "min",
+                        "max",
+                        "peak-to-valley",
+                        "mean",
+                        "rms"
+                      ],
+                      "title": "Component",
+                      "type": "string"
+                    },
+                    "item_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Item Id",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "component",
+                    "item_id"
+                  ],
+                  "title": "DeviationOutput",
+                  "type": "object"
+                },
+                "maxItems": 5,
+                "minItems": 5,
+                "title": "Outputs",
+                "type": "array"
+              }
+            },
+            "required": [
+              "support_radius",
+              "quality_policy",
+              "reference_policy",
+              "reference_feature_id",
+              "frame_id",
+              "length_unit",
+              "outputs"
+            ],
+            "title": "DeviationParameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "DeviationNodeParameters",
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.metrology3d"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "metrology3d.nodes",
+      "node_pack_version": "0.1.34",
+      "metadata": {}
+    },
     {
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.metrology3d.cloud-to-height-map",
@@ -64051,7 +65035,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -64486,7 +65470,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -64989,7 +65973,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -65753,7 +66737,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -65830,7 +66814,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -65916,7 +66900,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -66465,7 +67449,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -66953,7 +67937,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -67362,7 +68346,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -67696,7 +68680,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -68840,7 +69824,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -75121,7 +76105,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -75518,7 +76502,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -76027,7 +77011,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -76645,7 +77629,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -77304,7 +78288,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -78740,7 +79724,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -79001,7 +79985,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -79360,7 +80344,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -79417,7 +80401,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -79428,7 +80412,7 @@
       "description": "Read Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.33",
+      "version": "0.1.34",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -79824,7 +80808,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -79896,7 +80880,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -80034,7 +81018,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -80155,7 +81139,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -80383,7 +81367,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -80782,7 +81766,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -80793,7 +81777,7 @@
       "description": "Cloud Preview",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.33",
+      "version": "0.1.34",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -81025,7 +82009,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -81036,7 +82020,7 @@
       "description": "Save Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.33",
+      "version": "0.1.34",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -81227,7 +82211,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     },
     {
@@ -81426,7 +82410,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.33",
+      "node_pack_version": "0.1.34",
       "metadata": {}
     }
   ],

@@ -9,6 +9,7 @@ from backend.contracts.workflows.measurement3d_parameters import (
 from backend.contracts.workflows.measurement3d_reference import reference_uses_extension
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.contracts.workflows.relation3d_evidence import relation_coverage_policy
+from backend.contracts.workflows.deviation3d_evidence import deviation_result_policy
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
@@ -38,6 +39,8 @@ def attach_measurements(cloud, body, values, *, policy, cancel):
                 else parameters
             )
             quality_policy = settings.quality_policy
+            if item.kind == "measure-deviation":
+                quality_policy = deviation_result_policy()
             if item.kind in {"height-query", "measure-step"} and not isinstance(
                 settings, StatisticalStep
             ):
@@ -61,7 +64,13 @@ def attach_measurements(cloud, body, values, *, policy, cancel):
                         ),
                     )
                 if (
-                    item.kind in {"height-query", "measure-step", "measure-relation"}
+                    item.kind
+                    in {
+                        "height-query",
+                        "measure-step",
+                        "measure-relation",
+                        "measure-deviation",
+                    }
                     and side.plane
                 ):
                     require_quality_result(

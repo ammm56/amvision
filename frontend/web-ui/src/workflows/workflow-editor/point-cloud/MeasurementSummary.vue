@@ -7,6 +7,7 @@
     <dl v-if="current" class="extension-evidence"><dt>{{ zh?'测量方法':'Measurement method' }}</dt><dd>{{ measurementMethod(current,zh) }}</dd></dl>
     <ArcEvidenceSummary :item="current" :unit="unit" :zh="zh" :precision="precision" :selected-segment="selectedSegment" @select-segment="selectArcSegment" />
     <RelationEvidenceSummary :item="current" :zh="zh" />
+    <DeviationEvidenceSummary :item="current" :zh="zh" :unit="unit" />
     <dl v-if="robust(current)" class="extension-evidence">
       <dt>{{ zh?'测量方法':'Measurement method' }}</dt><dd>{{ zh?'可见包络 · 稳健剖面跨度':'Visible envelope · robust profile spans' }}</dd>
       <dt>{{ zh?'低侧 / 高侧分位数':'Lower / upper quantiles' }}</dt><dd>{{ mode.lower_quantile }} / {{ mode.upper_quantile }} · linear</dd>
@@ -36,6 +37,8 @@ import {measurementMethod,measurementReason} from './measurement-labels'
 import {measurementUnit} from './arc-display'
 import ArcEvidenceSummary from './ArcEvidenceSummary.vue'
 import RelationEvidenceSummary from './RelationEvidenceSummary.vue'
+import DeviationEvidenceSummary from './DeviationEvidenceSummary.vue'
+import {deviationComponentLabel} from './deviation-display'
 import {formatDisplayField} from '../preview/value-display'
 const props=defineProps<{items:MeasurementDisplay[];unit:string;selected:string;selectedSegment?:string}>()
 const emit=defineEmits<{select:[id:string];'select-segment':[featureId:string,segmentId:string]}>()
@@ -55,7 +58,7 @@ const mode=computed(()=>robust(current.value)?object(object(current.value!.metho
 const contacts=computed(()=>{const rows=current.value?.geometry?.contacts;return robust(current.value)&&Array.isArray(rows)?rows.map(c=>object(object(c).statistic)):[]})
 function robust(item:MeasurementDisplay|undefined){return item?.kind==='measure-extents'&&object(object(item.method.parameters).mode).kind==='robust-profile-spans'}
 function extensionLabel(state:string){return (zh.value?{covered:'有实测支持，未延伸',used:'已使用基准延伸','limit-exceeded':'基准延伸超限',unavailable:'基准不可用'}:{covered:'Measured support; not extended',used:'Datum extension used','limit-exceeded':'Datum extension limit exceeded',unavailable:'Datum unavailable'})[state]??state}
-function componentLabel(key:string){return zh.value?({u:'U 投影跨度',v:'V 投影跨度',length:'包络长边',width:'包络短边',distance:'指定位置边间距',diameter:'拟合圆直径',center_x:'圆心 X',center_y:'圆心 Y',center_z:'圆心 Z',radius:'圆半径',signed_sweep:'有符号扫角',sweep:'扫角',arc_length:'圆模型弧长',chord_length:'圆模型弦长',coverage_angle:'支持角区并集',supported_length:'圆模型支持弧长',start_x:'投影起点 X',start_y:'投影起点 Y',start_z:'投影起点 Z',end_x:'投影终点 X',end_y:'投影终点 Y',end_z:'投影终点 Z'} as Record<string,string>)[key]??key:key}
+function componentLabel(key:string){if(['min','max','peak-to-valley','mean','rms'].includes(key))return deviationComponentLabel(key,zh.value);return zh.value?({u:'U 投影跨度',v:'V 投影跨度',length:'包络长边',width:'包络短边',distance:'指定位置边间距',diameter:'拟合圆直径',center_x:'圆心 X',center_y:'圆心 Y',center_z:'圆心 Z',radius:'圆半径',signed_sweep:'有符号扫角',sweep:'扫角',arc_length:'圆模型弧长',chord_length:'圆模型弦长',coverage_angle:'支持角区并集',supported_length:'圆模型支持弧长',start_x:'投影起点 X',start_y:'投影起点 Y',start_z:'投影起点 Z',end_x:'投影终点 X',end_y:'投影终点 Y',end_z:'投影终点 Z'} as Record<string,string>)[key]??key:key}
 function ambiguous(item:MeasurementDisplay){return item.valid&&item.geometry?.kind==='projected-extents'&&item.geometry.candidates&&object(item.geometry.candidates).orientation_unique===false}
 </script>
 <style scoped>

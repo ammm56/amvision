@@ -21,6 +21,7 @@ from backend.contracts.workflows.point_cloud_runtime import (
     ResampleCloudMethod,
 )
 from backend.contracts.workflows.relation3d_evidence import RelationEvidenceItem
+from backend.contracts.workflows.deviation3d_evidence import DeviationEvidenceItem
 
 
 class StoredCloudState(Contract):
@@ -104,7 +105,9 @@ class StoredCloudStep(Contract):
 class RelationAssetItem(Contract):
     """每项 A/B 指向完整派生支持；空引用只表达真正不可用的支持。"""
 
-    evidence: RelationEvidenceItem
+    evidence: Annotated[
+        RelationEvidenceItem | DeviationEvidenceItem, Field(discriminator="kind")
+    ]
     members: tuple[JsonCount | None, JsonCount | None]
 
     @model_validator(mode="after")

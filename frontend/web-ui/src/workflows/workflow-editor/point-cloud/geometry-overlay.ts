@@ -155,6 +155,13 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     for(const item of measurementItems(next.payload)){
       const selected=item.item_id===next.selectedMeasurement,color=selected?0xd18c00:0x508691
       const dimension=(points:Vector3[],dashed=false)=>{const line=lines(points,color,dashed);line.userData.measurement=item.item_id;return line}
+      if(selected&&item.valid&&item.geometry?.kind==='datum-deviation'){
+        const points=(item.geometry.endpoints as unknown[]).map(vec)
+        for(let i=0;i<points.length;i++){
+          const markers=new Points(pointGeometry([points[i]!]),new PointsMaterial({color:i===0?0x287bb8:0xc33b3b,size:10,sizeAttenuation:false,depthTest:false}))
+          markers.userData.measurement=item.item_id;root.add(markers);account(markers)
+        }
+      }
       if(item.valid&&item.geometry&&['directional-distance','edge-pair-distance'].includes(String(item.geometry.kind))){
         const endpoints=item.geometry.endpoints
         if(!Array.isArray(endpoints)||endpoints.length!==2)throw new Error('cloud_preview_invalid')

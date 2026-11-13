@@ -26,6 +26,15 @@ from custom_nodes.metrology3d_nodes.shared.arc_assets import _same_recomputed
 from custom_nodes.metrology3d_nodes.shared.dimension_runtime import select_features
 from custom_nodes.metrology3d_nodes.shared.measurement_support import select_planes
 from custom_nodes.metrology3d_nodes.shared.relation_result import relation_evidence
+from custom_nodes.metrology3d_nodes.shared.deviation_result import deviation_evidence
+
+
+def _measure(runtime, cloud, groups, item, cancel):
+    """两种公开测量共用已有支持资产，不新建资源格式或保存系统。"""
+    function = (
+        deviation_evidence if item.kind == "measure-deviation" else relation_evidence
+    )
+    return function(runtime, cloud, groups, item.method.parameters, cancel=cancel)
 
 
 def _state(cloud):
@@ -126,23 +135,28 @@ def _collect(runtime, cloud, groups, evidence, cancel):
         return parent
 
     primary = member(cloud)
-    items = []
+    items, computed = [], {}
     for item in evidence.items:
-        if item.kind != "measure-relation":
+        if item.kind not in {"measure-relation", "measure-deviation"}:
             raise InvalidRequestError("关系资产不能混入其他测量类型")
-        current = relation_evidence(
-            runtime, cloud, groups, item.method.parameters, cancel=cancel
-        )
+        key = (item.kind, item.method.parameters_sha256)
+        if key not in computed:
+            computed[key] = _measure(runtime, cloud, groups, item, cancel)
+        current = computed[key]
         if (
-            current.items != (item,)
+            item not in current.items
             or current.observation_id != evidence.observation_id
         ):
             raise InvalidRequestError("关系保存证据与当前完整支持不一致")
         p = item.method.parameters
-        members = tuple(
-            member(_support(runtime, cloud, groups, p, selector))
-            for selector in (p.relation.reference, p.relation.target)
-        )
+        if item.kind == "measure-deviation":
+            reference = select_planes(runtime, groups, p, [p.reference_feature_id])[0]
+            members = (member(reference.support), member(cloud))
+        else:
+            members = tuple(
+                member(_support(runtime, cloud, groups, p, selector))
+                for selector in (p.relation.reference, p.relation.target)
+            )
         items.append(RelationAssetItem(evidence=item, members=members))
     return (
         root,
@@ -271,6 +285,8 @@ def _bind_model(side, support):
 def _comparable(item):
     """只排除新观测和新资产来源摘要；方法、原始行号、支持、模型与数值均比较。"""
     payload = item.model_dump(mode="json")
+    if item.kind == "measure-deviation":
+        payload["summary"].pop("observation_id")
     for side in payload["support"]:
         side.pop("content_sha256")
 
@@ -358,16 +374,17 @@ def restore_relation_asset(runtime, root, *, document, service, policy, cancel):
         length_unit=primary.spatial.length_unit,
         items=tuple(models.values()),
     )
-    items = []
+    items, computed = [], {}
     for stored in saved.items:
         cancel()
-        current = relation_evidence(
-            runtime,
-            primary,
-            (features,),
-            stored.evidence.method.parameters,
-            cancel=cancel,
-        ).items[0]
+        key = (stored.evidence.kind, stored.evidence.method.parameters_sha256)
+        if key not in computed:
+            computed[key] = _measure(
+                runtime, primary, (features,), stored.evidence, cancel
+            )
+        current = next(
+            i for i in computed[key].items if i.item_id == stored.evidence.item_id
+        )
         if not _same_recomputed(_comparable(stored.evidence), _comparable(current)):
             raise InvalidRequestError("关系恢复与保存的支持、量值或失败证据不一致")
         items.append(current)
