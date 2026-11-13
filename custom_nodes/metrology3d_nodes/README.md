@@ -6,7 +6,7 @@
 
 - 数据：Read Cloud、Raster to Cloud、Profiles to Cloud、Cloud to Height Map、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
 - 定位与特征：Fit Plane、Build Frame、Invert Pose、Compose Poses、Register Cloud、Extract Boundary、Fit Line、Fit Circle。
-- 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole。
+- 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole、Measure Arc。
 - 显示：Cloud Preview。
 
 既有严格截线与轴向跨度保持原定义。Extract Boundary 已接通显式 `visible-envelope` 栅格剖面，Measure Extents 已接通 `robust-profile-spans`；前端、来源与保存读取同步。F4 已接通多片段拟圆、实际距离分区及基准应用范围，当前工件 50 项均几何有效，S2 当前方法已获工程使用确认，不再以旧稳定性诊断阻塞交付。最终十秒节拍尚未验收通过。无效量值保持 null 并保留原因，几何有效不表示产品合格或实体精度认证；正式配方另经 Check Limits 输出 OK/NG/INVALID。
@@ -15,7 +15,9 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前 `0.1.31` 为二十七个节点，新增 Cloud to Height Map。Raster 文件模式接 `file-ref.v1`，标定由节点参数提供；数组模式接 `calibrated-raster.v1`，使用同机 PREPARE 固定的完整标定，节点不覆盖。两模式显式二选一，不从灰度或文件名猜深度。接线为 Raster to Cloud → Filter Valid → 既有测量/Preview/Save Cloud；原始标量、无效原因、完整像素身份和标定追溯随资产存读保留。Python 和 Windows .NET 调用复用既有 Trigger/LocalBuffer，详见[B06 规格与验收](../../docs/development/3d-metrology-raster-input.md)。
+当前 `0.1.32` 为二十八个节点，新增 Measure Arc。Fit Circle.features → Measure Arc，显式选择连续开弧或支持角区并集；不重复拟圆、不跨缺口补边。连续法输出端点、方向、扫角及模型弧长，并集法输出去重覆盖及模型支持弧长；实测折线、原支持端点与投影构造点分别显示。保存时 Fit Circle.cloud/features 和 Measure Arc.evidence 同接 Save Cloud；Read Cloud 恢复云、圆和量值证据，可直接重新测量而不拟圆。保存范围为同支持云的唯一拟合圆，不是任意异构特征集合。详见[B10 规格与验证](../../docs/development/3d-metrology-arc-measurement.md)。
+
+Raster 文件模式接 `file-ref.v1`，标定由节点参数提供；数组模式接 `calibrated-raster.v1`，使用同机 PREPARE 固定的完整标定，节点不覆盖。两模式显式二选一，不从灰度或文件名猜深度。接线为 Raster to Cloud → Filter Valid → 既有测量/Preview/Save Cloud；原始标量、无效原因、完整像素身份和标定追溯随资产存读保留。Python 和 Windows .NET 调用复用既有 Trigger/LocalBuffer，详见[B06 规格与验收](../../docs/development/3d-metrology-raster-input.md)。
 
 B08 接线为完整云 → Filter Valid → Cloud to Height Map；当前坐标或本次 Pose 二选一，固定格中心/方向/步距/格数和 min/max/mean/median 显式提供，空格不补洞。节点 `cloud` 直通与 `height_map` 两端口同时接 Cloud Preview 或 derived 模式 Save Cloud；Read Cloud 恢复两端口，不重新聚合。不能在中间改变 cloud 再复用旧 map。原始行号和三种生成来源、统计、成员及历史 Pose 随无损资产和配方包保存，交换 PLY/PCD/XYZ 不保留高度图 CSR。查看器显示完整有界高度网格、无数据格、统计和三维格范围联动；超显示预算只影响显示，不修改测量。详见[B08 接线与验证](../../docs/development/3d-metrology-height-map.md#7-输出公开节点与真实页面2026-11-06)。
 

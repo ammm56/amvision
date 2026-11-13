@@ -52648,6 +52648,303 @@
             "title": "AngularSpan",
             "type": "object"
           },
+          "ArcEndpoint": {
+            "additionalProperties": false,
+            "description": "实测或生成支持顶点与圆上构造投影点分开，不凭空创建源行号。",
+            "properties": {
+              "point": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Point",
+                "type": "array"
+              },
+              "projected": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Projected",
+                "type": "array"
+              },
+              "vertex_index": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Vertex Index",
+                "type": "integer"
+              },
+              "source_index": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Source Index"
+              },
+              "lineage": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ContactLineage"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "point",
+              "projected",
+              "vertex_index",
+              "source_index",
+              "lineage"
+            ],
+            "title": "ArcEndpoint",
+            "type": "object"
+          },
+          "ArcEvidenceItem": {
+            "additionalProperties": false,
+            "description": "原圆质量、完整支持和量值同批保存；不持久化活跃引用。",
+            "properties": {
+              "item_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Item Id",
+                "type": "string"
+              },
+              "component": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Component",
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Value"
+              },
+              "valid": {
+                "title": "Valid",
+                "type": "boolean"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              },
+              "support": {
+                "items": {
+                  "$ref": "#/$defs/DimensionSupport"
+                },
+                "maxItems": 2,
+                "minItems": 1,
+                "title": "Support",
+                "type": "array"
+              },
+              "diagnostic": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DimensionDiagnostic"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sample_origin": {
+                "enum": [
+                  "measured",
+                  "interpolated",
+                  "extrapolated",
+                  "mixed",
+                  "estimated"
+                ],
+                "title": "Sample Origin",
+                "type": "string"
+              },
+              "kind": {
+                "const": "measure-arc",
+                "default": "measure-arc",
+                "title": "Kind",
+                "type": "string"
+              },
+              "method": {
+                "$ref": "#/$defs/ArcMethod"
+              },
+              "geometry": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ArcGeometry"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "item_id",
+              "component",
+              "value",
+              "valid",
+              "reason",
+              "quality",
+              "support",
+              "diagnostic",
+              "sample_origin",
+              "method",
+              "geometry"
+            ],
+            "title": "ArcEvidenceItem",
+            "type": "object"
+          },
+          "ArcGeometry": {
+            "additionalProperties": false,
+            "description": "有限显示和历史量值所需的圆及支持角区，不包含运行引用。",
+            "properties": {
+              "kind": {
+                "const": "circle-arcs",
+                "default": "circle-arcs",
+                "title": "Kind",
+                "type": "string"
+              },
+              "circle": {
+                "$ref": "#/$defs/CircleGeometry"
+              },
+              "parts": {
+                "items": {
+                  "$ref": "#/$defs/ArcPart"
+                },
+                "maxItems": 8192,
+                "minItems": 1,
+                "title": "Parts",
+                "type": "array"
+              },
+              "pieces": {
+                "items": {
+                  "$ref": "#/$defs/AngularSpan"
+                },
+                "maxItems": 8192,
+                "minItems": 1,
+                "title": "Pieces",
+                "type": "array"
+              },
+              "coverage_angle": {
+                "exclusiveMinimum": 0,
+                "maximum": 6.283185307279586,
+                "title": "Coverage Angle",
+                "type": "number"
+              },
+              "overlap_angle": {
+                "minimum": 0,
+                "title": "Overlap Angle",
+                "type": "number"
+              },
+              "polyline_length": {
+                "minimum": 0,
+                "title": "Polyline Length",
+                "type": "number"
+              },
+              "start": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ArcEndpoint"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "end": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ArcEndpoint"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "signed_sweep": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Signed Sweep"
+              },
+              "direction": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "cw",
+                      "ccw"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Direction"
+              }
+            },
+            "required": [
+              "circle",
+              "parts",
+              "pieces",
+              "coverage_angle",
+              "overlap_angle",
+              "polyline_length",
+              "start",
+              "end",
+              "signed_sweep",
+              "direction"
+            ],
+            "title": "ArcGeometry",
+            "type": "object"
+          },
           "ArcInterval": {
             "additionalProperties": false,
             "description": "面内角度遵循 method.evaluation 的 X/Y，保留有符号扫角。",
@@ -52697,6 +52994,160 @@
               "sweep"
             ],
             "title": "ArcInterval",
+            "type": "object"
+          },
+          "ArcMethod": {
+            "additionalProperties": false,
+            "description": "沿用三维 v1 方法，固定选择、遍历顺序和原评价面。",
+            "properties": {
+              "method_id": {
+                "const": "measure-arc",
+                "default": "measure-arc",
+                "title": "Method Id",
+                "type": "string"
+              },
+              "method_version": {
+                "const": 1,
+                "default": 1,
+                "title": "Method Version",
+                "type": "integer"
+              },
+              "parameters": {
+                "$ref": "#/$defs/MeasureArcParameters"
+              },
+              "parameters_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Parameters Sha256",
+                "type": "string"
+              },
+              "evaluation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/EvaluationPlane3d"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "parameters",
+              "parameters_sha256",
+              "evaluation"
+            ],
+            "title": "ArcMethod",
+            "type": "object"
+          },
+          "ArcOutput": {
+            "additionalProperties": false,
+            "description": "角度与长度分别声明，输出身份不会随片段数量变化。",
+            "properties": {
+              "component": {
+                "enum": [
+                  "radius",
+                  "signed_sweep",
+                  "sweep",
+                  "arc_length",
+                  "chord_length",
+                  "start_x",
+                  "start_y",
+                  "start_z",
+                  "end_x",
+                  "end_y",
+                  "end_z",
+                  "coverage_angle",
+                  "supported_length"
+                ],
+                "title": "Component",
+                "type": "string"
+              },
+              "item_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Item Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "component",
+              "item_id"
+            ],
+            "title": "ArcOutput",
+            "type": "object"
+          },
+          "ArcPart": {
+            "additionalProperties": false,
+            "description": "每段独立保留支持，不跨缺口计算折线长度或方向。",
+            "properties": {
+              "segment_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Segment Id",
+                "type": "string"
+              },
+              "closed": {
+                "title": "Closed",
+                "type": "boolean"
+              },
+              "point_count": {
+                "maximum": 9007199254740991,
+                "minimum": 2,
+                "title": "Point Count",
+                "type": "integer"
+              },
+              "pieces": {
+                "items": {
+                  "$ref": "#/$defs/AngularSpan"
+                },
+                "maxItems": 8192,
+                "minItems": 1,
+                "title": "Pieces",
+                "type": "array"
+              },
+              "signed_sweep": {
+                "anyOf": [
+                  {
+                    "maximum": 6.283185307279586,
+                    "minimum": -6.283185307279586,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Signed Sweep"
+              },
+              "angular_reason": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "nonmonotonic_arc",
+                      "overlapping_arc",
+                      "incomplete_closed_arc"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Angular Reason"
+              },
+              "polyline_length": {
+                "exclusiveMinimum": 0,
+                "title": "Polyline Length",
+                "type": "number"
+              }
+            },
+            "required": [
+              "segment_id",
+              "closed",
+              "point_count",
+              "pieces",
+              "signed_sweep",
+              "angular_reason",
+              "polyline_length"
+            ],
+            "title": "ArcPart",
             "type": "object"
           },
           "AxisSpans": {
@@ -54161,6 +54612,31 @@
               "source_faces_sha256"
             ],
             "title": "ContactLineage",
+            "type": "object"
+          },
+          "ContinuousArc": {
+            "additionalProperties": false,
+            "description": "单条单调开弧；顺序只控制结果方向，不改源拓扑。",
+            "properties": {
+              "kind": {
+                "const": "continuous-arc",
+                "title": "Kind",
+                "type": "string"
+              },
+              "traversal": {
+                "enum": [
+                  "source-order",
+                  "reverse-source-order"
+                ],
+                "title": "Traversal",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "traversal"
+            ],
+            "title": "ContinuousArc",
             "type": "object"
           },
           "ContourBoundary": {
@@ -57888,6 +58364,57 @@
               "kind"
             ],
             "title": "MeanStatistic",
+            "type": "object"
+          },
+          "MeasureArcParameters": {
+            "additionalProperties": false,
+            "description": "圆弧只继承一个现有圆的评价面和已选支持，不重拟圆。",
+            "properties": {
+              "evaluation": {
+                "$ref": "#/$defs/FeatureEvaluation3d"
+              },
+              "outputs": {
+                "items": {
+                  "$ref": "#/$defs/ArcOutput"
+                },
+                "maxItems": 13,
+                "minItems": 1,
+                "title": "Outputs",
+                "type": "array"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "selection": {
+                "$ref": "#/$defs/BoundarySelection"
+              },
+              "mode": {
+                "discriminator": {
+                  "mapping": {
+                    "continuous-arc": "#/$defs/ContinuousArc",
+                    "supported-union": "#/$defs/SupportedArcUnion"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ContinuousArc"
+                  },
+                  {
+                    "$ref": "#/$defs/SupportedArcUnion"
+                  }
+                ],
+                "title": "Mode"
+              }
+            },
+            "required": [
+              "evaluation",
+              "outputs",
+              "quality_policy",
+              "selection",
+              "mode"
+            ],
+            "title": "MeasureArcParameters",
             "type": "object"
           },
           "MeasureEdgePairParameters": {
@@ -61763,6 +62290,22 @@
             "title": "SupportBounds",
             "type": "object"
           },
+          "SupportedArcUnion": {
+            "additionalProperties": false,
+            "description": "一个或多个实测片段的去重角支持，不承诺整体方向。",
+            "properties": {
+              "kind": {
+                "const": "supported-union",
+                "title": "Kind",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "title": "SupportedArcUnion",
+            "type": "object"
+          },
           "SvdPlane": {
             "additionalProperties": false,
             "description": "以全精度支持点进行正交最小二乘。",
@@ -62018,6 +62561,7 @@
               "discriminator": {
                 "mapping": {
                   "height-query": "#/$defs/MeasurementEvidenceItem",
+                  "measure-arc": "#/$defs/ArcEvidenceItem",
                   "measure-edge-pair": "#/$defs/EdgePairEvidenceItem",
                   "measure-extents": "#/$defs/ExtentsEvidenceItem",
                   "measure-hole": "#/$defs/HoleEvidenceItem",
@@ -62037,6 +62581,9 @@
                 },
                 {
                   "$ref": "#/$defs/HoleEvidenceItem"
+                },
+                {
+                  "$ref": "#/$defs/ArcEvidenceItem"
                 }
               ]
             },
@@ -62344,7 +62891,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -62779,7 +63326,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -63282,7 +63829,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -64046,7 +64593,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -64123,7 +64670,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -64209,7 +64756,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -64758,7 +65305,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -65246,7 +65793,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -65655,7 +66202,341 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.metrology3d.measure-arc",
+      "display_name": "Measure Arc",
+      "category": "metrology3d.measurement",
+      "description": "Measure Arc",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.32",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "features3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": true,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "numeric-table.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "evidence",
+          "display_name": "Evidence",
+          "payload_type_id": "measurement-evidence3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "圆弧节点原子设置，不携带上一 Run 的模型或端点。",
+        "properties": {
+          "settings": {
+            "additionalProperties": false,
+            "description": "圆弧只继承一个现有圆的评价面和已选支持，不重拟圆。",
+            "properties": {
+              "evaluation": {
+                "additionalProperties": false,
+                "description": "继承已选特征的实际评价面，不能混填另一原点或法向。",
+                "properties": {
+                  "kind": {
+                    "const": "feature",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "frame_id",
+                  "length_unit"
+                ],
+                "title": "FeatureEvaluation3d",
+                "type": "object"
+              },
+              "outputs": {
+                "items": {
+                  "additionalProperties": false,
+                  "description": "角度与长度分别声明，输出身份不会随片段数量变化。",
+                  "properties": {
+                    "component": {
+                      "enum": [
+                        "radius",
+                        "signed_sweep",
+                        "sweep",
+                        "arc_length",
+                        "chord_length",
+                        "start_x",
+                        "start_y",
+                        "start_z",
+                        "end_x",
+                        "end_y",
+                        "end_z",
+                        "coverage_angle",
+                        "supported_length"
+                      ],
+                      "title": "Component",
+                      "type": "string"
+                    },
+                    "item_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Item Id",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "component",
+                    "item_id"
+                  ],
+                  "title": "ArcOutput",
+                  "type": "object"
+                },
+                "maxItems": 13,
+                "minItems": 1,
+                "title": "Outputs",
+                "type": "array"
+              },
+              "quality_policy": {
+                "additionalProperties": false,
+                "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                "properties": {
+                  "policy_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Policy Id",
+                    "type": "string"
+                  },
+                  "policy_version": {
+                    "minimum": 1,
+                    "title": "Policy Version",
+                    "type": "integer"
+                  },
+                  "rules": {
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                      "properties": {
+                        "item_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Item Id",
+                          "type": "string"
+                        },
+                        "unit": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Unit",
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "default": true,
+                          "title": "Enabled",
+                          "type": "boolean"
+                        },
+                        "required": {
+                          "default": true,
+                          "title": "Required",
+                          "type": "boolean"
+                        },
+                        "lower": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Lower"
+                        },
+                        "upper": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Upper"
+                        },
+                        "include_lower": {
+                          "default": true,
+                          "title": "Include Lower",
+                          "type": "boolean"
+                        },
+                        "include_upper": {
+                          "default": true,
+                          "title": "Include Upper",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "item_id",
+                        "unit"
+                      ],
+                      "title": "LimitRule",
+                      "type": "object"
+                    },
+                    "maxItems": 8192,
+                    "minItems": 1,
+                    "title": "Rules",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "policy_id",
+                  "policy_version",
+                  "rules"
+                ],
+                "title": "GeometryQualityPolicy",
+                "type": "object"
+              },
+              "selection": {
+                "additionalProperties": false,
+                "description": "显式选择配方段或目标组，不接受候选数组下标或混合重复计权。",
+                "properties": {
+                  "feature_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Feature Id",
+                    "type": "string"
+                  },
+                  "segment_ids": {
+                    "default": [],
+                    "items": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "type": "string"
+                    },
+                    "maxItems": 8192,
+                    "title": "Segment Ids",
+                    "type": "array"
+                  },
+                  "group_ids": {
+                    "default": [],
+                    "items": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "type": "string"
+                    },
+                    "maxItems": 8192,
+                    "title": "Group Ids",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "feature_id"
+                ],
+                "title": "BoundarySelection",
+                "type": "object"
+              },
+              "mode": {
+                "discriminator": {
+                  "mapping": {
+                    "continuous-arc": "#/$defs/ContinuousArc",
+                    "supported-union": "#/$defs/SupportedArcUnion"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "单条单调开弧；顺序只控制结果方向，不改源拓扑。",
+                    "properties": {
+                      "kind": {
+                        "const": "continuous-arc",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "traversal": {
+                        "enum": [
+                          "source-order",
+                          "reverse-source-order"
+                        ],
+                        "title": "Traversal",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "traversal"
+                    ],
+                    "title": "ContinuousArc",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "一个或多个实测片段的去重角支持，不承诺整体方向。",
+                    "properties": {
+                      "kind": {
+                        "const": "supported-union",
+                        "title": "Kind",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "title": "SupportedArcUnion",
+                    "type": "object"
+                  }
+                ],
+                "title": "Mode"
+              }
+            },
+            "required": [
+              "evaluation",
+              "outputs",
+              "quality_policy",
+              "selection",
+              "mode"
+            ],
+            "title": "MeasureArcParameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "ArcNodeParameters",
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.metrology3d"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "metrology3d.nodes",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -71936,7 +72817,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -72333,7 +73214,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -72344,7 +73225,7 @@
       "description": "Fit Circle",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.13",
+      "version": "0.1.32",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -72362,6 +73243,15 @@
           "name": "features",
           "display_name": "Features",
           "payload_type_id": "features3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
           "description": "",
           "required": true,
           "multiple": false,
@@ -72833,7 +73723,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -73451,7 +74341,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -74110,7 +75000,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -75546,7 +76436,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -75807,7 +76697,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -76166,7 +77056,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -76223,7 +77113,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -76234,7 +77124,7 @@
       "description": "Read Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.31",
+      "version": "0.1.32",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -76279,6 +77169,15 @@
           "name": "diagnostics",
           "display_name": "Diagnostics",
           "payload_type_id": "edge-diagnostic-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "evidence",
+          "display_name": "Evidence",
+          "payload_type_id": "measurement-evidence3d.v1",
           "description": "",
           "required": false,
           "multiple": false,
@@ -76621,7 +77520,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -76693,7 +77592,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -76831,7 +77730,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -76952,7 +77851,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -77180,7 +78079,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -77579,7 +78478,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -77590,7 +78489,7 @@
       "description": "Cloud Preview",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.31",
+      "version": "0.1.32",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -77822,7 +78721,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -77833,7 +78732,7 @@
       "description": "Save Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.31",
+      "version": "0.1.32",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -77867,6 +78766,15 @@
           "name": "diagnostics",
           "display_name": "Diagnostics",
           "payload_type_id": "edge-diagnostic-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "evidence",
+          "display_name": "Evidence",
+          "payload_type_id": "measurement-evidence3d.v1",
           "description": "",
           "required": false,
           "multiple": false,
@@ -78015,7 +78923,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     },
     {
@@ -78214,7 +79122,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.31",
+      "node_pack_version": "0.1.32",
       "metadata": {}
     }
   ],

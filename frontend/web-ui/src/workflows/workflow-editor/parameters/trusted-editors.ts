@@ -29,7 +29,7 @@ export function trustedParameterEditor(nodeType: string, parameter: string): Com
   if(nodeType==='custom.metrology3d.estimate-normals'&&parameter==='settings')return NormalsSettingsEditor
   if(nodeType==='custom.metrology3d.resample-cloud'&&parameter==='settings')return ResampleSettingsEditor
   if(nodeType==='custom.metrology3d.denoise-cloud'&&parameter==='settings')return DenoiseSettingsEditor
-  if(['custom.metrology3d.measure-extents','custom.metrology3d.measure-edge-pair','custom.metrology3d.measure-hole'].includes(nodeType)&&parameter==='settings')return DimensionSettingsEditor
+  if(['custom.metrology3d.measure-extents','custom.metrology3d.measure-edge-pair','custom.metrology3d.measure-hole','custom.metrology3d.measure-arc'].includes(nodeType)&&parameter==='settings')return DimensionSettingsEditor
   if(['custom.metrology3d.extract-boundary','custom.metrology3d.fit-line','custom.metrology3d.fit-circle'].includes(nodeType)&&parameter==='settings')return BoundarySettingsEditor
   if(nodeType==='custom.metrology3d.crop-roi'&&parameter==='source')return RoiEditor
   if(['custom.metrology3d.fit-plane','custom.metrology3d.build-frame'].includes(nodeType)&&parameter==='settings')return GeometrySettingsEditor

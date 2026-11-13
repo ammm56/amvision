@@ -3,6 +3,8 @@
 from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
+from backend.contracts.workflows.arc3d_evidence import ArcEvidenceItem
+from backend.contracts.workflows.dimension3d_parameters import arc_output_unit
 
 from backend.contracts.workflows.measurement3d_directional import (
     MeasurementEvidenceItem,
@@ -37,7 +39,8 @@ class MeasurementEvidence3d(Contract):
                 MeasurementEvidenceItem
                 | ExtentsEvidenceItem
                 | EdgePairEvidenceItem
-                | HoleEvidenceItem,
+                | HoleEvidenceItem
+                | ArcEvidenceItem,
                 Field(discriminator="kind"),
             ],
             ...,
@@ -83,7 +86,9 @@ class MeasurementEvidence3d(Contract):
             items=tuple(
                 NumericItem(
                     item_id=i.item_id,
-                    unit=self.length_unit,
+                    unit=arc_output_unit(i.component, self.length_unit)
+                    if isinstance(i, ArcEvidenceItem)
+                    else self.length_unit,
                     value=i.value,
                     valid=i.valid,
                     reason=i.reason,

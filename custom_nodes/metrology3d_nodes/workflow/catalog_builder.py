@@ -33,6 +33,7 @@ from backend.contracts.workflows.dimension3d_parameters import (
     ExtentsNodeParameters,
     EdgePairNodeParameters,
     HoleNodeParameters,
+    ArcNodeParameters,
 )
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.geometry3d_methods import RigidTransform3d
@@ -226,6 +227,17 @@ def build_custom_node_catalog_document():
             ],
         ),
         (
+            "measure-arc",
+            "Measure Arc",
+            "metrology3d.measurement",
+            ArcNodeParameters,
+            [port("features", "features3d.v1", multiple=True)],
+            [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+            ],
+        ),
+        (
             "extract-boundary",
             "Extract Boundary",
             "metrology3d.geometry",
@@ -258,7 +270,7 @@ def build_custom_node_catalog_document():
             "metrology3d.geometry",
             FitCircleNodeParameters,
             [port("features", "features3d.v1")],
-            [port("features", "features3d.v1")],
+            [port("features", "features3d.v1"), cloud],
         ),
         (
             "height-query",
@@ -335,6 +347,7 @@ def build_custom_node_catalog_document():
                 port("features", "features3d.v1", False),
                 port("height_map", "height-map-ref.v1", False),
                 port("diagnostics", "edge-diagnostic-ref.v1", False),
+                port("evidence", "measurement-evidence3d.v1", False),
             ],
         ),
         (
@@ -402,6 +415,7 @@ def build_custom_node_catalog_document():
                 port("features", "features3d.v1", False),
                 port("height_map", "height-map-ref.v1", False),
                 port("diagnostics", "edge-diagnostic-ref.v1", False),
+                port("evidence", "measurement-evidence3d.v1", False),
             ],
             [port("resource", "measurement-resource-ref.v1")],
         ),
@@ -417,7 +431,16 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.31"
+                version="0.1.32"
+                if key
+                in {
+                    "measure-arc",
+                    "fit-circle",
+                    "read-cloud",
+                    "save-cloud",
+                    "cloud-preview",
+                }
+                else "0.1.31"
                 if key
                 in {"cloud-to-height-map", "read-cloud", "save-cloud", "cloud-preview"}
                 else "0.1.30"

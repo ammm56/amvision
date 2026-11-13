@@ -62,7 +62,7 @@
       <HeightMapPanel v-if="detailTab==='height-map'&&body.height_map" :payload="body" :project-id="projectId" @select="selectHeightCell" @focus="focusHeightCell" />
       <EdgeDiagnosticPanel v-if="detailTab==='edge'&&body.edge_diagnostics" :payload="body" :project-id="projectId" @select="selectEdgeRecord" @focus="focusEdgeRecord" />
       <BoundarySummary v-if="detailTab==='features'&&curves.length" :items="curves" :selected="selectedCurve" :selected-segment="selectedSegment" :selected-index="selectedCurvePoint" @select="selectCurve" @select-point="selectedCurvePoint=$event" />
-      <MeasurementSummary v-if="detailTab==='measurements'&&measurements.length" :items="measurements" :unit="String(unit)" :selected="selectedMeasurement" @select="selectMeasurement" />
+      <MeasurementSummary v-if="detailTab==='measurements'&&measurements.length" :items="measurements" :unit="String(unit)" :selected="selectedMeasurement" :selected-segment="selectedSegment" @select="selectMeasurement" @select-segment="selectMeasurementSegment" />
       <BoundaryDebugSummary v-if="detailTab==='debug'" :items="debugItems" :selected-id="selectedDebug" :layers="debugLayers" :selection="debugSelection" :error="debugError" @select="selectDebug" @layers="debugLayers=$event" @pick="selectDebugPoint" />
     </div>
   </section>
@@ -136,6 +136,7 @@ function updateGeometry(){
 function selectDebug(id:string){selectedDebug.value=id;debugSelection.value=null;debugError.value='';focusTarget.value='debug'}
 function selectDebugPoint(selection:DebugSelection){debugSelection.value=selection;showDetails.value=true;detailTab.value='debug';focusTarget.value='debug'}
 function selectCurve(id:string,segment:string){selectedCurvePoint.value=null;selectedCurve.value=id;selectedSegment.value=segment;focusTarget.value='feature';showDetails.value=true;detailTab.value='features';emit('feature-selection',{payload:props.payload,featureId:id,segmentId:segment})}
+function selectMeasurementSegment(id:string,segment:string){selectCurve(id,segment);detailTab.value='measurements'}
 function selectMeasurement(id:string){selectedMeasurement.value=id;focusTarget.value='measurement'}
 function updateColors(){try{const samples=['support','residual'].includes(colorMode.value)?planeColorData(props.payload,selectedPlane.value):null;colorSummary.value=planeColorSummary(samples);scene.value?.colors(samples,colorMode.value,appliedRange.value)}catch(failure){release();error.value=failure instanceof Error?failure.message:'unavailable'}}
 function displayObject(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }

@@ -31,6 +31,9 @@ from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from hashlib import sha256
 from backend.contracts.workflows.boundary3d_observations import BoundaryEvidence
+from backend.contracts.workflows.dimension3d_evidence import CircleSnapshot
+from backend.contracts.workflows.arc3d_evidence import ArcEvidenceItem
+from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.contracts.workflows.raster3d import RasterSource
 from backend.contracts.workflows.profile3d import ProfileSource
 from backend.contracts.workflows.height_map_evidence import HeightMapEvidence
@@ -272,6 +275,10 @@ class CloudAssetBase(Contract):
     vertex_kind: Literal["source", "generated"]
     topology: BoundaryTopology | None
     boundary: BoundaryEvidence | None = None
+    circle: CircleSnapshot | None = Field(default=None, exclude_if=lambda v: v is None)
+    arc_evidence: tuple[ArcEvidenceItem, ...] = Field(
+        default=(), max_length=8192, exclude_if=lambda v: not v
+    )
     normal_info: CloudNormalInfo | None = None
     height_map: HeightMapEvidence | None = Field(
         default=None, exclude_if=lambda v: v is None
@@ -345,6 +352,23 @@ class CloudAssetBase(Contract):
                 raise ValueError("高度图必须与参与计算的完整数组一同保存")
         if self.topology is not None and self.topology.point_count != self.point_count:
             raise ValueError("资产边界连接与数量不一致")
+        if self.arc_evidence:
+            if self.circle is None:
+                raise ValueError("圆弧证据需要同资产圆模型")
+            MeasurementEvidence3d(
+                observation_id=self.circle.quality.metrics.observation_id,
+                frame_id=self.spatial.frame_id,
+                length_unit=self.spatial.length_unit,
+                items=self.arc_evidence,
+            )
+            if any(
+                len(i.support) != 1
+                or i.support[0].feature != self.circle
+                or i.support[0].topology != self.topology
+                or i.support[0].point_count != self.point_count
+                for i in self.arc_evidence
+            ):
+                raise ValueError("圆弧证据与资产模型或完整支持不一致")
         if self.boundary is not None:
             evaluation = self.boundary.method.parameters.evaluation
             if (
@@ -354,6 +378,34 @@ class CloudAssetBase(Contract):
                 != (self.spatial.frame_id, self.spatial.length_unit)
             ):
                 raise ValueError("资产边界证据与保存点云不一致")
+        if self.circle is not None:
+            circle = self.circle
+            metrics = {m.item_id: m.value for m in circle.quality.metrics.items}
+            evaluation = circle.method.evaluation
+            if (
+                self.boundary is not None
+                or self.representation != "array-blocks"
+                or self.edge is not None
+                or self.topology is None
+                or evaluation is None
+                or circle.method.boundary is None
+                or circle.method.boundary.geometry is None
+                or (evaluation.frame_id, evaluation.length_unit)
+                != (self.spatial.frame_id, self.spatial.length_unit)
+                or (circle.valid and metrics["support_count"] != self.point_count)
+                or tuple(s.segment_id for s in self.topology.segments)
+                != circle.method.resolved_segment_ids
+            ):
+                raise ValueError("资产圆模型必须对应唯一完整拟圆支持")
+            original = {
+                s.segment_id: s for s in circle.method.boundary.geometry.segments
+            }
+            if any(
+                original[s.segment_id].model_dump(exclude={"start"})
+                != s.model_dump(exclude={"start"})
+                for s in self.topology.segments
+            ):
+                raise ValueError("资产圆支持拓扑与拟圆来源不一致")
         if self.normal_info is not None:
             self.normal_info.check_fields(
                 self.fields, self.spatial, generated=self.vertex_kind == "generated"

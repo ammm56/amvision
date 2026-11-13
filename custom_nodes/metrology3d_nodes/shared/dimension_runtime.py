@@ -1,6 +1,7 @@
 """尺寸节点共享身份、有限支持快照和结果封装，不包含几何算法。"""
 
 from backend.contracts.workflows.boundary3d_observations import BoundaryEvidence
+from backend.contracts.workflows.arc3d_evidence import ArcEvidenceItem, ArcMethod
 from backend.contracts.workflows.dimension3d_evidence import (
     CircleSnapshot,
     DimensionSupport,
@@ -163,11 +164,14 @@ def dimension_result(
         "measure-extents": (ExtentsMethod, ExtentsEvidenceItem),
         "measure-edge-pair": (EdgePairMethod, EdgePairEvidenceItem),
         "measure-hole": (HoleMethod, HoleEvidenceItem),
+        "measure-arc": (ArcMethod, ArcEvidenceItem),
     }[kind]
     origins = {s.sample_origin for s in support if s.sample_origin is not None}
     origin = (
         (next(iter(origins)) if len(origins) == 1 else "mixed")
         if kind == "measure-extents"
+        else "estimated"
+        if kind == "measure-arc"
         else "interpolated"
     )
     method = method_type(

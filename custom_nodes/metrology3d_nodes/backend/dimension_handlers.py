@@ -4,6 +4,7 @@ from backend.contracts.workflows.dimension3d_parameters import (
     ExtentsNodeParameters,
     EdgePairNodeParameters,
     HoleNodeParameters,
+    ArcNodeParameters,
 )
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
 from custom_nodes.metrology3d_nodes.backend.measurement_handlers import (
@@ -13,6 +14,7 @@ from custom_nodes.metrology3d_nodes.backend.measurement_handlers import (
 from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
 from custom_nodes.metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
 from custom_nodes.metrology3d_nodes.shared.measure_hole import measure_hole
+from custom_nodes.metrology3d_nodes.shared.measure_arc import measure_arc
 from custom_nodes.metrology3d_nodes.shared.node_runtime import require_node_runtime
 
 
@@ -48,4 +50,13 @@ def hole(request):
     env = require_node_runtime(request)
     return _outputs(
         measure_hole(env.runtime, _groups(request), p.settings, cancel=env.cancel)
+    )
+
+
+def arc(request):
+    """已有圆和有序支持直接测弧，不重新拟合或自动选段。"""
+    p = ArcNodeParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    return _outputs(
+        measure_arc(env.runtime, _groups(request), p.settings, cancel=env.cancel)
     )

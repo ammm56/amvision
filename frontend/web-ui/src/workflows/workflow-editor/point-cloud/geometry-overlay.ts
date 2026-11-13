@@ -5,7 +5,7 @@ import {TransformControls} from 'three/addons/controls/TransformControls.js'
 import {object,reserveCpu,reserveGpu} from './preview-data'
 import type {CloudRendererPolicy} from '../services/measurement-resource.service'
 import {measurementItems,referenceExtension} from './measurement-display'
-import {curveItems,curveStrokes} from './boundary-display'
+import {curveItems,curveStrokes,circleStrokePoints} from './boundary-display'
 import type {Raycaster} from 'three'
 import {roiDependencies,roiGraphIssues} from './roi-graph'
 import {roiLeaves,roiVisibility} from './roi-visibility'
@@ -169,6 +169,27 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         else if(selected){const circle=object(item.geometry.circle),center=vec(circle.center),size=positive(circle.radius)*.05,points:Vector3[]=[];for(let i=0;i<3;i++){const delta=new Vector3().setComponent(i,size);points.push(center.clone().sub(delta),center.clone().add(delta))}lines(points,color)}
       }
       if(!selected)continue
+      if(item.valid&&item.geometry?.kind==='circle-arcs'){
+        const g=item.geometry,circle=object(g.circle),basis=matrix(object(item.method.evaluation).rotation,3)
+        let used=0
+        for(const raw of g.pieces as unknown[]){const p=object(raw),points=circleStrokePoints(circle.center as number[],positive(circle.radius),basis,Number(p.start_angle),Number(p.sweep),policy,used);used+=points.length;dimension(points.map(vec),true)}
+        const featureId=object(item.support[0]?.feature).feature_id
+        const part=next.selectedCurve===featureId?(g.parts as Record<string,unknown>[]).find(p=>p.segment_id===next.selectedSegment):undefined
+        if(part)for(const raw of part.pieces as unknown[]){
+          const p=object(raw),points=circleStrokePoints(circle.center as number[],positive(circle.radius),basis,Number(p.start_angle),Number(p.sweep),policy,used);used+=points.length
+          const line=lines(points.map(vec),0x208c77,true)
+          line.userData.curve={featureId,segmentId:part.segment_id}
+          line.userData.measurement=item.item_id
+        }
+        for(const key of ['start','end'])if(g[key]){const endpoint=object(g[key]);dimension([vec(endpoint.point),vec(endpoint.projected)],true);const markers=new Points(pointGeometry([vec(endpoint.point),vec(endpoint.projected)]),new PointsMaterial({color:key==='start'?0x208c77:0xc8558a,size:8,sizeAttenuation:false,depthTest:false}));root.add(markers);account(markers)}
+        if(g.end){
+          const end=vec(object(g.end).projected),radial=end.clone().sub(vec(circle.center)).normalize()
+          const tangent=vec(circle.normal).cross(radial).multiplyScalar(Math.sign(Number(g.signed_sweep)))
+          const size=positive(circle.radius)*Math.min(.08,Math.abs(Number(g.signed_sweep))*.15)
+          const back=end.clone().addScaledVector(tangent,-size)
+          dimension([back.clone().addScaledVector(radial,size*.4),end,end,back.clone().addScaledVector(radial,-size*.4)])
+        }
+      }
       const extension=referenceExtension(item.support)
       if(extension?.datum_point&&extension.projected_support_point){
         lines([vec(extension.projected_support_point),vec(extension.datum_point)],extension.state==='used'?0xc8558a:0xc33b3b,true)

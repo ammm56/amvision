@@ -216,4 +216,9 @@ def _fit(request, model):
         parameters,
         cancel=env.cancel,
     )
-    return {"features": result.model_dump(mode="json")}
+    output = {"features": result.model_dump(mode="json")}
+    if model is FitCircleNodeParameters:
+        feature = result.items[0]
+        # 模型质量与支持资源状态分开；失败圆仍可保存实际存在的支持证据。
+        output["cloud"] = feature.support.model_dump(mode="json")
+    return output

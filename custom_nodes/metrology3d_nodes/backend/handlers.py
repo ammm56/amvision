@@ -160,6 +160,27 @@ def read(request):
         )
 
         result["features"] = restore_boundary(cloud, evidence).model_dump(mode="json")
+        if document is not None and document.content.point_cloud.circle is not None:
+            from custom_nodes.metrology3d_nodes.shared.boundary_assets import (
+                restore_circle,
+            )
+
+            result["features"] = restore_circle(
+                cloud, document.content.point_cloud.circle
+            ).model_dump(mode="json")
+            from custom_nodes.metrology3d_nodes.shared.arc_assets import (
+                restore_arc_evidence,
+            )
+
+            arc = restore_arc_evidence(
+                env.runtime,
+                cloud,
+                document.content.point_cloud.circle,
+                document.content.point_cloud.arc_evidence,
+                cancel=env.cancel,
+            )
+            if arc is not None:
+                result["evidence"] = arc.model_dump(mode="json")
         if document is not None and document.content.point_cloud.edge is not None:
             parameters = document.content.point_cloud.edge.extraction
             if parameters is not None:
@@ -347,6 +368,7 @@ def save(request):
         height_map=height_map,
         edge=edge,
         sampling=sampling,
+        evidence=request.input_values.get("evidence"),
     )
     return {"resource": reference.model_dump(mode="json")}
 

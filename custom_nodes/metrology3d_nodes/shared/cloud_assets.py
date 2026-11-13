@@ -223,6 +223,7 @@ def save_cloud(
     height_map=None,
     sampling=None,
     edge=None,
+    evidence=None,
 ):
     """保存原件或全部派生字段；已提交版本由服务拥有，不归运行 Scope 删除。"""
     if mode not in ("original", "derived"):
@@ -230,6 +231,13 @@ def save_cloud(
     from custom_nodes.metrology3d_nodes.shared.boundary_assets import freeze_boundary
 
     boundary = freeze_boundary(reference, features, mode)
+    arc_evidence = None
+    if evidence is not None:
+        from custom_nodes.metrology3d_nodes.shared.arc_assets import freeze_arc_evidence
+
+        arc_evidence = freeze_arc_evidence(
+            runtime, reference, boundary, evidence, cancel=cancel
+        )
     policy = replace(
         policy,
         chunk_bytes=min(
@@ -480,7 +488,16 @@ def save_cloud(
         # 资产原样复制保留已存证据；新增证据必须先通过完整支持身份校验。
         if boundary is not None:
             payload = content.model_dump(mode="json")
-            payload["point_cloud"]["boundary"] = boundary.model_dump(mode="json")
+            payload["point_cloud"].pop("circle", None)
+            payload["point_cloud"].pop("arc_evidence", None)
+            payload["point_cloud"]["boundary"] = None
+            payload["point_cloud"][boundary.kind] = boundary.model_dump(mode="json")
+            content = MeasurementResourceContent.model_validate(payload)
+        if arc_evidence is not None:
+            payload = content.model_dump(mode="json")
+            payload["point_cloud"]["arc_evidence"] = [
+                i.model_dump(mode="json") for i in arc_evidence
+            ]
             content = MeasurementResourceContent.model_validate(payload)
         if height_map is not None:
             from custom_nodes.metrology3d_nodes.shared.height_map_assets import (

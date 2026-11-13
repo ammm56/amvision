@@ -2,9 +2,10 @@
   <div class="measurement-summary">
     <div class="summary-tools"><span>{{ zh?'几何结果 · 未作产品公差判定':'Geometry results · no product tolerance decision' }}</span><label>{{ zh?'显示小数':'Display decimals' }}<select v-model="precision"><option value="raw">{{ zh?'原值':'Original' }}</option><option v-for="n in [2,3,4,6]" :key="n" :value="n">{{ n }}</option></select></label></div>
     <table><thead><tr><th>{{ zh?'测量项':'Measurement' }}</th><th>{{ zh?'数值':'Value' }}</th><th>{{ zh?'状态 / 原因':'State / reason' }}</th><th>{{ zh?'支持点数':'Support points' }}</th></tr></thead>
-      <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ componentLabel(item.component) }}</div></td><td class="measurement-number"><span class="measurement-value" :title="item.valid?String(item.value):undefined">{{ displayValue(item) }}</span> <span class="measurement-unit">{{ unit }}</span></td><td>{{ item.valid?(zh?'几何有效':'Geometry valid'):(zh?'几何无效':'Geometry invalid') }}<div v-if="!item.valid">{{ measurementReason(item.reason,zh) }}</div><div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
+      <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ componentLabel(item.component) }}</div></td><td class="measurement-number"><span class="measurement-value" :title="item.valid?String(item.value):undefined">{{ displayValue(item) }}</span> <span class="measurement-unit">{{ measurementUnit(item,unit) }}</span></td><td>{{ item.valid?(zh?'几何有效':'Geometry valid'):(zh?'几何无效':'Geometry invalid') }}<div v-if="!item.valid">{{ measurementReason(item.reason,zh) }}</div><div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
     </table>
     <dl v-if="current" class="extension-evidence"><dt>{{ zh?'测量方法':'Measurement method' }}</dt><dd>{{ measurementMethod(current,zh) }}</dd></dl>
+    <ArcEvidenceSummary :item="current" :unit="unit" :zh="zh" :precision="precision" :selected-segment="selectedSegment" @select-segment="selectArcSegment" />
     <dl v-if="robust(current)" class="extension-evidence">
       <dt>{{ zh?'测量方法':'Measurement method' }}</dt><dd>{{ zh?'可见包络 · 稳健剖面跨度':'Visible envelope · robust profile spans' }}</dd>
       <dt>{{ zh?'低侧 / 高侧分位数':'Lower / upper quantiles' }}</dt><dd>{{ mode.lower_quantile }} / {{ mode.upper_quantile }} · linear</dd>
@@ -31,9 +32,12 @@ import {useI18n} from 'vue-i18n'
 import {object} from './preview-data'
 import {referenceExtension,type MeasurementDisplay} from './measurement-display'
 import {measurementMethod,measurementReason} from './measurement-labels'
+import {measurementUnit} from './arc-display'
+import ArcEvidenceSummary from './ArcEvidenceSummary.vue'
 import {formatDisplayField} from '../preview/value-display'
-const props=defineProps<{items:MeasurementDisplay[];unit:string;selected:string}>()
-defineEmits<{select:[id:string]}>()
+const props=defineProps<{items:MeasurementDisplay[];unit:string;selected:string;selectedSegment?:string}>()
+const emit=defineEmits<{select:[id:string];'select-segment':[featureId:string,segmentId:string]}>()
+function selectArcSegment(id:string){const feature=object(current.value?.support[0]?.feature);if(typeof feature.feature_id==='string')emit('select-segment',feature.feature_id,id)}
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
 const precision=ref<number|'raw'>(4)
 function displayValue(item:MeasurementDisplay){
@@ -49,7 +53,7 @@ const mode=computed(()=>robust(current.value)?object(object(current.value!.metho
 const contacts=computed(()=>{const rows=current.value?.geometry?.contacts;return robust(current.value)&&Array.isArray(rows)?rows.map(c=>object(object(c).statistic)):[]})
 function robust(item:MeasurementDisplay|undefined){return item?.kind==='measure-extents'&&object(object(item.method.parameters).mode).kind==='robust-profile-spans'}
 function extensionLabel(state:string){return (zh.value?{covered:'有实测支持，未延伸',used:'已使用基准延伸','limit-exceeded':'基准延伸超限',unavailable:'基准不可用'}:{covered:'Measured support; not extended',used:'Datum extension used','limit-exceeded':'Datum extension limit exceeded',unavailable:'Datum unavailable'})[state]??state}
-function componentLabel(key:string){return zh.value?({u:'U 投影跨度',v:'V 投影跨度',length:'包络长边',width:'包络短边',distance:'指定位置边间距',diameter:'拟合圆直径',center_x:'圆心 X',center_y:'圆心 Y',center_z:'圆心 Z'} as Record<string,string>)[key]??key:key}
+function componentLabel(key:string){return zh.value?({u:'U 投影跨度',v:'V 投影跨度',length:'包络长边',width:'包络短边',distance:'指定位置边间距',diameter:'拟合圆直径',center_x:'圆心 X',center_y:'圆心 Y',center_z:'圆心 Z',radius:'圆半径',signed_sweep:'有符号扫角',sweep:'扫角',arc_length:'圆模型弧长',chord_length:'圆模型弦长',coverage_angle:'支持角区并集',supported_length:'圆模型支持弧长',start_x:'投影起点 X',start_y:'投影起点 Y',start_z:'投影起点 Z',end_x:'投影终点 X',end_y:'投影终点 Y',end_z:'投影终点 Z'} as Record<string,string>)[key]??key:key}
 function ambiguous(item:MeasurementDisplay){return item.valid&&item.geometry?.kind==='projected-extents'&&item.geometry.candidates&&object(item.geometry.candidates).orientation_unique===false}
 </script>
 <style scoped>

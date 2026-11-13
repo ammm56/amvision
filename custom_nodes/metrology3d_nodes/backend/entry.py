@@ -8,7 +8,9 @@ from custom_nodes.metrology3d_nodes.backend import dimension_handlers
 from custom_nodes.metrology3d_nodes.backend import pose_handlers
 from custom_nodes.metrology3d_nodes.backend.raster_handler import raster_to_cloud
 from custom_nodes.metrology3d_nodes.backend.profile_handler import profiles_to_cloud
-from custom_nodes.metrology3d_nodes.backend.height_map_handler import cloud_to_height_map_node
+from custom_nodes.metrology3d_nodes.backend.height_map_handler import (
+    cloud_to_height_map_node,
+)
 
 HANDLERS = {
     "cloud-to-height-map": cloud_to_height_map_node,
@@ -38,6 +40,7 @@ HANDLERS = {
     "measure-extents": dimension_handlers.extents,
     "measure-edge-pair": dimension_handlers.edge_pair,
     "measure-hole": dimension_handlers.hole,
+    "measure-arc": dimension_handlers.arc,
 }
 
 

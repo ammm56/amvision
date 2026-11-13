@@ -7,6 +7,8 @@ import {identity,object,vector,type Form} from './form'
 import {evaluationIssues,axisDirection,planePosition} from './evaluation-form'
 import {profileSides} from './envelope-form'
 import {selectionIssues} from './circle-form'
+import {openArcComponents,unionArcComponents} from '@/workflows/workflow-editor/point-cloud/arc-display'
+export {openArcComponents,unionArcComponents}
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)
 const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v)
@@ -21,6 +23,7 @@ function metricUnits(kind:string,p:Form):Record<string,string>{
   }else if(kind==='measure-edge-pair'){
     for(const role of ['reference','target'])for(const [key,u] of Object.entries({count:'1',plane_angle:'rad',plane_distance:length,crossing_sine:'1',intersection_residual:length,supported:'1'}))units[`${role}_${key}`]=u
   }else Object.assign(units,{support_count:'1',plane_max_residual:length,rms:length,max_residual:length,jacobian_ratio:'1',angular_coverage:'rad',max_gap:'rad',role_usable:'1',weighted_rms:length,inlier_fraction:'1',occupied_sector_count:'1',sector_coverage:'1',target_max_gap:'rad',inlier_angular_coverage:'rad',inlier_max_gap:'rad',inlier_jacobian_ratio:'1'})
+  if(kind==='measure-arc'){delete units.role_usable;Object.assign(units,{selected_point_count:'1',selected_segment_count:'1',coverage_angle:'rad',overlap_angle:'rad',polyline_length:length})}
   return units
 }
 export function newExtentMode(kind:string):Form{
@@ -31,6 +34,7 @@ export function newDimension(kind:string):Form{
   const common={evaluation:{frame_id:'',length_unit:null,origin:[null,null,null],rotation:identity()},quality_policy:{policy_id:'',policy_version:null,rules:[normalizeLimitRule({item_id:'geometry_usable',unit:'1',lower:1})]},outputs:[]}
   if(kind==='measure-extents')return {...common,source:{kind:'cloud'},mode:newExtentMode('axis-spans'),outputs:['u','v'].map(component=>({component,item_id:''}))}
   if(kind==='measure-edge-pair')return {...common,reference_feature_id:'',target_feature_id:'',query_position:[null,null,null],direction:[null,null,null],value_mode:'signed',max_plane_distance:null,max_plane_angle_radians:null,min_crossing_sine:null,outputs:[{component:'distance',item_id:''}]}
+  if(kind==='measure-arc')return {...common,evaluation:{kind:'feature',frame_id:'',length_unit:null},selection:{feature_id:'',segment_ids:[]},mode:{kind:'continuous-arc',traversal:'source-order'}}
   return {...common,feature_id:'',target_kind:'closed-hole',display_direction:[null,null,null]}
 }
 
@@ -40,11 +44,16 @@ export function dimensionFeatureChoices(sources:ParameterEditorSources):Dimensio
     const p=object(source.parameters.settings)
     const targets=['height-jump','normal-crease'].includes(String(object(p.method).kind))?object(p.selection).targets:p.targets
     const kind=source.nodeTypeId==='custom.metrology3d.fit-circle'?'circle':source.nodeTypeId==='custom.metrology3d.fit-line'?'line':source.nodeTypeId==='custom.metrology3d.extract-boundary'?'boundary':null
+    if(kind==='circle'&&id(p.feature_id)){
+      const items=object(source.previewOutput).items,found=Array.isArray(items)?items.map(object).find(f=>f.kind==='circle'&&f.feature_id===p.feature_id):undefined
+      const segments=object(object(found).support).topology,rows=object(segments).segments,s=object(p.selection)
+      return [{id:String(p.feature_id),kind,nodeId:source.nodeId,segments:Array.isArray(rows)?rows.map(r=>String(object(r).segment_id)):Array.isArray(s.segment_ids)?s.segment_ids.filter(id) as string[]:[],groups:Array.isArray(rows)?[...new Set(rows.map(r=>object(r).group_id).filter(id) as string[])]:Array.isArray(s.group_ids)?s.group_ids.filter(id) as string[]:[]}]
+    }
     if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&object(p.method).kind==='visible-envelope'?[...profileSides]:kind==='boundary'&&Array.isArray(targets)?targets.map(t=>object(t).segment_id).filter(id) as string[]:[],groups:kind==='boundary'&&Array.isArray(targets)?targets.map(t=>object(t).group_id).filter(id) as string[]:[],nodeId:source.nodeId}]
     // 恢复资产的身份只取该连线端口本次输出，不能借用其他预览窗口的同名特征。
     const output=object(source.previewOutput)
     if(output.format_id!=='amvision.features3d.v1'||!Array.isArray(output.items))return []
-    return output.items.flatMap(raw=>{const f=object(raw),g=object(f.geometry);return id(f.feature_id)&&['line','circle','boundary'].includes(String(f.kind))?[{id:String(f.feature_id),kind:String(f.kind),nodeId:source.nodeId,segments:Array.isArray(g.segments)?g.segments.map(s=>String(object(s).segment_id)).filter(id):[],groups:Array.isArray(g.segments)?[...new Set(g.segments.map(s=>object(s).group_id).filter(id) as string[])]:[]}]:[]})
+    return output.items.flatMap(raw=>{const f=object(raw),g=f.kind==='circle'?object(object(f.support).topology):object(f.geometry);return id(f.feature_id)&&['line','circle','boundary'].includes(String(f.kind))?[{id:String(f.feature_id),kind:String(f.kind),nodeId:source.nodeId,segments:Array.isArray(g.segments)?g.segments.map(s=>String(object(s).segment_id)).filter(id):[],groups:Array.isArray(g.segments)?[...new Set(g.segments.map(s=>object(s).group_id).filter(id) as string[])]:[]}]:[]})
   })
 }
 
@@ -52,8 +61,8 @@ export function dimensionIssues(kind:string,value:unknown):string[]{
   const p=object(value),e=object(p.evaluation),q=object(p.quality_policy),issues:string[]=[]
   issues.push(...evaluationIssues(e,kind==='measure-extents'&&object(p.source).kind==='cloud'?[]:['feature']))
   const outputs=Array.isArray(p.outputs)?p.outputs.map(object):[]
-  const allowed=kind==='measure-extents'?(object(p.mode).kind==='minimum-area-rectangle'?['length','width']:['u','v']):kind==='measure-edge-pair'?['distance']:dimensionComponents
-  if(!outputs.length||outputs.some(o=>!id(o.item_id)||!allowed.includes(String(o.component)))||new Set(outputs.map(o=>o.item_id)).size!==outputs.length||new Set(outputs.map(o=>o.component)).size!==outputs.length||kind!=='measure-hole'&&outputs.length!==allowed.length)issues.push('outputs')
+  const allowed=kind==='measure-arc'?(object(p.mode).kind==='supported-union'?unionArcComponents:openArcComponents):kind==='measure-extents'?(object(p.mode).kind==='minimum-area-rectangle'?['length','width']:['u','v']):kind==='measure-edge-pair'?['distance']:dimensionComponents
+  if(!outputs.length||outputs.some(o=>!id(o.item_id)||!allowed.includes(String(o.component)))||new Set(outputs.map(o=>o.item_id)).size!==outputs.length||new Set(outputs.map(o=>o.component)).size!==outputs.length||!['measure-hole','measure-arc'].includes(kind)&&outputs.length!==allowed.length)issues.push('outputs')
   const rules=Array.isArray(q.rules)?q.rules.map(normalizeLimitRule):[],guard=rules.find(r=>r.item_id==='geometry_usable')
   if(!id(q.policy_id)||!Number.isSafeInteger(q.policy_version)||Number(q.policy_version)<1||rules.some(limitRuleError)||new Set(rules.map(r=>r.item_id)).size!==rules.length)issues.push('quality / policy')
   if(!guard||!guard.enabled||!guard.required||guard.unit!=='1'||guard.lower!==1||!guard.include_lower)issues.push('quality / geometry_usable')
@@ -78,13 +87,18 @@ export function dimensionIssues(kind:string,value:unknown):string[]{
     if(!finite(p.max_plane_distance)||p.max_plane_distance<0||!finite(p.max_plane_angle_radians)||p.max_plane_angle_radians<0||p.max_plane_angle_radians>=Math.PI/2||!finite(p.min_crossing_sine)||p.min_crossing_sine<=0||p.min_crossing_sine>1)issues.push('intersection conditions')
     const query=p.query_position,origin=e.origin
     if(normal&&vector(query)&&vector(origin)&&finite(p.max_plane_distance)&&Math.abs(normal.reduce((s,n,i)=>s+n*(query[i]!-origin[i]!),0))>p.max_plane_distance)issues.push('query / evaluation plane')
+  }else if(kind==='measure-arc'){
+    issues.push(...selectionIssues(p.selection))
+    const m=object(p.mode),s=object(p.selection)
+    if(e.kind!=='feature')issues.push('evaluation / feature')
+    if(!['continuous-arc','supported-union'].includes(String(m.kind))||m.kind==='continuous-arc'&&(!['source-order','reverse-source-order'].includes(String(m.traversal))||Array.isArray(s.segment_ids)&&s.segment_ids.length!==1)||m.kind==='supported-union'&&m.traversal!==undefined)issues.push('arc / mode / selection')
   }else if(!id(p.feature_id)||!['closed-hole','open-arc'].includes(String(p.target_kind))||(!unit(p.display_direction)&&!axisDirection(p.display_direction)))issues.push('circle / role / direction')
   return issues
 }
 
 export const dimensionNumericItems:NumericItemProvider=source=>{
   const p=object(source.parameters.settings),e=object(p.evaluation)
-  return Array.isArray(p.outputs)&&['m','mm','um'].includes(String(e.length_unit))?p.outputs.map(object).filter(o=>id(o.item_id)).map(o=>({item_id:String(o.item_id),unit:String(e.length_unit)})):null
+  return Array.isArray(p.outputs)&&['m','mm','um'].includes(String(e.length_unit))?p.outputs.map(object).filter(o=>id(o.item_id)).map(o=>({item_id:String(o.item_id),unit:source.nodeTypeId==='custom.metrology3d.measure-arc'&&['signed_sweep','sweep','coverage_angle'].includes(String(o.component))?'rad':String(e.length_unit)})):null
 }
 export const dimensionRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const kind=node.node_type_id.split('.').at(-1)!,p=object(node.parameters.settings),issues=dimensionIssues(kind,p)
@@ -92,12 +106,12 @@ export const dimensionRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const choices=dimensionFeatureChoices(sources)
   if(new Set(choices.map(c=>c.id)).size!==choices.length)issues.push(zh?'输入特征 ID 重复':'Duplicate input feature IDs')
   const expected=kind==='measure-extents'?'boundary':kind==='measure-edge-pair'?'line':'circle'
-  const selection=object(object(p.source).selection)
-  const ids=kind==='measure-extents'?(object(p.source).kind==='boundary'?[selection.feature_id]:[]):kind==='measure-edge-pair'?[p.reference_feature_id,p.target_feature_id]:[p.feature_id]
+  const selection=kind==='measure-arc'?object(p.selection):object(object(p.source).selection)
+  const ids=kind==='measure-arc'?[selection.feature_id]:kind==='measure-extents'?(object(p.source).kind==='boundary'?[selection.feature_id]:[]):kind==='measure-edge-pair'?[p.reference_feature_id,p.target_feature_id]:[p.feature_id]
   // read-cloud 的恢复特征只能由本次预览提供；尚无输出时不伪造候选。
   const complete=(sources.features??[]).every(s=>['custom.metrology3d.fit-line','custom.metrology3d.fit-circle','custom.metrology3d.extract-boundary'].includes(s.nodeTypeId)||object(s.previewOutput).format_id==='amvision.features3d.v1')
   if(complete&&ids.some(id=>!choices.some(c=>c.id===id&&c.kind===expected)))issues.push(zh?'所选特征不在当前输入中':'Selected feature is not in current inputs')
-  const boundary=choices.find(c=>c.id===selection.feature_id&&c.kind==='boundary')
+  const boundary=choices.find(c=>c.id===selection.feature_id&&c.kind===(kind==='measure-arc'?'circle':'boundary'))
   if(boundary&&Array.isArray(selection.segment_ids)&&selection.segment_ids.some(id=>!boundary.segments.includes(String(id))))issues.push(zh?'所选边界段不在当前输入中':'Selected segment is not in current boundary')
   if(boundary&&Array.isArray(selection.group_ids)&&selection.group_ids.some(id=>!boundary.groups.includes(String(id))))issues.push(zh?'所选片段组不在当前输入中':'Selected fragment group is not in current boundary')
   return issues

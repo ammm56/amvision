@@ -214,10 +214,100 @@ class MeasureHoleParameters(DimensionParameters):
         return self
 
 
+class ContinuousArc(Contract):
+    """单条单调开弧；顺序只控制结果方向，不改源拓扑。"""
+
+    kind: Literal["continuous-arc"]
+    traversal: Literal["source-order", "reverse-source-order"]
+
+
+class SupportedArcUnion(Contract):
+    """一个或多个实测片段的去重角支持，不承诺整体方向。"""
+
+    kind: Literal["supported-union"]
+
+
+class ArcOutput(Contract):
+    """角度与长度分别声明，输出身份不会随片段数量变化。"""
+
+    component: Literal[
+        "radius",
+        "signed_sweep",
+        "sweep",
+        "arc_length",
+        "chord_length",
+        "start_x",
+        "start_y",
+        "start_z",
+        "end_x",
+        "end_y",
+        "end_z",
+        "coverage_angle",
+        "supported_length",
+    ]
+    item_id: Identifier
+
+
+class MeasureArcParameters(DimensionParameters):
+    """圆弧只继承一个现有圆的评价面和已选支持，不重拟圆。"""
+
+    evaluation: FeatureEvaluation3d
+    selection: BoundarySelection
+    mode: Annotated[ContinuousArc | SupportedArcUnion, Field(discriminator="kind")]
+    outputs: Annotated[tuple[ArcOutput, ...], Field(min_length=1, max_length=13)]
+
+    @property
+    def feature_id(self):
+        """复用统一特征选择身份，不再序列化一份重复 ID。"""
+        return self.selection.feature_id
+
+    @model_validator(mode="after")
+    def check_arc(self) -> Self:
+        """不允许并集法携带虚构的单弧方向或端点输出。"""
+        allowed = (
+            {"radius", "coverage_angle", "supported_length"}
+            if self.mode.kind == "supported-union"
+            else {
+                "radius",
+                "signed_sweep",
+                "sweep",
+                "arc_length",
+                "chord_length",
+                "start_x",
+                "start_y",
+                "start_z",
+                "end_x",
+                "end_y",
+                "end_z",
+            }
+        )
+        if any(output.component not in allowed for output in self.outputs):
+            raise ValueError("圆弧输出与所选方法不一致")
+        if (
+            self.mode.kind == "continuous-arc"
+            and self.selection.segment_ids
+            and len(self.selection.segment_ids) != 1
+        ):
+            raise ValueError("连续开弧必须选择唯一段")
+        check_dimension_policy(self)
+        return self
+
+
+def arc_output_unit(component, length_unit):
+    """协议角度使用 rad，其余圆弧标量沿支持的长度单位。"""
+    return (
+        "rad"
+        if component in {"signed_sweep", "sweep", "coverage_angle"}
+        else length_unit
+    )
+
+
 def resolve_dimension_parameters(parameters, evaluation):
     """数值内核参数不改变已保存的来源选择，并重验面内几何约束。"""
     if evaluation is None:
         return None
+    if isinstance(parameters, MeasureArcParameters):
+        return parameters.model_copy(update={"evaluation": evaluation})
     if (
         isinstance(parameters, MeasureExtentsParameters)
         and parameters.mode.kind == "robust-profile-spans"
@@ -271,6 +361,15 @@ def dimension_metric_units(parameters):
                     ).items()
                 }
             )
+    elif isinstance(parameters, MeasureArcParameters):
+        units.update(boundary_metric_units("circle", length))
+        units.update(
+            selected_point_count="1",
+            selected_segment_count="1",
+            coverage_angle="rad",
+            overlap_angle="rad",
+            polyline_length=length,
+        )
     else:
         units.update(boundary_metric_units("circle", length))
         units["role_usable"] = "1"
@@ -303,3 +402,9 @@ class HoleNodeParameters(Contract):
     """孔尺寸设置与上游圆拟合配置分离。"""
 
     settings: MeasureHoleParameters
+
+
+class ArcNodeParameters(Contract):
+    """圆弧节点原子设置，不携带上一 Run 的模型或端点。"""
+
+    settings: MeasureArcParameters
