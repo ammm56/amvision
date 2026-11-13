@@ -4,6 +4,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 from backend.contracts.workflows.arc3d_evidence import ArcEvidenceItem
+from backend.contracts.workflows.relation3d_evidence import RelationEvidenceItem
 from backend.contracts.workflows.dimension3d_parameters import arc_output_unit
 
 from backend.contracts.workflows.measurement3d_directional import (
@@ -40,7 +41,8 @@ class MeasurementEvidence3d(Contract):
                 | ExtentsEvidenceItem
                 | EdgePairEvidenceItem
                 | HoleEvidenceItem
-                | ArcEvidenceItem,
+                | ArcEvidenceItem
+                | RelationEvidenceItem,
                 Field(discriminator="kind"),
             ],
             ...,
@@ -62,7 +64,7 @@ class MeasurementEvidence3d(Contract):
                 raise ValueError("测量证据空间或观测不一致")
         groups = {}
         for item in self.items:
-            if isinstance(item, MeasurementEvidenceItem):
+            if isinstance(item, (MeasurementEvidenceItem, RelationEvidenceItem)):
                 continue
             groups.setdefault(item.method.parameters_sha256, []).append(item)
         for siblings in groups.values():
@@ -86,7 +88,9 @@ class MeasurementEvidence3d(Contract):
             items=tuple(
                 NumericItem(
                     item_id=i.item_id,
-                    unit=arc_output_unit(i.component, self.length_unit)
+                    unit=i.method.parameters.unit
+                    if isinstance(i, RelationEvidenceItem)
+                    else arc_output_unit(i.component, self.length_unit)
                     if isinstance(i, ArcEvidenceItem)
                     else self.length_unit,
                     value=i.value,

@@ -89,6 +89,12 @@ class _ArrayBytes:
         self.asset, self.blob, self.tail = asset, blob, b""
         self.ranges = []
         self.lineage = None
+        if blob.role == "relation":
+            from backend.service.application.workflows.point_cloud.relation_bytes import (
+                RelationBytesValidator,
+            )
+
+            self.lineage = RelationBytesValidator(asset)
         if blob.role == "edge":
             from backend.service.application.workflows.point_cloud.edge_bytes import (
                 EdgeBytesValidator,

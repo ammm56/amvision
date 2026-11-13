@@ -629,6 +629,44 @@ class CloudRuntime:
             with self._lock:
                 self._borrows -= 1
 
+    @contextmanager
+    def restoring(self):
+        """组合资产恢复失败撤销本次登记及数组；不修改既有引用或观测身份。"""
+        with self._lock, self.storage_scope.registration_transaction():
+            self._require_open()
+            records, owners = set(self._records), set(self._owners)
+            try:
+                yield
+            except BaseException as error:
+                from backend.service.application.runtime.exception_cleanup import (
+                    release_exception_frames,
+                )
+
+                release_exception_frames(error)
+                for key in tuple(self._records):
+                    if key not in records:
+                        del self._records[key]
+                for key in tuple(self._owners):
+                    if key not in owners:
+                        del self._owners[key]
+                raise
+
+    @contextmanager
+    def borrow_derivation(self, reference):
+        """只向持久化适配器借出当前派生记录；父链和所有权由 registry 校验。"""
+        with self.producing(), ExitStack() as stack:
+            with self._lock:
+                record = self._resolve(reference)
+                if record.parent is None:
+                    raise InvalidRequestError("原始记录没有派生存储")
+                parent = CloudReference.model_validate_json(record.parent.reference)
+                groups = {}
+                for name in ("owner", "indices", "lineage"):
+                    owner = getattr(record, name)
+                    if owner is not None:
+                        groups[name] = stack.enter_context(owner.borrow())
+            yield parent, groups
+
     def open_local(
         self,
         *,

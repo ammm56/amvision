@@ -31,7 +31,7 @@ def test_catalog_is_generated_from_current_contracts_and_loads():
         for d in catalog.get_catalog_snapshot().node_definitions
         if d.node_pack_id == "metrology3d.nodes"
     ]
-    assert len(definitions) == 28
+    assert len(definitions) == 29
     loader = WorkflowNodeRuntimeRegistryLoader(
         node_catalog_registry=catalog, node_pack_loader=packs
     )

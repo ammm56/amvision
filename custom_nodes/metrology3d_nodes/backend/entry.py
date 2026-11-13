@@ -41,6 +41,7 @@ HANDLERS = {
     "measure-edge-pair": dimension_handlers.edge_pair,
     "measure-hole": dimension_handlers.hole,
     "measure-arc": dimension_handlers.arc,
+    "measure-relation": dimension_handlers.relation,
 }
 
 

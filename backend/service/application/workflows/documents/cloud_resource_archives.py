@@ -46,8 +46,17 @@ def export_cloud_archive(service, reference, *, project_id, stream, policy, canc
 
 
 def import_cloud_archive(
-    service, *, stream, project_id, name, write_identity, policy, cancel, actor_id=None,
-    expected_reference=None, parent_references=None,
+    service,
+    *,
+    stream,
+    project_id,
+    name,
+    write_identity,
+    policy,
+    cancel,
+    actor_id=None,
+    expected_reference=None,
+    parent_references=None,
 ):
     """精确成员 allowlist、真实长度/CRC/摘要验证后提交新资源。"""
     from backend.service.application.workflows.documents.measurement_resources import (
@@ -63,10 +72,10 @@ def import_cloud_archive(
     stream.seek(0)
     try:
         with ZipFile(stream) as archive, ExitStack() as stack:
-            names = validate_stored_members(archive, max_entries=7)
+            names = validate_stored_members(archive, max_entries=8)
             if (
                 len(names) != len(set(names))
-                or not 2 <= len(names) <= 7
+                or not 2 <= len(names) <= 8
                 or "resource.json" not in names
             ):
                 raise ValueError("点云资产包成员无效")
@@ -79,7 +88,8 @@ def import_cloud_archive(
                 raise ValueError("资产包不是 point-cloud")
             if expected_reference is not None and (
                 expected_reference.kind != content.kind
-                or expected_reference.sha256 != sha256(canonical_bytes(content)).hexdigest()
+                or expected_reference.sha256
+                != sha256(canonical_bytes(content)).hexdigest()
             ):
                 raise ValueError("资源包源引用摘要与内容不一致")
             if parent_references is not None:
@@ -90,7 +100,9 @@ def import_cloud_archive(
                     for ref in content.point_cloud.parent_assets
                 ]
                 for parent, original in zip(
-                    cloud_payload["provenance"]["parents"], content.point_cloud.provenance.parents, strict=True,
+                    cloud_payload["provenance"]["parents"],
+                    content.point_cloud.provenance.parents,
+                    strict=True,
                 ):
                     if original.reference is not None:
                         mapped = parent_references[reference_key(original.reference)]
@@ -129,6 +141,11 @@ def validate_stored_members(archive, *, max_entries):
         raise ValueError("资产包成员数量无效或重复")
     for entry in entries:
         mode = (entry.external_attr >> 16) & 0o170000
-        if entry.compress_type != ZIP_STORED or entry.flag_bits & 1 or mode not in (0, 0o100000) or entry.is_dir():
+        if (
+            entry.compress_type != ZIP_STORED
+            or entry.flag_bits & 1
+            or mode not in (0, 0o100000)
+            or entry.is_dir()
+        ):
             raise ValueError("资产包不能包含压缩、加密、链接或目录")
     return names

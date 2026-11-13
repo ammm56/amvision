@@ -9,6 +9,7 @@ import GeometrySettingsEditor from '../../../../../../custom_nodes/metrology3d_n
 import MeasurementSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/MeasurementSettingsEditor.vue'
 import BoundarySettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/BoundarySettingsEditor.vue'
 import DimensionSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/DimensionSettingsEditor.vue'
+import RelationSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/RelationSettingsEditor.vue'
 import DenoiseSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/DenoiseSettingsEditor.vue'
 import ResampleSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/ResampleSettingsEditor.vue'
 import NormalsSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/NormalsSettingsEditor.vue'
@@ -21,6 +22,7 @@ import HeightMapSettingsEditor from '../../../../../../custom_nodes/metrology3d_
 const editors: Record<string, Component> = { 'core.rule.check-limits:rules':WorkflowLimitRulesEditor, 'custom.connector.pin-array-locate:layout': PinLayoutEditor, 'custom.connector.measure:items': MeasurementEditor,
   'custom.opencv.planar-calibrate:control_points':WorkflowCalibrationPointsEditor, 'custom.opencv.planar-calibrate:validation_points':WorkflowCalibrationPointsEditor }
 export function trustedParameterEditor(nodeType: string, parameter: string): Component | undefined {
+  if(nodeType==='custom.metrology3d.measure-relation'&&parameter==='settings')return RelationSettingsEditor
   if(nodeType==='custom.metrology3d.cloud-to-height-map'&&parameter==='settings')return HeightMapSettingsEditor
   if(nodeType==='custom.metrology3d.profiles-to-cloud'&&parameter==='settings')return ProfileSettingsEditor
   if(nodeType==='custom.metrology3d.raster-to-cloud'&&parameter==='settings')return RasterSettingsEditor

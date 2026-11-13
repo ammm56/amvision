@@ -76,6 +76,13 @@ class _Chunks:
         result, self.pending = self.pending[:size], self.pending[size:]
         return result
 
+    def close(self):
+        """显式退出生成器中的借用，失败路径也不能等待 GC 回收。"""
+        try:
+            self.chunks.close()
+        finally:
+            self.pending = b""
+
 
 def _source(reference, options):
     """冻结原始输入描述，不保存系统路径、运行 ID 或租约。"""
@@ -206,7 +213,24 @@ def _blob(role, name, chunks):
     )
 
 
-def save_cloud(
+def save_cloud(runtime, reference, **kwargs):
+    """关系完整支持共用单资产提交；其他现有资产保持原保存路径。"""
+    from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
+
+    raw = kwargs.get("evidence")
+    evidence = MeasurementEvidence3d.model_validate(raw) if raw is not None else None
+    if evidence is not None and any(
+        i.kind == "measure-relation" for i in evidence.items
+    ):
+        from custom_nodes.metrology3d_nodes.shared.relation_assets import (
+            save_relation_asset,
+        )
+
+        return save_relation_asset(runtime, reference, **kwargs)
+    return _save_cloud(runtime, reference, **kwargs)
+
+
+def _save_cloud(
     runtime,
     reference,
     *,
@@ -224,6 +248,7 @@ def save_cloud(
     sampling=None,
     edge=None,
     evidence=None,
+    relation_attachment=None,
 ):
     """保存原件或全部派生字段；已提交版本由服务拥有，不归运行 Scope 删除。"""
     if mode not in ("original", "derived"):
@@ -251,7 +276,12 @@ def save_cloud(
     with runtime.producing(), ExitStack() as stack:
         view = stack.enter_context(runtime.borrow(selected))
         if selected.source.kind == "asset" and (
-            (height_map is None and sampling is None and edge is None)
+            (
+                height_map is None
+                and sampling is None
+                and edge is None
+                and relation_attachment is None
+            )
             or isinstance(
                 service.read(
                     selected.source.reference, project_id=project_id
@@ -564,6 +594,38 @@ def save_cloud(
             ] + [blob.model_dump(mode="json")]
             content = MeasurementResourceContent.model_validate(payload)
             streams[blob.name] = stream
+        if relation_attachment is not None:
+            saved, blob, stream = relation_attachment
+            payload = content.model_dump(mode="json")
+            data = payload["point_cloud"]
+            if data["representation"] != "array-blocks":
+                raise InvalidRequestError("关系资产需要共同原云的完整数组")
+            for key in (
+                "boundary",
+                "circle",
+                "arc_evidence",
+                "height_map",
+                "sampling",
+                "edge",
+                "relation",
+            ):
+                data.pop(key, None)
+            auxiliary = {"height-map", "sampling", "edge", "relation"}
+            data["blobs"] = [b for b in data["blobs"] if b["role"] not in auxiliary] + [
+                blob.model_dump(mode="json")
+            ]
+            data["relation"] = saved.model_dump(mode="json")
+            streams = {
+                key: value
+                for key, value in streams.items()
+                if key
+                not in {"height-map.bin", "sampling.bin", "edge.bin", "relation.bin"}
+            }
+            streams[blob.name] = stream
+            content = MeasurementResourceContent.model_validate(payload)
+        for stream in streams.values():
+            if isinstance(stream, _Chunks):
+                stack.callback(stream.close)
         return service.save_cloud(
             project_id=project_id,
             name=name,
@@ -600,7 +662,40 @@ def _original_asset(service, document, project_id):
     return next(iter(originals.values()))
 
 
-def read_asset(runtime, reference, *, service, project_id, policy, cancel):
+def read_asset(runtime, reference, **kwargs):
+    """普通读取仍返回点云；关系资产同时在同一事务恢复完整支持。"""
+    return read_asset_bundle(runtime, reference, **kwargs)[0]
+
+
+def read_asset_bundle(runtime, reference, *, service, project_id, policy, cancel):
+    """返回点云及可选关系特征/证据；任一成员失败均撤销此次运行登记。"""
+    with runtime.restoring():
+        cloud = _read_asset(
+            runtime,
+            reference,
+            service=service,
+            project_id=project_id,
+            policy=policy,
+            cancel=cancel,
+        )
+        document = service.read(reference, project_id=project_id)
+        if document.content.point_cloud.relation is None:
+            return cloud, None, None
+        from custom_nodes.metrology3d_nodes.shared.relation_assets import (
+            restore_relation_asset,
+        )
+
+        return restore_relation_asset(
+            runtime,
+            cloud,
+            document=document,
+            service=service,
+            policy=policy,
+            cancel=cancel,
+        )
+
+
+def _read_asset(runtime, reference, *, service, project_id, policy, cancel):
     """恢复独立数组，新运行不借用历史 mmap 或历史运行身份。"""
     policy = replace(
         policy,
@@ -770,7 +865,7 @@ def _read_blocks(runtime, document, service, policy, cancel):
                 elif blob.role == "profile-rows":
                     for value in profile_arrays.values():
                         _fill(checked, value, policy.chunk_bytes, cancel)
-                elif blob.role in {"height-map", "sampling", "edge"}:
+                elif blob.role in {"height-map", "sampling", "edge", "relation"}:
                     # 附属证据由读取方按需恢复；此处仍完整校验，不能漏掉坏数据块。
                     checked = CheckedBlobStream(snapshot.stream, blob, cancel, cloud)
                     while checked.read(policy.chunk_bytes):

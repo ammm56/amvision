@@ -39,6 +39,7 @@ from backend.contracts.workflows.profile3d import ProfileSource
 from backend.contracts.workflows.height_map_evidence import HeightMapEvidence
 from backend.contracts.workflows.edge_sampling_evidence import SamplingEvidence
 from backend.contracts.workflows.edge_evidence import EdgeEvidence
+from backend.contracts.workflows.relation3d_assets import RelationAsset
 
 
 class CloudBlob(Contract):
@@ -53,6 +54,7 @@ class CloudBlob(Contract):
         "height-map",
         "sampling",
         "edge",
+        "relation",
     ]
     name: Literal[
         "original.bin",
@@ -63,6 +65,7 @@ class CloudBlob(Contract):
         "height-map.bin",
         "sampling.bin",
         "edge.bin",
+        "relation.bin",
     ]
     content_length: JsonCount
     sha256: Sha256
@@ -81,6 +84,7 @@ class CloudBlob(Contract):
                 "height-map": "height-map.bin",
                 "sampling": "sampling.bin",
                 "edge": "edge.bin",
+                "relation": "relation.bin",
             }[self.role]
         ):
             raise ValueError("点云数据块角色与名称不一致")
@@ -267,7 +271,7 @@ class CloudAssetBase(Contract):
     source: AssetSource
     spatial: CloudSpatial
     provenance: AssetProvenance
-    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=6)]
+    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=7)]
     source_field_names: tuple[CloudSourceNames, ...]
     parent_assets: tuple[ResourceReference, ...]
     point_count: JsonCount
@@ -287,6 +291,7 @@ class CloudAssetBase(Contract):
         default=None, exclude_if=lambda v: v is None
     )
     edge: EdgeEvidence | None = Field(default=None, exclude_if=lambda v: v is None)
+    relation: RelationAsset | None = Field(default=None, exclude_if=lambda v: v is None)
 
     def original_observation(self) -> tuple[AssetSource, int]:
         """返回持久内容中的原始观测及记录总数，不解析外部父资产。"""
@@ -296,6 +301,41 @@ class CloudAssetBase(Contract):
     def check_common(self) -> Self:
         """不允许遗漏属性映射、伪造父保留或组织点数。"""
         unique_ids([b.role for b in self.blobs], "blobs")
+        relation_blob = next((b for b in self.blobs if b.role == "relation"), None)
+        if (self.relation is None) != (relation_blob is None):
+            raise ValueError("关系证据与派生数据块不一致")
+        if self.relation is not None and (
+            self.representation != "array-blocks"
+            or relation_blob.content_length != self.relation.byte_length()
+        ):
+            raise ValueError("关系资产必须保存原云数组和完整派生链")
+        if self.relation is not None:
+            if any(
+                (
+                    self.boundary,
+                    self.circle,
+                    self.arc_evidence,
+                    self.height_map,
+                    self.sampling,
+                    self.edge,
+                )
+            ):
+                raise ValueError("关系资产不能混入绑定其他输入的附属输出")
+            members = (self, *(step.state for step in self.relation.steps))
+            primary = members[self.relation.primary]
+            for stored in self.relation.items:
+                p = stored.evidence.method.parameters
+                if (p.frame_id, p.length_unit) != (
+                    primary.spatial.frame_id,
+                    primary.spatial.length_unit,
+                ):
+                    raise ValueError("关系资产主输入与测量空间不一致")
+                for side, member in zip(stored.evidence.support, stored.members):
+                    if member is not None and (
+                        side.point_count != members[member].point_count
+                        or members[member].spatial != primary.spatial
+                    ):
+                        raise ValueError("关系支持数量或空间与保存成员不一致")
         edge_blob = next((b for b in self.blobs if b.role == "edge"), None)
         if (self.edge is None) != (edge_blob is None):
             raise ValueError("实测边证据与数据块不一致")

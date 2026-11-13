@@ -5,6 +5,7 @@ import {TransformControls} from 'three/addons/controls/TransformControls.js'
 import {object,reserveCpu,reserveGpu} from './preview-data'
 import type {CloudRendererPolicy} from '../services/measurement-resource.service'
 import {measurementItems,referenceExtension} from './measurement-display'
+import {relationDistanceStrokes} from './relation-display'
 import {curveItems,curveStrokes,circleStrokePoints} from './boundary-display'
 import type {Raycaster} from 'three'
 import {roiDependencies,roiGraphIssues} from './roi-graph'
@@ -158,6 +159,11 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         const endpoints=item.geometry.endpoints
         if(!Array.isArray(endpoints)||endpoints.length!==2)throw new Error('cloud_preview_invalid')
         dimension(endpoints.map(vec))
+      }
+      if(item.valid&&item.geometry?.kind==='geometric-relation'&&item.geometry.endpoints!==null){
+        const strokes=relationDistanceStrokes(item.method,item.geometry)
+        dimension(strokes.dimension)
+        if(selected&&strokes.construction.length)dimension(strokes.construction,true)
       }
       if(item.valid&&item.geometry?.kind==='projected-extents'){
         const p=(item.geometry.corners as unknown[]).map(vec)

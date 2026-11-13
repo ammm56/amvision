@@ -42,6 +42,7 @@ from backend.contracts.workflows.pose3d_operations import (
     PoseChainTransform,
 )
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
+from backend.contracts.workflows.relation3d_parameters import RelationNodeParameters
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightNodeParameters,
     StepNodeParameters,
@@ -233,6 +234,19 @@ def build_custom_node_catalog_document():
             ArcNodeParameters,
             [port("features", "features3d.v1", multiple=True)],
             [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+            ],
+        ),
+        (
+            "measure-relation",
+            "Measure Relation",
+            "metrology3d.measurement",
+            RelationNodeParameters,
+            [cloud, port("features", "features3d.v1", False, True)],
+            [
+                cloud,
+                port("features", "features3d.v1"),
                 port("measurements", "numeric-table.v1"),
                 port("evidence", "measurement-evidence3d.v1"),
             ],
@@ -431,7 +445,10 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.32"
+                version="0.1.33"
+                if key
+                in {"measure-relation", "read-cloud", "save-cloud", "cloud-preview"}
+                else "0.1.32"
                 if key
                 in {
                     "measure-arc",

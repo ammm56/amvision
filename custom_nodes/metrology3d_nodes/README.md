@@ -6,7 +6,7 @@
 
 - 数据：Read Cloud、Raster to Cloud、Profiles to Cloud、Cloud to Height Map、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
 - 定位与特征：Fit Plane、Build Frame、Invert Pose、Compose Poses、Register Cloud、Extract Boundary、Fit Line、Fit Circle。
-- 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole、Measure Arc。
+- 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole、Measure Arc、Measure Relation。
 - 显示：Cloud Preview。
 
 既有严格截线与轴向跨度保持原定义。Extract Boundary 已接通显式 `visible-envelope` 栅格剖面，Measure Extents 已接通 `robust-profile-spans`；前端、来源与保存读取同步。F4 已接通多片段拟圆、实际距离分区及基准应用范围，当前工件 50 项均几何有效，S2 当前方法已获工程使用确认，不再以旧稳定性诊断阻塞交付。最终十秒节拍尚未验收通过。无效量值保持 null 并保留原因，几何有效不表示产品合格或实体精度认证；正式配方另经 Check Limits 输出 OK/NG/INVALID。
@@ -15,7 +15,9 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前 `0.1.32` 为二十八个节点，新增 Measure Arc。Fit Circle.features → Measure Arc，显式选择连续开弧或支持角区并集；不重复拟圆、不跨缺口补边。连续法输出端点、方向、扫角及模型弧长，并集法输出去重覆盖及模型支持弧长；实测折线、原支持端点与投影构造点分别显示。保存时 Fit Circle.cloud/features 和 Measure Arc.evidence 同接 Save Cloud；Read Cloud 恢复云、圆和量值证据，可直接重新测量而不拟圆。保存范围为同支持云的唯一拟合圆，不是任意异构特征集合。详见[B10 规格与验证](../../docs/development/3d-metrology-arc-measurement.md)。
+当前 `0.1.33` 为二十九个节点，新增 Measure Relation。当前云接 `cloud`，已有平面/直线/圆集合接多输入 `features`，在参数工作区显式选择六种关系、A/B、空间/投影、有限支持或无限模型及质量条件。原始行号、拟合圆心、指定坐标不混为同类实测点；不重新拟合。需要复算资产时，将 Measure Relation 的 `cloud/features/evidence` 同接 derived 模式 Save Cloud，Read Cloud 恢复同一原云及实际 A/B 派生链，输出三端口继续测量。不能拆开读取两云再修改观测 ID。交换 PLY/PCD/XYZ 不包含关系模型和证据，应使用无损资源包搬运。详见[B13 规格与验证](../../docs/development/3d-metrology-relations.md#9-ab-事务资产与公开链路2026-11-13)。
+
+前批 Measure Arc 的接线和定义不变：Fit Circle.features → Measure Arc，显式选择连续开弧或支持角区并集；不重复拟圆、不跨缺口补边。连续法输出端点、方向、扫角及模型弧长，并集法输出去重覆盖及模型支持弧长；实测折线、原支持端点与投影构造点分别显示。保存时 Fit Circle.cloud/features 和 Measure Arc.evidence 同接 Save Cloud；Read Cloud 恢复云、圆和量值证据，可直接重新测量而不拟圆。该圆弧保存范围仍为同支持云的唯一拟合圆。详见[B10 规格与验证](../../docs/development/3d-metrology-arc-measurement.md)。
 
 Raster 文件模式接 `file-ref.v1`，标定由节点参数提供；数组模式接 `calibrated-raster.v1`，使用同机 PREPARE 固定的完整标定，节点不覆盖。两模式显式二选一，不从灰度或文件名猜深度。接线为 Raster to Cloud → Filter Valid → 既有测量/Preview/Save Cloud；原始标量、无效原因、完整像素身份和标定追溯随资产存读保留。Python 和 Windows .NET 调用复用既有 Trigger/LocalBuffer，详见[B06 规格与验收](../../docs/development/3d-metrology-raster-input.md)。
 

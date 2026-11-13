@@ -53885,6 +53885,28 @@
             "title": "BoxRoi",
             "type": "object"
           },
+          "CircleCenterRelationPoint": {
+            "additionalProperties": false,
+            "description": "读取本次有效圆模型中心，不再次拟圆或冒充采集点。",
+            "properties": {
+              "kind": {
+                "const": "circle-center",
+                "title": "Kind",
+                "type": "string"
+              },
+              "feature_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Feature Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "feature_id"
+            ],
+            "title": "CircleCenterRelationPoint",
+            "type": "object"
+          },
           "CircleGeometry": {
             "additionalProperties": false,
             "description": "三维圆中心、评价面正法向和真实半径。",
@@ -54728,6 +54750,40 @@
               "plane"
             ],
             "title": "ContourDatum",
+            "type": "object"
+          },
+          "CoordinateRelationPoint": {
+            "additionalProperties": false,
+            "description": "配方在当前坐标明确指定的点，没有原始采集行号。",
+            "properties": {
+              "kind": {
+                "const": "coordinate",
+                "title": "Kind",
+                "type": "string"
+              },
+              "position": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Position",
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "position"
+            ],
+            "title": "CoordinateRelationPoint",
             "type": "object"
           },
           "CoverageEvidence": {
@@ -58150,6 +58206,40 @@
             "title": "LimitRule",
             "type": "object"
           },
+          "LineAngleRelation": {
+            "additionalProperties": false,
+            "description": "线方向的无向、向量或投影有符号角。",
+            "properties": {
+              "kind": {
+                "const": "line-angle",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reference": {
+                "$ref": "#/$defs/RelationLine"
+              },
+              "target": {
+                "$ref": "#/$defs/RelationLine"
+              },
+              "angle_mode": {
+                "enum": [
+                  "unoriented",
+                  "oriented",
+                  "signed"
+                ],
+                "title": "Angle Mode",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "reference",
+              "target",
+              "angle_mode"
+            ],
+            "title": "LineAngleRelation",
+            "type": "object"
+          },
           "LineGeometry": {
             "additionalProperties": false,
             "description": "有方向的三维直线，实际支持范围单独保留。",
@@ -58220,6 +58310,46 @@
               "end"
             ],
             "title": "LineInterval",
+            "type": "object"
+          },
+          "LineLineRelation": {
+            "additionalProperties": false,
+            "description": "线线最短距离；非平行近退化条件由配方显式声明。",
+            "properties": {
+              "kind": {
+                "const": "line-line",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reference": {
+                "$ref": "#/$defs/RelationLine"
+              },
+              "target": {
+                "$ref": "#/$defs/RelationLine"
+              },
+              "support_mode": {
+                "enum": [
+                  "finite",
+                  "model"
+                ],
+                "title": "Support Mode",
+                "type": "string"
+              },
+              "min_crossing_sine": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Min Crossing Sine",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "reference",
+              "target",
+              "support_mode",
+              "min_crossing_sine"
+            ],
+            "title": "LineLineRelation",
             "type": "object"
           },
           "LineMethod": {
@@ -59471,6 +59601,40 @@
             "title": "NumericTable",
             "type": "object"
           },
+          "PlaneAngleRelation": {
+            "additionalProperties": false,
+            "description": "平面角明确按法向评价，不把面夹角冒称平行度公差。",
+            "properties": {
+              "kind": {
+                "const": "plane-angle",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reference": {
+                "$ref": "#/$defs/RelationPlane"
+              },
+              "target": {
+                "$ref": "#/$defs/RelationPlane"
+              },
+              "angle_mode": {
+                "enum": [
+                  "unoriented",
+                  "oriented",
+                  "signed"
+                ],
+                "title": "Angle Mode",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "reference",
+              "target",
+              "angle_mode"
+            ],
+            "title": "PlaneAngleRelation",
+            "type": "object"
+          },
           "PlaneAxis": {
             "additionalProperties": false,
             "description": "主次基准交线，正方向不得依赖特征返回顺序。",
@@ -59697,6 +59861,40 @@
             "title": "PlaneGeometry",
             "type": "object"
           },
+          "PlaneRelationCoverage": {
+            "additionalProperties": false,
+            "description": "沿既有局部三角支持检查所需的显式工程条件。",
+            "properties": {
+              "support_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Support Radius",
+                "type": "number"
+              },
+              "min_support_count": {
+                "minimum": 3,
+                "title": "Min Support Count",
+                "type": "integer"
+              },
+              "max_triangle_edge": {
+                "exclusiveMinimum": 0,
+                "title": "Max Triangle Edge",
+                "type": "number"
+              },
+              "max_plane_residual": {
+                "minimum": 0,
+                "title": "Max Plane Residual",
+                "type": "number"
+              }
+            },
+            "required": [
+              "support_radius",
+              "min_support_count",
+              "max_triangle_edge",
+              "max_plane_residual"
+            ],
+            "title": "PlaneRelationCoverage",
+            "type": "object"
+          },
           "PlaneSupportEvidence": {
             "additionalProperties": false,
             "description": "包含失败质量的平面快照；没有 CloudReference。",
@@ -59742,6 +59940,192 @@
               "quality"
             ],
             "title": "PlaneSupportEvidence",
+            "type": "object"
+          },
+          "PointLineRelation": {
+            "additionalProperties": false,
+            "description": "点到模型线的垂距；有限模式不将越界垂足夹到端点。",
+            "properties": {
+              "kind": {
+                "const": "point-line",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reference": {
+                "discriminator": {
+                  "mapping": {
+                    "circle-center": "#/$defs/CircleCenterRelationPoint",
+                    "coordinate": "#/$defs/CoordinateRelationPoint",
+                    "source-point": "#/$defs/SourceRelationPoint"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/SourceRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CircleCenterRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CoordinateRelationPoint"
+                  }
+                ],
+                "title": "Reference"
+              },
+              "target": {
+                "$ref": "#/$defs/RelationLine"
+              },
+              "support_mode": {
+                "enum": [
+                  "finite",
+                  "model"
+                ],
+                "title": "Support Mode",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "reference",
+              "target",
+              "support_mode"
+            ],
+            "title": "PointLineRelation",
+            "type": "object"
+          },
+          "PointPlaneRelation": {
+            "additionalProperties": false,
+            "description": "点到原平面的空间垂距；符号来自目标平面正法向。",
+            "properties": {
+              "kind": {
+                "const": "point-plane",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reference": {
+                "discriminator": {
+                  "mapping": {
+                    "circle-center": "#/$defs/CircleCenterRelationPoint",
+                    "coordinate": "#/$defs/CoordinateRelationPoint",
+                    "source-point": "#/$defs/SourceRelationPoint"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/SourceRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CircleCenterRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CoordinateRelationPoint"
+                  }
+                ],
+                "title": "Reference"
+              },
+              "target": {
+                "$ref": "#/$defs/RelationPlane"
+              },
+              "support_mode": {
+                "enum": [
+                  "finite",
+                  "model"
+                ],
+                "title": "Support Mode",
+                "type": "string"
+              },
+              "value_mode": {
+                "enum": [
+                  "absolute",
+                  "signed"
+                ],
+                "title": "Value Mode",
+                "type": "string"
+              },
+              "coverage": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PlaneRelationCoverage"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "reference",
+              "target",
+              "support_mode",
+              "value_mode",
+              "coverage"
+            ],
+            "title": "PointPlaneRelation",
+            "type": "object"
+          },
+          "PointPointRelation": {
+            "additionalProperties": false,
+            "description": "两个明确点在空间或评价面投影中的非负欧氏距离。",
+            "properties": {
+              "kind": {
+                "const": "point-point",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reference": {
+                "discriminator": {
+                  "mapping": {
+                    "circle-center": "#/$defs/CircleCenterRelationPoint",
+                    "coordinate": "#/$defs/CoordinateRelationPoint",
+                    "source-point": "#/$defs/SourceRelationPoint"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/SourceRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CircleCenterRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CoordinateRelationPoint"
+                  }
+                ],
+                "title": "Reference"
+              },
+              "target": {
+                "discriminator": {
+                  "mapping": {
+                    "circle-center": "#/$defs/CircleCenterRelationPoint",
+                    "coordinate": "#/$defs/CoordinateRelationPoint",
+                    "source-point": "#/$defs/SourceRelationPoint"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/SourceRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CircleCenterRelationPoint"
+                  },
+                  {
+                    "$ref": "#/$defs/CoordinateRelationPoint"
+                  }
+                ],
+                "title": "Target"
+              }
+            },
+            "required": [
+              "kind",
+              "reference",
+              "target"
+            ],
+            "title": "PointPointRelation",
             "type": "object"
           },
           "PoseChainProvenance": {
@@ -61582,6 +61966,755 @@
             "title": "RegistrationTransform",
             "type": "object"
           },
+          "RelationDiagnostic": {
+            "additionalProperties": false,
+            "description": "失败阶段、角色和原因可追踪，不能被历史有效几何替代。",
+            "properties": {
+              "stage": {
+                "enum": [
+                  "source",
+                  "geometry",
+                  "quality"
+                ],
+                "title": "Stage",
+                "type": "string"
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "reference",
+                      "target"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Role"
+              }
+            },
+            "required": [
+              "stage",
+              "role"
+            ],
+            "title": "RelationDiagnostic",
+            "type": "object"
+          },
+          "RelationEvidenceItem": {
+            "additionalProperties": false,
+            "description": "两侧证据及单一关系量值；复算支持仍由资产保存，不嵌原云。",
+            "properties": {
+              "kind": {
+                "const": "measure-relation",
+                "default": "measure-relation",
+                "title": "Kind",
+                "type": "string"
+              },
+              "item_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Item Id",
+                "type": "string"
+              },
+              "component": {
+                "enum": [
+                  "distance",
+                  "angle"
+                ],
+                "title": "Component",
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Value"
+              },
+              "valid": {
+                "title": "Valid",
+                "type": "boolean"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              },
+              "support": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/RelationSupport"
+                  },
+                  {
+                    "$ref": "#/$defs/RelationSupport"
+                  }
+                ],
+                "title": "Support",
+                "type": "array"
+              },
+              "method": {
+                "$ref": "#/$defs/RelationMethod"
+              },
+              "geometry": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RelationGeometry"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "diagnostic": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RelationDiagnostic"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sample_origin": {
+                "enum": [
+                  "measured",
+                  "estimated",
+                  "specified",
+                  "mixed"
+                ],
+                "title": "Sample Origin",
+                "type": "string"
+              }
+            },
+            "required": [
+              "item_id",
+              "component",
+              "value",
+              "valid",
+              "reason",
+              "quality",
+              "support",
+              "method",
+              "geometry",
+              "diagnostic",
+              "sample_origin"
+            ],
+            "title": "RelationEvidenceItem",
+            "type": "object"
+          },
+          "RelationGeometry": {
+            "additionalProperties": false,
+            "description": "构造落点只在唯一时提供；角度不伪造两个最近点。",
+            "properties": {
+              "kind": {
+                "const": "geometric-relation",
+                "default": "geometric-relation",
+                "title": "Kind",
+                "type": "string"
+              },
+              "endpoints": {
+                "anyOf": [
+                  {
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "prefixItems": [
+                      {
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Endpoints"
+              },
+              "contacts_unique": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Contacts Unique"
+              },
+              "support_pairs": {
+                "items": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "type": "string"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "maxItems": 8192,
+                "title": "Support Pairs",
+                "type": "array"
+              }
+            },
+            "required": [
+              "endpoints",
+              "contacts_unique",
+              "support_pairs"
+            ],
+            "title": "RelationGeometry",
+            "type": "object"
+          },
+          "RelationLine": {
+            "additionalProperties": false,
+            "description": "具有真实分段支持的现有直线，不接受自由拟合参数。",
+            "properties": {
+              "kind": {
+                "const": "line",
+                "title": "Kind",
+                "type": "string"
+              },
+              "feature_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Feature Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "feature_id"
+            ],
+            "title": "RelationLine",
+            "type": "object"
+          },
+          "RelationMethod": {
+            "additionalProperties": false,
+            "description": "单关系方法及不可分离的完整参数摘要。",
+            "properties": {
+              "method_id": {
+                "const": "measure-relation",
+                "default": "measure-relation",
+                "title": "Method Id",
+                "type": "string"
+              },
+              "method_version": {
+                "const": 1,
+                "default": 1,
+                "title": "Method Version",
+                "type": "integer"
+              },
+              "parameters": {
+                "$ref": "#/$defs/RelationParameters"
+              },
+              "parameters_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Parameters Sha256",
+                "type": "string"
+              }
+            },
+            "required": [
+              "parameters",
+              "parameters_sha256"
+            ],
+            "title": "RelationMethod",
+            "type": "object"
+          },
+          "RelationParameters": {
+            "additionalProperties": false,
+            "description": "单个明确关系与固定量值身份；不拟合、不自动选择方法。",
+            "properties": {
+              "space": {
+                "discriminator": {
+                  "mapping": {
+                    "projection": "#/$defs/RelationProjection",
+                    "spatial": "#/$defs/RelationSpatial"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RelationSpatial"
+                  },
+                  {
+                    "$ref": "#/$defs/RelationProjection"
+                  }
+                ],
+                "title": "Space"
+              },
+              "relation": {
+                "discriminator": {
+                  "mapping": {
+                    "line-angle": "#/$defs/LineAngleRelation",
+                    "line-line": "#/$defs/LineLineRelation",
+                    "plane-angle": "#/$defs/PlaneAngleRelation",
+                    "point-line": "#/$defs/PointLineRelation",
+                    "point-plane": "#/$defs/PointPlaneRelation",
+                    "point-point": "#/$defs/PointPointRelation"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/PointPointRelation"
+                  },
+                  {
+                    "$ref": "#/$defs/PointLineRelation"
+                  },
+                  {
+                    "$ref": "#/$defs/PointPlaneRelation"
+                  },
+                  {
+                    "$ref": "#/$defs/LineLineRelation"
+                  },
+                  {
+                    "$ref": "#/$defs/LineAngleRelation"
+                  },
+                  {
+                    "$ref": "#/$defs/PlaneAngleRelation"
+                  }
+                ],
+                "title": "Relation"
+              },
+              "item_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Item Id",
+                "type": "string"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              }
+            },
+            "required": [
+              "space",
+              "relation",
+              "item_id",
+              "quality_policy"
+            ],
+            "title": "RelationParameters",
+            "type": "object"
+          },
+          "RelationPlane": {
+            "additionalProperties": false,
+            "description": "现有平面及其正法向、拟合质量与支持。",
+            "properties": {
+              "kind": {
+                "const": "plane",
+                "title": "Kind",
+                "type": "string"
+              },
+              "feature_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Feature Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "feature_id"
+            ],
+            "title": "RelationPlane",
+            "type": "object"
+          },
+          "RelationPointEvidence": {
+            "additionalProperties": false,
+            "description": "点解析终态；指定点和拟合圆心不得取得原始采集身份。",
+            "properties": {
+              "point": {
+                "anyOf": [
+                  {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Point"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "origin": {
+                "enum": [
+                  "measured",
+                  "estimated",
+                  "specified"
+                ],
+                "title": "Origin",
+                "type": "string"
+              },
+              "source_index": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Source Index"
+              },
+              "logical_index": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Logical Index"
+              },
+              "feature_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Feature Id"
+              }
+            },
+            "required": [
+              "point",
+              "reason",
+              "origin",
+              "source_index",
+              "logical_index",
+              "feature_id"
+            ],
+            "title": "RelationPointEvidence",
+            "type": "object"
+          },
+          "RelationProjection": {
+            "additionalProperties": false,
+            "description": "将点/线或角度向量正交投影到显式评价面。",
+            "properties": {
+              "kind": {
+                "const": "projection",
+                "title": "Kind",
+                "type": "string"
+              },
+              "plane": {
+                "$ref": "#/$defs/EvaluationPlane3d"
+              },
+              "min_direction_norm": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Min Direction Norm",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "plane",
+              "min_direction_norm"
+            ],
+            "title": "RelationProjection",
+            "type": "object"
+          },
+          "RelationSpatial": {
+            "additionalProperties": false,
+            "description": "当前坐标中的三维几何，不依赖显示方向。",
+            "properties": {
+              "kind": {
+                "const": "spatial",
+                "title": "Kind",
+                "type": "string"
+              },
+              "frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "frame_id",
+              "length_unit"
+            ],
+            "title": "RelationSpatial",
+            "type": "object"
+          },
+          "RelationSupport": {
+            "additionalProperties": false,
+            "description": "复用完整支持摘要；平面和点补充各自证据，不伪装为边界。",
+            "properties": {
+              "role": {
+                "enum": [
+                  "reference",
+                  "target"
+                ],
+                "title": "Role",
+                "type": "string"
+              },
+              "content_sha256": {
+                "anyOf": [
+                  {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Content Sha256"
+              },
+              "point_count": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Point Count"
+              },
+              "source_point_count": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Source Point Count"
+              },
+              "vertex_kind": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "source",
+                      "generated"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Vertex Kind"
+              },
+              "sample_origin": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "measured",
+                      "interpolated",
+                      "extrapolated",
+                      "mixed",
+                      "estimated"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Sample Origin"
+              },
+              "bounds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/SupportBounds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "topology": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/BoundaryTopology"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "feature": {
+                "anyOf": [
+                  {
+                    "discriminator": {
+                      "mapping": {
+                        "boundary": "#/$defs/BoundaryEvidence",
+                        "circle": "#/$defs/CircleSnapshot",
+                        "line": "#/$defs/LineSnapshot"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/BoundaryEvidence"
+                      },
+                      {
+                        "$ref": "#/$defs/LineSnapshot"
+                      },
+                      {
+                        "$ref": "#/$defs/CircleSnapshot"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Feature"
+              },
+              "point": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RelationPointEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "plane": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PlaneSupportEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "coverage": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CoverageEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "coverage_quality": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/GeometryQuality"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "content_sha256",
+              "point_count",
+              "source_point_count",
+              "vertex_kind",
+              "sample_origin",
+              "bounds",
+              "topology",
+              "feature",
+              "point",
+              "plane",
+              "coverage",
+              "coverage_quality"
+            ],
+            "title": "RelationSupport",
+            "type": "object"
+          },
           "RigidTransform3d": {
             "additionalProperties": false,
             "description": "公开 transform3d.v1，matrix 作用方向固定为 target_from_source。",
@@ -62013,6 +63146,29 @@
               "quality"
             ],
             "title": "SegmentQuality",
+            "type": "object"
+          },
+          "SourceRelationPoint": {
+            "additionalProperties": false,
+            "description": "当前 cloud 中仍存在的最初输入行号，不是子集数组下标。",
+            "properties": {
+              "kind": {
+                "const": "source-point",
+                "title": "Kind",
+                "type": "string"
+              },
+              "source_index": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Source Index",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "source_index"
+            ],
+            "title": "SourceRelationPoint",
             "type": "object"
           },
           "StatisticalContactEvidence": {
@@ -62565,6 +63721,7 @@
                   "measure-edge-pair": "#/$defs/EdgePairEvidenceItem",
                   "measure-extents": "#/$defs/ExtentsEvidenceItem",
                   "measure-hole": "#/$defs/HoleEvidenceItem",
+                  "measure-relation": "#/$defs/RelationEvidenceItem",
                   "measure-step": "#/$defs/MeasurementEvidenceItem"
                 },
                 "propertyName": "kind"
@@ -62584,6 +63741,9 @@
                 },
                 {
                   "$ref": "#/$defs/ArcEvidenceItem"
+                },
+                {
+                  "$ref": "#/$defs/RelationEvidenceItem"
                 }
               ]
             },
@@ -62891,7 +64051,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -63326,7 +64486,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -63829,7 +64989,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -64593,7 +65753,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -64670,7 +65830,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -64756,7 +65916,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -65305,7 +66465,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -65793,7 +66953,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -66202,7 +67362,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -66536,7 +67696,1151 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.metrology3d.measure-relation",
+      "display_name": "Measure Relation",
+      "category": "metrology3d.measurement",
+      "description": "Measure Relation",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.33",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "features3d.v1",
+          "description": "",
+          "required": false,
+          "multiple": true,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "features3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "numeric-table.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "evidence",
+          "display_name": "Evidence",
+          "payload_type_id": "measurement-evidence3d.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "正式节点与共享算法使用同一参数对象。",
+        "properties": {
+          "settings": {
+            "additionalProperties": false,
+            "description": "单个明确关系与固定量值身份；不拟合、不自动选择方法。",
+            "properties": {
+              "space": {
+                "discriminator": {
+                  "mapping": {
+                    "projection": "#/$defs/RelationProjection",
+                    "spatial": "#/$defs/RelationSpatial"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "当前坐标中的三维几何，不依赖显示方向。",
+                    "properties": {
+                      "kind": {
+                        "const": "spatial",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "frame_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Frame Id",
+                        "type": "string"
+                      },
+                      "length_unit": {
+                        "enum": [
+                          "m",
+                          "mm",
+                          "um"
+                        ],
+                        "title": "Length Unit",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "frame_id",
+                      "length_unit"
+                    ],
+                    "title": "RelationSpatial",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "将点/线或角度向量正交投影到显式评价面。",
+                    "properties": {
+                      "kind": {
+                        "const": "projection",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "plane": {
+                        "additionalProperties": false,
+                        "description": "明确配置的平面，也是成功解析值；rotation 列为 U/V/N。",
+                        "properties": {
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "origin": {
+                            "maxItems": 3,
+                            "minItems": 3,
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ],
+                            "title": "Origin",
+                            "type": "array"
+                          },
+                          "rotation": {
+                            "maxItems": 3,
+                            "minItems": 3,
+                            "prefixItems": [
+                              {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "type": "array"
+                              },
+                              {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "type": "array"
+                              },
+                              {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "type": "array"
+                              }
+                            ],
+                            "title": "Rotation",
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "frame_id",
+                          "length_unit",
+                          "origin",
+                          "rotation"
+                        ],
+                        "title": "EvaluationPlane3d",
+                        "type": "object"
+                      },
+                      "min_direction_norm": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 1,
+                        "title": "Min Direction Norm",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "plane",
+                      "min_direction_norm"
+                    ],
+                    "title": "RelationProjection",
+                    "type": "object"
+                  }
+                ],
+                "title": "Space"
+              },
+              "relation": {
+                "discriminator": {
+                  "mapping": {
+                    "line-angle": "#/$defs/LineAngleRelation",
+                    "line-line": "#/$defs/LineLineRelation",
+                    "plane-angle": "#/$defs/PlaneAngleRelation",
+                    "point-line": "#/$defs/PointLineRelation",
+                    "point-plane": "#/$defs/PointPlaneRelation",
+                    "point-point": "#/$defs/PointPointRelation"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "两个明确点在空间或评价面投影中的非负欧氏距离。",
+                    "properties": {
+                      "kind": {
+                        "const": "point-point",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "reference": {
+                        "discriminator": {
+                          "mapping": {
+                            "circle-center": "#/$defs/CircleCenterRelationPoint",
+                            "coordinate": "#/$defs/CoordinateRelationPoint",
+                            "source-point": "#/$defs/SourceRelationPoint"
+                          },
+                          "propertyName": "kind"
+                        },
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "当前 cloud 中仍存在的最初输入行号，不是子集数组下标。",
+                            "properties": {
+                              "kind": {
+                                "const": "source-point",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "source_index": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "title": "Source Index",
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "source_index"
+                            ],
+                            "title": "SourceRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "读取本次有效圆模型中心，不再次拟圆或冒充采集点。",
+                            "properties": {
+                              "kind": {
+                                "const": "circle-center",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "feature_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Feature Id",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "feature_id"
+                            ],
+                            "title": "CircleCenterRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "配方在当前坐标明确指定的点，没有原始采集行号。",
+                            "properties": {
+                              "kind": {
+                                "const": "coordinate",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "position": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Position",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "position"
+                            ],
+                            "title": "CoordinateRelationPoint",
+                            "type": "object"
+                          }
+                        ],
+                        "title": "Reference"
+                      },
+                      "target": {
+                        "discriminator": {
+                          "mapping": {
+                            "circle-center": "#/$defs/CircleCenterRelationPoint",
+                            "coordinate": "#/$defs/CoordinateRelationPoint",
+                            "source-point": "#/$defs/SourceRelationPoint"
+                          },
+                          "propertyName": "kind"
+                        },
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "当前 cloud 中仍存在的最初输入行号，不是子集数组下标。",
+                            "properties": {
+                              "kind": {
+                                "const": "source-point",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "source_index": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "title": "Source Index",
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "source_index"
+                            ],
+                            "title": "SourceRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "读取本次有效圆模型中心，不再次拟圆或冒充采集点。",
+                            "properties": {
+                              "kind": {
+                                "const": "circle-center",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "feature_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Feature Id",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "feature_id"
+                            ],
+                            "title": "CircleCenterRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "配方在当前坐标明确指定的点，没有原始采集行号。",
+                            "properties": {
+                              "kind": {
+                                "const": "coordinate",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "position": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Position",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "position"
+                            ],
+                            "title": "CoordinateRelationPoint",
+                            "type": "object"
+                          }
+                        ],
+                        "title": "Target"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "reference",
+                      "target"
+                    ],
+                    "title": "PointPointRelation",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "点到模型线的垂距；有限模式不将越界垂足夹到端点。",
+                    "properties": {
+                      "kind": {
+                        "const": "point-line",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "reference": {
+                        "discriminator": {
+                          "mapping": {
+                            "circle-center": "#/$defs/CircleCenterRelationPoint",
+                            "coordinate": "#/$defs/CoordinateRelationPoint",
+                            "source-point": "#/$defs/SourceRelationPoint"
+                          },
+                          "propertyName": "kind"
+                        },
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "当前 cloud 中仍存在的最初输入行号，不是子集数组下标。",
+                            "properties": {
+                              "kind": {
+                                "const": "source-point",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "source_index": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "title": "Source Index",
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "source_index"
+                            ],
+                            "title": "SourceRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "读取本次有效圆模型中心，不再次拟圆或冒充采集点。",
+                            "properties": {
+                              "kind": {
+                                "const": "circle-center",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "feature_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Feature Id",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "feature_id"
+                            ],
+                            "title": "CircleCenterRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "配方在当前坐标明确指定的点，没有原始采集行号。",
+                            "properties": {
+                              "kind": {
+                                "const": "coordinate",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "position": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Position",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "position"
+                            ],
+                            "title": "CoordinateRelationPoint",
+                            "type": "object"
+                          }
+                        ],
+                        "title": "Reference"
+                      },
+                      "target": {
+                        "additionalProperties": false,
+                        "description": "具有真实分段支持的现有直线，不接受自由拟合参数。",
+                        "properties": {
+                          "kind": {
+                            "const": "line",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationLine",
+                        "type": "object"
+                      },
+                      "support_mode": {
+                        "enum": [
+                          "finite",
+                          "model"
+                        ],
+                        "title": "Support Mode",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "reference",
+                      "target",
+                      "support_mode"
+                    ],
+                    "title": "PointLineRelation",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "点到原平面的空间垂距；符号来自目标平面正法向。",
+                    "properties": {
+                      "kind": {
+                        "const": "point-plane",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "reference": {
+                        "discriminator": {
+                          "mapping": {
+                            "circle-center": "#/$defs/CircleCenterRelationPoint",
+                            "coordinate": "#/$defs/CoordinateRelationPoint",
+                            "source-point": "#/$defs/SourceRelationPoint"
+                          },
+                          "propertyName": "kind"
+                        },
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "当前 cloud 中仍存在的最初输入行号，不是子集数组下标。",
+                            "properties": {
+                              "kind": {
+                                "const": "source-point",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "source_index": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "title": "Source Index",
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "source_index"
+                            ],
+                            "title": "SourceRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "读取本次有效圆模型中心，不再次拟圆或冒充采集点。",
+                            "properties": {
+                              "kind": {
+                                "const": "circle-center",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "feature_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Feature Id",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "feature_id"
+                            ],
+                            "title": "CircleCenterRelationPoint",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "配方在当前坐标明确指定的点，没有原始采集行号。",
+                            "properties": {
+                              "kind": {
+                                "const": "coordinate",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "position": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Position",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "position"
+                            ],
+                            "title": "CoordinateRelationPoint",
+                            "type": "object"
+                          }
+                        ],
+                        "title": "Reference"
+                      },
+                      "target": {
+                        "additionalProperties": false,
+                        "description": "现有平面及其正法向、拟合质量与支持。",
+                        "properties": {
+                          "kind": {
+                            "const": "plane",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationPlane",
+                        "type": "object"
+                      },
+                      "support_mode": {
+                        "enum": [
+                          "finite",
+                          "model"
+                        ],
+                        "title": "Support Mode",
+                        "type": "string"
+                      },
+                      "value_mode": {
+                        "enum": [
+                          "absolute",
+                          "signed"
+                        ],
+                        "title": "Value Mode",
+                        "type": "string"
+                      },
+                      "coverage": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "沿既有局部三角支持检查所需的显式工程条件。",
+                            "properties": {
+                              "support_radius": {
+                                "exclusiveMinimum": 0,
+                                "title": "Support Radius",
+                                "type": "number"
+                              },
+                              "min_support_count": {
+                                "minimum": 3,
+                                "title": "Min Support Count",
+                                "type": "integer"
+                              },
+                              "max_triangle_edge": {
+                                "exclusiveMinimum": 0,
+                                "title": "Max Triangle Edge",
+                                "type": "number"
+                              },
+                              "max_plane_residual": {
+                                "minimum": 0,
+                                "title": "Max Plane Residual",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "support_radius",
+                              "min_support_count",
+                              "max_triangle_edge",
+                              "max_plane_residual"
+                            ],
+                            "title": "PlaneRelationCoverage",
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "reference",
+                      "target",
+                      "support_mode",
+                      "value_mode",
+                      "coverage"
+                    ],
+                    "title": "PointPlaneRelation",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "线线最短距离；非平行近退化条件由配方显式声明。",
+                    "properties": {
+                      "kind": {
+                        "const": "line-line",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "reference": {
+                        "additionalProperties": false,
+                        "description": "具有真实分段支持的现有直线，不接受自由拟合参数。",
+                        "properties": {
+                          "kind": {
+                            "const": "line",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationLine",
+                        "type": "object"
+                      },
+                      "target": {
+                        "additionalProperties": false,
+                        "description": "具有真实分段支持的现有直线，不接受自由拟合参数。",
+                        "properties": {
+                          "kind": {
+                            "const": "line",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationLine",
+                        "type": "object"
+                      },
+                      "support_mode": {
+                        "enum": [
+                          "finite",
+                          "model"
+                        ],
+                        "title": "Support Mode",
+                        "type": "string"
+                      },
+                      "min_crossing_sine": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 1,
+                        "title": "Min Crossing Sine",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "reference",
+                      "target",
+                      "support_mode",
+                      "min_crossing_sine"
+                    ],
+                    "title": "LineLineRelation",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "线方向的无向、向量或投影有符号角。",
+                    "properties": {
+                      "kind": {
+                        "const": "line-angle",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "reference": {
+                        "additionalProperties": false,
+                        "description": "具有真实分段支持的现有直线，不接受自由拟合参数。",
+                        "properties": {
+                          "kind": {
+                            "const": "line",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationLine",
+                        "type": "object"
+                      },
+                      "target": {
+                        "additionalProperties": false,
+                        "description": "具有真实分段支持的现有直线，不接受自由拟合参数。",
+                        "properties": {
+                          "kind": {
+                            "const": "line",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationLine",
+                        "type": "object"
+                      },
+                      "angle_mode": {
+                        "enum": [
+                          "unoriented",
+                          "oriented",
+                          "signed"
+                        ],
+                        "title": "Angle Mode",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "reference",
+                      "target",
+                      "angle_mode"
+                    ],
+                    "title": "LineAngleRelation",
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "平面角明确按法向评价，不把面夹角冒称平行度公差。",
+                    "properties": {
+                      "kind": {
+                        "const": "plane-angle",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "reference": {
+                        "additionalProperties": false,
+                        "description": "现有平面及其正法向、拟合质量与支持。",
+                        "properties": {
+                          "kind": {
+                            "const": "plane",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationPlane",
+                        "type": "object"
+                      },
+                      "target": {
+                        "additionalProperties": false,
+                        "description": "现有平面及其正法向、拟合质量与支持。",
+                        "properties": {
+                          "kind": {
+                            "const": "plane",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Feature Id",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "feature_id"
+                        ],
+                        "title": "RelationPlane",
+                        "type": "object"
+                      },
+                      "angle_mode": {
+                        "enum": [
+                          "unoriented",
+                          "oriented",
+                          "signed"
+                        ],
+                        "title": "Angle Mode",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "reference",
+                      "target",
+                      "angle_mode"
+                    ],
+                    "title": "PlaneAngleRelation",
+                    "type": "object"
+                  }
+                ],
+                "title": "Relation"
+              },
+              "item_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Item Id",
+                "type": "string"
+              },
+              "quality_policy": {
+                "additionalProperties": false,
+                "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                "properties": {
+                  "policy_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Policy Id",
+                    "type": "string"
+                  },
+                  "policy_version": {
+                    "minimum": 1,
+                    "title": "Policy Version",
+                    "type": "integer"
+                  },
+                  "rules": {
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                      "properties": {
+                        "item_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Item Id",
+                          "type": "string"
+                        },
+                        "unit": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Unit",
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "default": true,
+                          "title": "Enabled",
+                          "type": "boolean"
+                        },
+                        "required": {
+                          "default": true,
+                          "title": "Required",
+                          "type": "boolean"
+                        },
+                        "lower": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Lower"
+                        },
+                        "upper": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Upper"
+                        },
+                        "include_lower": {
+                          "default": true,
+                          "title": "Include Lower",
+                          "type": "boolean"
+                        },
+                        "include_upper": {
+                          "default": true,
+                          "title": "Include Upper",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "item_id",
+                        "unit"
+                      ],
+                      "title": "LimitRule",
+                      "type": "object"
+                    },
+                    "maxItems": 8192,
+                    "minItems": 1,
+                    "title": "Rules",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "policy_id",
+                  "policy_version",
+                  "rules"
+                ],
+                "title": "GeometryQualityPolicy",
+                "type": "object"
+              }
+            },
+            "required": [
+              "space",
+              "relation",
+              "item_id",
+              "quality_policy"
+            ],
+            "title": "RelationParameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "RelationNodeParameters",
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.metrology3d"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "metrology3d.nodes",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -72817,7 +75121,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -73214,7 +75518,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -73723,7 +76027,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -74341,7 +76645,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -75000,7 +77304,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -76436,7 +78740,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -76697,7 +79001,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -77056,7 +79360,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -77113,7 +79417,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -77124,7 +79428,7 @@
       "description": "Read Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.32",
+      "version": "0.1.33",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -77520,7 +79824,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -77592,7 +79896,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -77730,7 +80034,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -77851,7 +80155,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -78079,7 +80383,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -78478,7 +80782,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -78489,7 +80793,7 @@
       "description": "Cloud Preview",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.32",
+      "version": "0.1.33",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -78721,7 +81025,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -78732,7 +81036,7 @@
       "description": "Save Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.32",
+      "version": "0.1.33",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -78923,7 +81227,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     },
     {
@@ -79122,7 +81426,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.32",
+      "node_pack_version": "0.1.33",
       "metadata": {}
     }
   ],

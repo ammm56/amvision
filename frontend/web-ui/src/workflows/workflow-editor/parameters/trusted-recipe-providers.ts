@@ -7,8 +7,10 @@ import {geometryRecipeValidator} from '../../../../../../custom_nodes/metrology3
 import {measurementNumericItems,measurementRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/measurement-form'
 import {boundaryRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/boundary-form'
 import {dimensionNumericItems,dimensionRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/dimension-form'
+import {relationNumericItems,relationRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/relation-form'
 
 export const trustedNumericItemProviders:NumericItemProviders={
+  'custom.metrology3d.measure-relation':relationNumericItems,
   'custom.metrology3d.measure-extents':dimensionNumericItems,
   'custom.metrology3d.measure-edge-pair':dimensionNumericItems,
   'custom.metrology3d.measure-hole':dimensionNumericItems,
@@ -19,6 +21,7 @@ export const trustedNumericItemProviders:NumericItemProviders={
   'custom.connector.pin-array-locate':connectorNumericItems,
 }
 export const trustedRecipeValidators:Readonly<Record<string,RecipeValidator>>={
+  'custom.metrology3d.measure-relation':relationRecipeValidator,
   'custom.metrology3d.measure-extents':dimensionRecipeValidator,
   'custom.metrology3d.measure-edge-pair':dimensionRecipeValidator,
   'custom.metrology3d.measure-hole':dimensionRecipeValidator,

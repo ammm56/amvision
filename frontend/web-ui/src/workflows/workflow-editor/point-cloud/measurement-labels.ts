@@ -1,10 +1,12 @@
 /** 只解释后端声明的方法和原因，不推断精度或产品判定。 */
 import {object} from './preview-data'
 import type {MeasurementDisplay} from './measurement-display'
+import {relationMethod} from './relation-display'
 export function measurementMethod(item:MeasurementDisplay,zh:boolean):string {
   if(item.kind==='height-query')return zh?'局部实测面高度':'Local measured-surface height'
   if(item.kind==='measure-edge-pair')return zh?'有限边段方向间距':'Directional distance of finite edges'
   const p=object(item.method.parameters)
+  if(item.kind==='measure-relation')return relationMethod(p,zh)
   if(item.kind==='measure-arc')return object(p.mode).kind==='continuous-arc'
     ?(zh?'连续实测开弧 · 圆模型量值':'Continuous measured open arc · circle-model quantities')
     :(zh?'实测支持角区并集 · 缺口不连接':'Measured angular union · gaps remain open')

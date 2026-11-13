@@ -18,7 +18,11 @@ from custom_nodes.metrology3d_nodes.shared.node_runtime import (
     write_identity,
 )
 from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
-from custom_nodes.metrology3d_nodes.shared.cloud_assets import read_asset, save_cloud
+from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
+    read_asset,
+    read_asset_bundle,
+    save_cloud,
+)
 from custom_nodes.metrology3d_nodes.shared.normalize_units import normalize_units
 from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
 from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
@@ -80,6 +84,7 @@ def read(request):
     env.cancel()
     evidence = None
     document = None
+    relation_features = relation_evidence = None
     if p.source.kind == "file":
         cloud = read_file_reference(
             runtime=env.runtime,
@@ -92,7 +97,7 @@ def read(request):
     else:
         if request.input_values.get("file") is not None:
             raise InvalidRequestError("资产来源不能同时传入 file")
-        cloud = read_asset(
+        cloud, relation_features, relation_evidence = read_asset_bundle(
             env.runtime,
             p.source.reference,
             service=env.service,
@@ -103,6 +108,10 @@ def read(request):
         document = env.service.read(p.source.reference, project_id=env.project_id)
         evidence = document.content.point_cloud.boundary
     result = {"cloud": cloud.model_dump(mode="json")}
+    if relation_evidence is not None:
+        result["features"] = relation_features.model_dump(mode="json")
+        result["evidence"] = relation_evidence.model_dump(mode="json")
+        return result
     if p.source.kind != "file":
         from custom_nodes.metrology3d_nodes.shared.height_map_assets import (
             read_height_map,

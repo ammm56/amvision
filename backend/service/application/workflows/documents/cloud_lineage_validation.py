@@ -19,7 +19,7 @@ from backend.service.application.workflows.point_cloud.voxel_lineage import (
 class LineageBytesValidator:
     """分块校验数值与 CSR 首尾，保留不足一条记录的尾部。"""
 
-    def __init__(self, asset):
+    def __init__(self, asset, *, layouts=None):
         """只保存字段布局及一个记录尾，不为点数分配数组。"""
         self.asset = asset
         self.fields = []
@@ -43,6 +43,22 @@ class LineageBytesValidator:
             size = int(np.prod(shape)) * np.dtype(dtype).itemsize
             self.fields.append((name, offset, offset + size, shape[1], dtype))
             offset += size
+        if layouts is not None:
+            expected = {
+                name: (stop - start, width, np.dtype(dtype))
+                for name, start, stop, width, dtype in self.fields
+            }
+            if (
+                len(layouts) != len(expected)
+                or any(
+                    name not in expected
+                    or (stop - start, width, np.dtype(dtype)) != expected[name]
+                    for name, start, stop, width, dtype in layouts
+                )
+                or len({field[0] for field in layouts}) != len(expected)
+            ):
+                raise InvalidRequestError("生成来源布局与固定契约不一致")
+            self.fields = list(layouts)
         self.tail = b""
         self.previous = None
         self.previous_cell = None

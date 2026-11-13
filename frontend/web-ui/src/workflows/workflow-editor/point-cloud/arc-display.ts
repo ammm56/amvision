@@ -5,7 +5,7 @@ import type {MeasurementDisplay} from './measurement-display'
 export const openArcComponents=['radius','signed_sweep','sweep','arc_length','chord_length','start_x','start_y','start_z','end_x','end_y','end_z']
 export const unionArcComponents=['radius','coverage_angle','supported_length']
 export function measurementUnit(item:Pick<MeasurementDisplay,'kind'|'component'>,lengthUnit:string):string{
-  return item.kind==='measure-arc'&&['signed_sweep','sweep','coverage_angle'].includes(item.component??'')?'rad':lengthUnit
+  return item.kind==='measure-relation'&&item.component==='angle'||item.kind==='measure-arc'&&['signed_sweep','sweep','coverage_angle'].includes(item.component??'')?'rad':lengthUnit
 }
 function fail():never{throw new Error('cloud_preview_invalid')}
 function finite(v:unknown):number{if(typeof v!=='number'||!Number.isFinite(v))fail();return v}
