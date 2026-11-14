@@ -312,7 +312,8 @@ class PreviewSessionPool:
     def reap(self):
         """隔离进程确认退出后回收借用；不在池锁内调用会话管理器。"""
         with self._lock:
-            slots = [slot for slot in self._slots if slot.quarantined and slot.deferred_cleanup and not slot.process.is_alive()]
+            slots = [slot for slot in self._slots if slot.quarantined and slot.deferred_cleanup
+                     and (slot.process is None or not slot.process.is_alive())]
         for slot in slots:
             self._close_slot(slot)
             with self._lock:
@@ -329,6 +330,8 @@ class PreviewSessionPool:
                     pass
                 self._stop(slot)
             slot.process.close()
+            # 通道关闭失败仍可重试，但已成功关闭的进程不能再查询 is_alive。
+            slot.process = None
         if slot.gateway_dispatcher is not None:
             slot.gateway_dispatcher.stop()
             slot.gateway_dispatcher = None
@@ -346,7 +349,6 @@ class PreviewSessionPool:
             if queue is not None:
                 queue.cancel_join_thread()
                 queue.close()
-        slot.process = None
         if slot.deferred_cleanup is not None:
             slot.deferred_cleanup()
             slot.deferred_cleanup = None

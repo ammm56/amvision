@@ -106,3 +106,44 @@ def test_failed_pool_close_retains_resources_for_retry(monkeypatch):
         assert all(reference() is None for reference in events)
     finally:
         pool._slots.clear()
+
+
+@pytest.mark.parametrize("operation", ["close", "reap"])
+def test_channel_cleanup_retry_after_process_closed(operation):
+    """进程已关闭而通道回收失败时，重试不能再次访问已关闭的 Process。"""
+    pool = _pool()
+    slot = pool._slots[0]
+    # 模拟启动未完成的真实 Process 对象，close 后 is_alive 同样不可再访问。
+    process = pool._context.Process()
+    slot.process = process
+    slot.quarantined = slot.busy = True
+    cleaned = []
+    slot.deferred_cleanup = lambda: cleaned.append("released")
+    attempts = []
+
+    def stop_channel():
+        """首次关闭失败，确保所属通道与借用仍保留供下一次回收。"""
+        attempts.append("stop")
+        if len(attempts) == 1:
+            raise RuntimeError("channel stop failed")
+
+    dispatcher = SimpleNamespace(stop=stop_channel)
+    slot.gateway_dispatcher = dispatcher
+    cleanup = getattr(pool, operation)
+    try:
+        with pytest.raises(RuntimeError, match="channel stop failed"):
+            cleanup()
+        with pytest.raises(ValueError, match="closed"):
+            process.is_alive()
+        assert slot.gateway_dispatcher is dispatcher
+        assert cleaned == []
+        cleanup()
+        assert attempts == ["stop", "stop"]
+        assert cleaned == ["released"]
+        assert slot.process is None
+        assert slot.gateway_dispatcher is None
+        if operation == "reap":
+            assert not slot.busy and not slot.quarantined
+    finally:
+        slot.process = None
+        pool.close()
