@@ -11,7 +11,7 @@ from custom_nodes.metrology3d_nodes.shared.measurement_support import (
 )
 
 
-def reference_coverage(runtime, feature, settings, *, cancel):
+def reference_coverage(runtime, feature, settings, *, cancel, prepared=None):
     """最近距离在完整有限基准支持上计算，局部支持半径不充当延伸上限。"""
     policy = settings.reference_policy
     scan = plane_coverage(
@@ -21,6 +21,7 @@ def reference_coverage(runtime, feature, settings, *, cancel):
         "reference",
         cancel=cancel,
         capture_nearest=isinstance(policy, ExtendedReference),
+        prepared=prepared,
     )
     side, point = scan.support, scan.point
     if not isinstance(policy, ExtendedReference):

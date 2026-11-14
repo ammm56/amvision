@@ -5,7 +5,8 @@ import {TransformControls} from 'three/addons/controls/TransformControls.js'
 import {object,reserveCpu,reserveGpu} from './preview-data'
 import type {CloudRendererPolicy} from '../services/measurement-resource.service'
 import {measurementItems,referenceExtension} from './measurement-display'
-import {curveItems,curveStrokes} from './boundary-display'
+import {relationDistanceStrokes} from './relation-display'
+import {curveItems,curveStrokes,circleStrokePoints} from './boundary-display'
 import type {Raycaster} from 'three'
 import {roiDependencies,roiGraphIssues} from './roi-graph'
 import {roiLeaves,roiVisibility} from './roi-visibility'
@@ -15,11 +16,12 @@ import {buildDebugOverlay} from './debug-overlay'
 import type {DebugEvidence,DebugLayers,DebugSelection} from './boundary-debug'
 
 export type RoiValue=Record<string,unknown>
-export type GeometryFocus='roi'|'measurement'|'feature'|'plane'|'arc'|'debug'
+export type GeometryFocus='roi'|'measurement'|'feature'|'plane'|'arc'|'debug'|'edge'
 export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'|'scale'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[];selectedCurve?:string;selectedSegment?:string;curveColorMode?:CurveColorMode;curveSelected?:(featureId:string,segmentId:string)=>void;measurementSelected?:(id:string)=>void;arc?:ArcEdit;arcChanged?:(key:string,value:ArcValues)=>void }
 export interface GeometryOverlayInput {debug?:DebugEvidence;debugLayers?:DebugLayers;debugSelection?:DebugSelection|null;debugSelected?:(selection:DebugSelection)=>void;debugFailed?:(error:Error)=>void}
 export interface GeometryOverlayInput {selectedCurvePoint?:number|null;curvePointSelected?:(featureId:string,segmentId:string,index:number)=>void}
 export interface GeometryOverlayInput {hiddenRoiIds?:ReadonlySet<string>;roiScope?:string}
+export interface GeometryOverlayInput {edgePoints?:number[][]|null}
 const vec=(v:unknown)=>{if(!Array.isArray(v)||v.length!==3||v.some(n=>typeof n!=='number'||!Number.isFinite(n)))throw new Error('cloud_preview_invalid');return new Vector3(v[0],v[1],v[2])}
 function matrix(v:unknown,size:number){if(!Array.isArray(v)||v.length!==size||v.some(r=>!Array.isArray(r)||r.length!==size||r.some(n=>typeof n!=='number'||!Number.isFinite(n))))throw new Error('cloud_preview_invalid');return v as number[][]}
 const positive=(n:unknown)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0)throw new Error('cloud_preview_invalid');return n}
@@ -153,10 +155,22 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     for(const item of measurementItems(next.payload)){
       const selected=item.item_id===next.selectedMeasurement,color=selected?0xd18c00:0x508691
       const dimension=(points:Vector3[],dashed=false)=>{const line=lines(points,color,dashed);line.userData.measurement=item.item_id;return line}
+      if(selected&&item.valid&&item.geometry?.kind==='datum-deviation'){
+        const points=(item.geometry.endpoints as unknown[]).map(vec)
+        for(let i=0;i<points.length;i++){
+          const markers=new Points(pointGeometry([points[i]!]),new PointsMaterial({color:i===0?0x287bb8:0xc33b3b,size:10,sizeAttenuation:false,depthTest:false}))
+          markers.userData.measurement=item.item_id;root.add(markers);account(markers)
+        }
+      }
       if(item.valid&&item.geometry&&['directional-distance','edge-pair-distance'].includes(String(item.geometry.kind))){
         const endpoints=item.geometry.endpoints
         if(!Array.isArray(endpoints)||endpoints.length!==2)throw new Error('cloud_preview_invalid')
         dimension(endpoints.map(vec))
+      }
+      if(item.valid&&item.geometry?.kind==='geometric-relation'&&item.geometry.endpoints!==null){
+        const strokes=relationDistanceStrokes(item.method,item.geometry)
+        dimension(strokes.dimension)
+        if(selected&&strokes.construction.length)dimension(strokes.construction,true)
       }
       if(item.valid&&item.geometry?.kind==='projected-extents'){
         const p=(item.geometry.corners as unknown[]).map(vec)
@@ -168,6 +182,27 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         else if(selected){const circle=object(item.geometry.circle),center=vec(circle.center),size=positive(circle.radius)*.05,points:Vector3[]=[];for(let i=0;i<3;i++){const delta=new Vector3().setComponent(i,size);points.push(center.clone().sub(delta),center.clone().add(delta))}lines(points,color)}
       }
       if(!selected)continue
+      if(item.valid&&item.geometry?.kind==='circle-arcs'){
+        const g=item.geometry,circle=object(g.circle),basis=matrix(object(item.method.evaluation).rotation,3)
+        let used=0
+        for(const raw of g.pieces as unknown[]){const p=object(raw),points=circleStrokePoints(circle.center as number[],positive(circle.radius),basis,Number(p.start_angle),Number(p.sweep),policy,used);used+=points.length;dimension(points.map(vec),true)}
+        const featureId=object(item.support[0]?.feature).feature_id
+        const part=next.selectedCurve===featureId?(g.parts as Record<string,unknown>[]).find(p=>p.segment_id===next.selectedSegment):undefined
+        if(part)for(const raw of part.pieces as unknown[]){
+          const p=object(raw),points=circleStrokePoints(circle.center as number[],positive(circle.radius),basis,Number(p.start_angle),Number(p.sweep),policy,used);used+=points.length
+          const line=lines(points.map(vec),0x208c77,true)
+          line.userData.curve={featureId,segmentId:part.segment_id}
+          line.userData.measurement=item.item_id
+        }
+        for(const key of ['start','end'])if(g[key]){const endpoint=object(g[key]);dimension([vec(endpoint.point),vec(endpoint.projected)],true);const markers=new Points(pointGeometry([vec(endpoint.point),vec(endpoint.projected)]),new PointsMaterial({color:key==='start'?0x208c77:0xc8558a,size:8,sizeAttenuation:false,depthTest:false}));root.add(markers);account(markers)}
+        if(g.end){
+          const end=vec(object(g.end).projected),radial=end.clone().sub(vec(circle.center)).normalize()
+          const tangent=vec(circle.normal).cross(radial).multiplyScalar(Math.sign(Number(g.signed_sweep)))
+          const size=positive(circle.radius)*Math.min(.08,Math.abs(Number(g.signed_sweep))*.15)
+          const back=end.clone().addScaledVector(tangent,-size)
+          dimension([back.clone().addScaledVector(radial,size*.4),end,end,back.clone().addScaledVector(radial,-size*.4)])
+        }
+      }
       const extension=referenceExtension(item.support)
       if(extension?.datum_point&&extension.projected_support_point){
         lines([vec(extension.projected_support_point),vec(extension.datum_point)],extension.state==='used'?0xc8558a:0xc33b3b,true)
@@ -227,7 +262,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     // 取消手势已经恢复对象；父表单回传同一恢复值时不重建其他证据。
     if(restoredInput&&same){
       const restored=restoredInput;restoredInput=undefined
-      const keys=['payload','selectedId','mode','roiScope','selectedMeasurement','selectedPlane','candidate','selectedCurve','selectedSegment','curveColorMode','selectedCurvePoint','debug','debugLayers','debugSelection'] as const
+      const keys=['payload','selectedId','mode','roiScope','selectedMeasurement','selectedPlane','candidate','selectedCurve','selectedSegment','curveColorMode','selectedCurvePoint','debug','debugLayers','debugSelection','edgePoints'] as const
       if(keys.every(key=>restored[key]===next[key])&&JSON.stringify(restored.arc)===JSON.stringify(next.arc)&&JSON.stringify(restored.rois)===JSON.stringify(next.rois)){input=next;roiGraph=next.rois??[];visibility(next.hiddenRoiIds??hidden);return}
     }
     restoredInput=undefined
@@ -236,6 +271,11 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     clear()
     try {
       scene.add(root);buildEvidence(next.payload);buildMeasurements(next);buildCurves(next)
+      if(next.edgePoints?.length){
+        if(next.edgePoints.length>2)throw new Error('cloud_preview_invalid')
+        const points=next.edgePoints.map(vec),markers=new Points(pointGeometry(points),new PointsMaterial({color:0xe64672,size:9,sizeAttenuation:false,depthTest:false}));markers.userData.edge=true;root.add(markers);account(markers)
+        if(points.length===2)lines(points,0xe64672)
+      }
       evidenceObjects=[...root.children];evidenceVisibility(evidenceVisible)
       if(next.debug&&next.debugLayers){
         const layer=new Group(),owned:(()=>void)[]=[]
@@ -297,6 +337,8 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     if(kind==='roi'){
       const id=input.selectedId??'',leaves=new Set(roiLeaves(roiGraph,id)),section=roiGraph.find(r=>r.roi_id===id)?.kind==='section-band'
       for(const instance of roiInstances)if(leaves.has(instance.id)&&instance.target.visible&&(!section||instance.sections.some(s=>s.roi_id===id)))expandRoiDisplayBounds(bounds,instance.target)
+    }else if(kind==='edge'){
+      root.traverse(o=>{if(o.userData.edge&&o.visible)bounds.expandByObject(o)})
     }
     else root.traverse(o=>{const c=o.userData.curve;if(kind==='debug'&&o.userData.debug?.id===input?.debug?.id||kind==='arc'&&o.userData.arc||kind==='plane'&&!!input?.selectedPlane&&o.userData.plane===input.selectedPlane||kind==='measurement'&&!!input?.selectedMeasurement&&o.userData.measurement===input.selectedMeasurement||kind==='feature'&&!!input?.selectedCurve&&c?.featureId===input.selectedCurve&&(!input.selectedSegment||c.segmentId===input.selectedSegment||c.groupId===input.selectedSegment))bounds.expandByObject(o)})
     return bounds.isEmpty()?null:{center:bounds.getCenter(new Vector3()),radius:Math.max(bounds.getSize(new Vector3()).length()/2,1e-6)}

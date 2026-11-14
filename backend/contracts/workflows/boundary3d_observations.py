@@ -12,6 +12,7 @@ from backend.contracts.workflows.boundary3d import (
     FitCircleParameters,
 )
 from backend.contracts.workflows.boundary3d_selection import BoundaryFragmentTarget
+from backend.contracts.workflows.edge_extraction import MeasuredEdgeParameters
 from backend.contracts.workflows.circle3d_fit import AngularSpan, CircleWeightEvidence
 from backend.contracts.workflows.geometry3d import Point3, Positive, require_unit
 from backend.contracts.workflows.geometry3d_methods import parameter_digest
@@ -27,7 +28,10 @@ from backend.contracts.workflows.metrology import (
 )
 from backend.contracts.workflows.point_cloud import Sha256
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
-from backend.contracts.workflows.boundary3d_quality import check_boundary_metrics
+from backend.contracts.workflows.boundary3d_quality import (
+    check_boundary_metrics,
+    SegmentQuality,
+)
 from backend.contracts.workflows.boundary3d_resolution import BoundaryResolution
 from backend.contracts.workflows.boundary3d_debug import BoundaryDebugReference
 from backend.contracts.workflows.evaluation3d import (
@@ -43,7 +47,7 @@ class BoundaryMethod(Contract):
 
     method_id: Literal["extract-boundary"] = "extract-boundary"
     method_version: Literal[1] = 1
-    parameters: ExtractBoundaryParameters
+    parameters: ExtractBoundaryParameters | MeasuredEdgeParameters
     parameters_sha256: Sha256
     resolution: BoundaryResolution
 
@@ -59,14 +63,6 @@ class BoundaryMethod(Contract):
             raise ValueError("边界方法参数摘要不一致")
         self.resolution.check_parameters(self.parameters)
         return self
-
-
-class SegmentQuality(Contract):
-    """每个目标独立评价，不能由另一个长边界掩盖少点或短段。"""
-
-    segment_id: Identifier
-    group_id: Identifier | None = Field(default=None, exclude_if=lambda v: v is None)
-    quality: GeometryQuality
 
 
 class GroupQuality(Contract):
@@ -102,11 +98,7 @@ class BoundaryEvidence(Contract):
         ):
             raise ValueError("边界身份或质量不一致")
         check_geometry_policy(self.quality, self.method.quality_policy)
-        metric_kind = (
-            "visible-envelope"
-            if self.method.parameters.method.kind == "visible-envelope"
-            else "boundary"
-        )
+        metric_kind = boundary_metric_kind(self.method.parameters.method.kind)
         check_boundary_metrics(
             self.quality, metric_kind, self.method.parameters.evaluation.length_unit
         )
@@ -164,7 +156,7 @@ class BoundaryEvidence(Contract):
                 raise ValueError("边界组质量身份不一致")
             check_geometry_policy(group.quality, self.method.quality_policy)
             check_boundary_metrics(
-                group.quality, "boundary", parameters.evaluation.length_unit
+                group.quality, metric_kind, parameters.evaluation.length_unit
             )
             if self.valid and not group.quality.usable:
                 raise ValueError("有效边界包含质量失败的组")
@@ -505,9 +497,8 @@ def _check_common(feature):
         raise ValueError("几何评价空间与支持不一致")
     check_geometry_policy(feature.quality, feature.method.quality_policy)
     metric_kind = (
-        "visible-envelope"
+        boundary_metric_kind(feature.method.parameters.method.kind)
         if feature.kind == "boundary"
-        and feature.method.parameters.method.kind == "visible-envelope"
         else feature.kind
     )
     check_boundary_metrics(feature.quality, metric_kind, evaluation.length_unit)
@@ -519,3 +510,12 @@ def _check_common(feature):
         )
         if count != feature.support.point_count:
             raise ValueError("边界指标与实际支持数量不一致")
+
+
+def boundary_metric_kind(kind):
+    """不同实测/表面方法保持自己的完整指标，不伪造剖分计数。"""
+    return (
+        kind
+        if kind in {"visible-envelope", "height-jump", "normal-crease"}
+        else "boundary"
+    )

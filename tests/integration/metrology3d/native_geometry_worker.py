@@ -15,7 +15,7 @@ def main():
     import open3d
     import psutil
 
-    assert open3d.__version__ == "0.20.0"
+    assert open3d.__version__ == "0.20.0+amvision.1"
     if args.mode == "hold":
         points = np.random.default_rng(123).uniform(-10, 10, (500000, 3))
         cloud = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(points))

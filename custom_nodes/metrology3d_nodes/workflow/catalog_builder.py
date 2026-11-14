@@ -33,6 +33,7 @@ from backend.contracts.workflows.dimension3d_parameters import (
     ExtentsNodeParameters,
     EdgePairNodeParameters,
     HoleNodeParameters,
+    ArcNodeParameters,
 )
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.geometry3d_methods import RigidTransform3d
@@ -41,6 +42,8 @@ from backend.contracts.workflows.pose3d_operations import (
     PoseChainTransform,
 )
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
+from backend.contracts.workflows.relation3d_parameters import RelationNodeParameters
+from backend.contracts.workflows.deviation3d_evidence import DeviationNodeParameters
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightNodeParameters,
     StepNodeParameters,
@@ -58,7 +61,6 @@ from custom_nodes.metrology3d_nodes.shared.parameters import (
     ExportCloudParameters,
 )
 from backend.contracts.workflows.boundary3d import (
-    ExtractBoundaryNodeParameters,
     FitLineNodeParameters,
     FitCircleNodeParameters,
 )
@@ -72,6 +74,8 @@ from backend.contracts.workflows.height_map_reference import (
     HeightMapReference,
     HeightMapNodeParameters,
 )
+from backend.contracts.workflows.edge_reference import EdgeDiagnosticReference
+from backend.contracts.workflows.edge_extraction import BoundaryExtractionNodeParameters
 
 
 def build_custom_node_catalog_document():
@@ -87,6 +91,7 @@ def build_custom_node_catalog_document():
         for key, title, model in (
             ("point-cloud-ref.v1", "Point Cloud", CloudReference),
             ("height-map-ref.v1", "Height Map", HeightMapReference),
+            ("edge-diagnostic-ref.v1", "Edge Diagnostics", EdgeDiagnosticReference),
             ("calibrated-raster.v1", "Calibrated Raster", WorkflowTriggerRasterInputV1),
             (
                 "calibrated-profiles.v1",
@@ -124,6 +129,19 @@ def build_custom_node_catalog_document():
     cloud = port("cloud", "point-cloud-ref.v1")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "measure-deviation",
+            "Measure Datum Deviation",
+            "metrology3d.measurement",
+            DeviationNodeParameters,
+            [cloud, port("features", "features3d.v1", multiple=True)],
+            [
+                cloud,
+                port("features", "features3d.v1"),
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+            ],
+        ),
         (
             "cloud-to-height-map",
             "Cloud to Height Map",
@@ -224,17 +242,47 @@ def build_custom_node_catalog_document():
             ],
         ),
         (
+            "measure-arc",
+            "Measure Arc",
+            "metrology3d.measurement",
+            ArcNodeParameters,
+            [port("features", "features3d.v1", multiple=True)],
+            [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+            ],
+        ),
+        (
+            "measure-relation",
+            "Measure Relation",
+            "metrology3d.measurement",
+            RelationNodeParameters,
+            [cloud, port("features", "features3d.v1", False, True)],
+            [
+                cloud,
+                port("features", "features3d.v1"),
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+            ],
+        ),
+        (
             "extract-boundary",
             "Extract Boundary",
             "metrology3d.geometry",
-            ExtractBoundaryNodeParameters,
+            BoundaryExtractionNodeParameters,
             [
                 cloud,
                 port("features", "features3d.v1", False, True),
                 port("pose", "pose3d.v1", False),
                 port("evidence", "measurement-evidence3d.v1", False, True),
+                port("height_map", "height-map-ref.v1", False),
             ],
-            [cloud, port("features", "features3d.v1")],
+            [
+                cloud,
+                port("source_cloud", "point-cloud-ref.v1", False),
+                port("features", "features3d.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
+            ],
         ),
         (
             "fit-line",
@@ -250,7 +298,7 @@ def build_custom_node_catalog_document():
             "metrology3d.geometry",
             FitCircleNodeParameters,
             [port("features", "features3d.v1")],
-            [port("features", "features3d.v1")],
+            [port("features", "features3d.v1"), cloud],
         ),
         (
             "height-query",
@@ -326,6 +374,8 @@ def build_custom_node_catalog_document():
                 cloud,
                 port("features", "features3d.v1", False),
                 port("height_map", "height-map-ref.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
+                port("evidence", "measurement-evidence3d.v1", False),
             ],
         ),
         (
@@ -379,6 +429,7 @@ def build_custom_node_catalog_document():
                 port("pose", "pose3d.v1", False),
                 port("evidence", "measurement-evidence3d.v1", False, True),
                 port("height_map", "height-map-ref.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
             ],
             [port("body", "response-body.v1")],
         ),
@@ -391,6 +442,8 @@ def build_custom_node_catalog_document():
                 cloud,
                 port("features", "features3d.v1", False),
                 port("height_map", "height-map-ref.v1", False),
+                port("diagnostics", "edge-diagnostic-ref.v1", False),
+                port("evidence", "measurement-evidence3d.v1", False),
             ],
             [port("resource", "measurement-resource-ref.v1")],
         ),
@@ -406,7 +459,22 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.31"
+                version="0.1.34"
+                if key
+                in {"measure-deviation", "read-cloud", "save-cloud", "cloud-preview"}
+                else "0.1.33"
+                if key
+                in {"measure-relation", "read-cloud", "save-cloud", "cloud-preview"}
+                else "0.1.32"
+                if key
+                in {
+                    "measure-arc",
+                    "fit-circle",
+                    "read-cloud",
+                    "save-cloud",
+                    "cloud-preview",
+                }
+                else "0.1.31"
                 if key
                 in {"cloud-to-height-map", "read-cloud", "save-cloud", "cloud-preview"}
                 else "0.1.30"

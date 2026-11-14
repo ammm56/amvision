@@ -1,0 +1,20 @@
+{
+  "run_id": "workflow-run-ff6f3336e61347eb80589d0df8e37241",
+  "item_count": 50,
+  "valid_count": 50,
+  "state": "ok",
+  "matches_frozen_values_abs_mm": 1e-07,
+  "saved_result": "data/files/projects/project-1/results/workflow-applications/lithium-workpiece-file-full/runs/workflow-run-ff6f3336e61347eb80589d0df8e37241/inspection.json",
+  "manual_inputs_sha256": {
+    "measurements.json": "c9c8348f2e815c4567f4fb3736537754f19e985ffab7600e59203a053551dea1",
+    "dimensions.json": "3f166c7f29c69ec3e0635a6889c8b85788c694a0df0bd5af7b9386564faef0d1"
+  },
+  "manual_max_abs_difference_mm": {
+    "H": 0.013854565548031106,
+    "Z": 0.018460371666567,
+    "L": 0.00659771991150393,
+    "W": 0.026947014109117262,
+    "D": 0.014776599405426083
+  },
+  "physical_accuracy_claimed": false
+}

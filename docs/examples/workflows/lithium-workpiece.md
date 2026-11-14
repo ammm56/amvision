@@ -1,6 +1,8 @@
 # 锂电工件三维测量配方
 
-本配方使用现有 18 个三维节点体系中的测量节点及平台判定/保存节点，覆盖十二钢片 H/Z/L/W 与 S1/S2 直径，共 50 项。没有专用工件算法、测试 handler、内置参考答案或额外调度器。
+本配方使用现有三维测量节点及平台判定/保存节点，覆盖十二钢片 H/Z/L/W 与 S1/S2 直径，共 50 项。没有专用工件算法、测试 handler、内置参考答案或额外调度器。
+
+2026-11-14 已在本机默认项目创建并发布 `lithium-workpiece-file-full`，完整 PLY 经应用模式执行得到 50 项有效结果。入口、逐项手工报告对照和双平台覆盖见[实际工件 App 交付记录](../../development/3d-metrology-workpiece-app.md)。本机运行身份不写入通用配方，其他环境仍按下文导入与发布。
 
 ## 可直接使用的文档
 
@@ -14,7 +16,7 @@ python -m scripts.metrology_workpiece data/development/metrology-workpiece/array
 
 在既有图编辑器空白画布右键选择“导入工作流”，导入生成的 `amvision.workflow-app-document.v1`，保存到当前项目，审核节点参数后发布；创建 Runtime，启动，在应用模式选择完整 PLY 并运行。页面可展开 50 项判定表、完整工件三维显示及测量证据。每次结果由 Save JSON 写入该应用的 Run 目录，返回体 `meta.saved_output` 给出 ObjectStore 引用。
 
-正式装配后，生成器及上述配方位于发行目录 `app/`。在发行根运行 `./python/python.exe launchers/client/invoke_point_cloud.py recipe -- data/recipes/lithium.workflow.json`，无需开发源码或 `tests/`。四种文件/数组、完整显示/仅数值组合共用同一配方；完整调用路径见[同机工具说明](../../../runtimes/clients/point_cloud/README.md#发行目录调用)。这只是动态输入工件文档，不包含已保存点云资源；通用 App 携资源 ZIP 另行实现，不能混为已支持。
+正式装配后，生成器及上述配方位于发行目录 `app/`。在发行根运行 `./python/python.exe launchers/client/invoke_point_cloud.py recipe -- data/recipes/lithium.workflow.json`，无需开发源码或 `tests/`。四种文件/数组、完整显示/仅数值组合共用同一配方；完整调用路径见[同机工具说明](../../../runtimes/clients/point_cloud/README.md#发行目录调用)。该文档使用动态输入，不包含完整原始点云；已有 A10 配方携资源 ZIP 用于固定资源依赖搬运，不会自动把运行时上传文件加入包中。
 
 文件配方默认为现有完整 ASCII PLY 样本及 float32 坐标映射。PCD/XYZ 使用同一 Read Cloud 节点，但必须显式改读入格式与字段映射后发布，不能把改后缀当格式转换。配方不包含原始点云，也不自动保存完整原云。
 

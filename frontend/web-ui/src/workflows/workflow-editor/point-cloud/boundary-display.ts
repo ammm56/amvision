@@ -94,6 +94,16 @@ function arcPieces(interval:Record<string,unknown>,robust:boolean):{start_angle:
 }
 
 export interface CurveStroke { featureId: string; segmentId: string; groupId?:string; fitted: boolean; points: number[][]; markers?:boolean; estimate?:'center'|'edge'; outlier?:boolean }
+/** 同一模型圆显示离散化供拟圆和量值叠加共用；不填充支持角区。 */
+export function circleStrokePoints(center:number[],radius:number,basis:number[][],start:number,sweep:number,policy:CloudRendererPolicy,used=0):number[][] {
+  const step=Math.min(Math.PI,2*Math.acos(Math.max(-1,1-policy.max_position_error/(2*radius))))
+  const segments=Math.max(1,Math.ceil(Math.abs(sweep)/step))
+  if(!Number.isFinite(segments)||used+segments*2>policy.max_points*8)throw new Error('cloud_preview_capacity')
+  const point=(angle:number)=>center.map((v,i)=>v+radius*(basis[i]![0]!*Math.cos(angle)+basis[i]![1]!*Math.sin(angle)))
+  const points:number[][]=[]
+  for(let i=0;i<segments;i++)points.push(point(start+sweep*i/segments),point(start+sweep*(i+1)/segments))
+  return points
+}
 /** 实测边按实际连接绘制；模型只绘制支持区间，不跨段连接。 */
 export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy): CurveStroke[] {
   let count = 0; const result: CurveStroke[] = []
@@ -140,13 +150,8 @@ export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy)
       const rows = object(rotation).rotation
       if (radius <= 0 || !Array.isArray(rows) || rows.length !== 3) throw invalid()
       const basis = rows.map(xyz)
-      const step = Math.min(Math.PI, 2 * Math.acos(Math.max(-1, 1 - policy.max_position_error / (2 * radius))))
       for (const interval of f.intervals) for(const piece of arcPieces(interval,!!object(f.method.parameters).robust)) {
-        const start = piece.start_angle, sweep = piece.sweep, segments = Math.max(1, Math.ceil(Math.abs(sweep) / step))
-        if (!Number.isFinite(segments) || count + segments * 2 > policy.max_points * 8) throw new Error('cloud_preview_capacity')
-        const point = (angle: number) => center.map((v, i) => v + radius * (basis[i]![0]! * Math.cos(angle) + basis[i]![1]! * Math.sin(angle)))
-        const points: number[][] = []
-        for (let i = 0; i < segments; i++) points.push(point(start + sweep * i / segments), point(start + sweep * (i + 1) / segments))
+        const points=circleStrokePoints(center,radius,basis,piece.start_angle,piece.sweep,policy,count)
         push(f, String(interval.segment_id), points, true)
       }
     }

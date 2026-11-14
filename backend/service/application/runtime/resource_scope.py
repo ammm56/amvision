@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Hashable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any
@@ -159,6 +160,20 @@ class ResourceScope:
                 self._order = [item for item in self._order if item != key]
             error = self._close_and_retain_failure(registration)
             return () if error is None else (error,)
+
+    @contextmanager
+    def registration_transaction(self):
+        """一组新登记全部成功才交付；失败仅逆序关闭本组，沿用失败保留机制。"""
+        with self._close_lock, self._lock:
+            self._require_open()
+            previous = set(self._registrations)
+            try:
+                yield
+            except BaseException:
+                for key in tuple(reversed(self._order)):
+                    if key not in previous:
+                        self.close_resource(key)
+                raise
 
     def close_before_external_cleanup(self) -> tuple[ResourceCloseError, ...]:
         """冻结新登记，先解除声明依赖外部文件/租约的借用。"""

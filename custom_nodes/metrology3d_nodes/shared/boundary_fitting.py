@@ -171,10 +171,11 @@ def fit_boundary_line(positions, topology, parameters, *, max_working_bytes, can
     )
 
 
-def _circle_intervals(uv, center, topology, maximum_step):
+def circle_intervals(uv, center, topology, maximum_step, *, cancel):
     """按真实相邻边展开角度；长跳变、回折或重复绕圈不能假装连续支持。"""
     pieces, intervals = [], []
     for segment in topology.segments:
+        cancel()
         part = uv[segment.start : segment.start + segment.count] - center
         angles = np.arctan2(part[:, 1], part[:, 0])
         if segment.closed:
@@ -347,8 +348,8 @@ def fit_boundary_circle(positions, topology, parameters, *, max_working_bytes, c
             return BoundaryFit("radius_at_bound", None, metrics, (), details)
         center = result.x[:2] + offset
         if robust is None:
-            reason, intervals, coverage, gap = _circle_intervals(
-                uv, center, topology, parameters.max_arc_step
+            reason, intervals, coverage, gap = circle_intervals(
+                uv, center, topology, parameters.max_arc_step, cancel=cancel
             )
         else:
             reason, intervals, spans, supported = measured_arc_support(

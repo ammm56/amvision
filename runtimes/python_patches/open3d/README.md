@@ -5,7 +5,7 @@
 此目录是构建输入，不进入业务模块的导入路径。复用
 `scripts/build_controlled_python.py`，生成正常平台 wheel，不运行时打补丁。
 上游为 Open3D 0.20.0，固定提交、归档和文件摘要见 `manifest.json`；
-候选版本为 `0.20.0+amvision.1`，许可证沿用上游 MIT。
+受控版本为 `0.20.0+amvision.1`，许可证沿用上游 MIT。
 
 修复仅调整 `GetCoordinateSystemOnPlane` 的切平面基选择条件，避开正负 Z
 法向时的零分母；不改变邻域查询、角排序、角阈值或边界算法。
@@ -13,10 +13,12 @@ CMake 补丁写入受控包版本，并修复 Linux bundled curl/BoringSSL 静�
 将实际归档纳入 LINK_GROUP RESCAN，避免接口 target 展开后分组为空、出现未解析符号。
 不是重写解析器或边界算法，不通过旋转输入规避缺陷。
 
-当前构建为 CPU 几何候选，关闭 GUI、浏览器可视化、硬件桥接、ML 算子和 GPU
+当前构建用于 CPU 几何，关闭 GUI、浏览器可视化、硬件桥接、ML 算子和 GPU
 模块，项目界面继续使用已有前端查看器。具体选项全部记录于 manifest 和构建记录。
-ISPC 在该候选中关闭；不能据此声明与上游 wheel 的全套模块或性能等价。
-运行依赖仍固定原版本，只有双平台完整原生与既有几何回归后才更新节点、发行锁和产物。
+ISPC 在该构建中关闭；不能据此声明与上游 wheel 的全套模块或性能等价。
+三维节点 manifest、requirements 和发行装配已要求受控版本：Windows 使用
+`open3d==0.20.0+amvision.1`，Linux 使用 `open3d-cpu==0.20.0+amvision.1`。
+Git 同步不会更新已安装的 Python 包，也不会重新生成现有发行目录。
 
 ## 开发笔记本离线安装
 
@@ -54,7 +56,7 @@ if ($record.version -ne '0.20.0+amvision.1' -or $record.wheel_sha256 -ne $expect
     (Get-FileHash -LiteralPath $wheel -Algorithm SHA256).Hash -ne $expected) { throw 'Open3D 构建身份不匹配' }
 ```
 
-当前候选**不覆盖业务 conda 环境**。在同一 PowerShell 窗口创建独立验证环境，复用已有依赖；
+先在同一 PowerShell 窗口创建独立验证环境，复用已有依赖；此步骤不覆盖业务 conda 环境。
 使用明确的解释器路径，无需切换激活状态：
 
 ```powershell
@@ -72,7 +74,11 @@ if ($LASTEXITCODE -ne 0) { throw '原生边界验证失败' }
 
 笔记本会话应报告解释器路径、wheel 摘要、实际模块路径及原生审计结果（预期 40/40）。
 缺少依赖时记录具体包名，核对两机环境或补复制相应 wheel；不要以 `--no-deps` 隐藏缺项。
-Fit Plane 的业务版本准入和生产发行锁尚未切换，候选导入成功不等于可以替换在用节点依赖。
+验证通过后，在停止使用该解释器的服务及 worker 后，将同一已核验 wheel 安装到
+实际运行三维节点的环境。确认 `conda activate amvision` 后执行
+`python -m pip install --no-index --only-binary=:all: $wheel`，再次核对模块版本与路径并运行原生审计。
+重启服务后再进行实际节点验收；上游 `0.20.0` 不满足当前三维节点的版本准入。
+发行包仍须从源码重新组装并验收，不能以开发环境安装代替发行验证。
 
 ## 构建
 
@@ -104,11 +110,11 @@ python scripts/build_controlled_python.py open3d --archive <source.tar.gz> --wor
 CPU 发行名沿上游：Windows 为 `open3d`，Linux x64 为 `open3d-cpu`；
 两者 Python 导入名均为 `open3d`，不能把 Linux 产物锁成另一个发行名。
 
-已验证候选位于现有本地资产目录
-`runtimes/third_party/python-geometry/open3d-candidates/0.20.0+amvision.1/`，未进入生产锁。
+受控 wheel 使用现有本地资产目录
+`runtimes/third_party/python-geometry/open3d-candidates/0.20.0+amvision.1/`；目录名保留不变，
+该版本已进入节点依赖和发行装配校验。每台机器仍需单独复制本地资产。
 Ubuntu 候选基于 glibc 2.39，验证环境提供 EGL/OpenGL 系统库；尚不能当作任意
-Ubuntu 客户机的独立离线发行。原生链接路径、系统库装配、包身份及现有 Fit Plane
-版本准入必须随正式依赖升级同批核定。
+Ubuntu 客户机的独立离线发行。原生链接路径、系统库装配与包身份仍须按目标发行环境核定。
 
 ## 验证层次
 

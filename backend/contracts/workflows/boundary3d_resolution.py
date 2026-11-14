@@ -3,7 +3,8 @@
 from math import fsum
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
+from backend.contracts.workflows.edge_extraction import MeasuredEdgeParameters
 
 from backend.contracts.workflows.boundary3d import PoseContourBoundary
 from backend.contracts.workflows.geometry3d_methods import FrameBuildMethod
@@ -51,9 +52,38 @@ class BoundaryResolution(Contract):
     datum: ContourDatum | None
     measurement: MeasurementEvidenceItem | None
     reason: Identifier | None
+    height_map_sha256: Sha256 | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
 
     def check_parameters(self, parameters):
         """重新计算小型来源关系，不重新拟面、测高或比较产品公差。"""
+        if isinstance(parameters, MeasuredEdgeParameters):
+            if any(
+                v is not None
+                for v in (
+                    self.pose,
+                    self.measurement,
+                    self.height,
+                    self.datum,
+                    self.reason,
+                )
+            ):
+                raise ValueError("实测边评价不能混入其他测量来源")
+            if self.evaluation is None or (
+                self.evaluation.frame_id,
+                self.evaluation.length_unit,
+            ) != (parameters.evaluation.frame_id, parameters.evaluation.length_unit):
+                raise ValueError("实测边实际评价空间不一致")
+            if (parameters.method.kind == "height-jump") != (
+                self.height_map_sha256 is not None
+            ):
+                raise ValueError("高度实测边评价缺少高度图来源摘要")
+            if parameters.method.kind == "normal-crease":
+                require_same_evaluation(self.evaluation, parameters.evaluation)
+            return
+        if self.height_map_sha256 is not None:
+            raise ValueError("其他边界方法不能携带高度图来源")
         if not isinstance(parameters.method, PoseContourBoundary):
             if any(
                 v is not None
@@ -105,7 +135,9 @@ def resolve_contour(parameters, pose, datum, measurement, observation_id):
     ):
         raise ValueError("等高基准身份或观测不一致")
     if not isinstance(pose.method, FrameBuildMethod):
-        raise ValueError("动态等高必须连接具有明确主基准的 Build Frame，不能使用派生坐标")
+        raise ValueError(
+            "动态等高必须连接具有明确主基准的 Build Frame，不能使用派生坐标"
+        )
     if datum.feature_id != pose.method.parameters.primary_feature_id:
         raise ValueError("等高基准必须是位姿的主基准")
     if pose.state == "found":

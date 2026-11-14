@@ -159,3 +159,41 @@ def test_explicit_camera_close_unregisters_workflow_fallback() -> None:
     get_or_create_workflow_resource_scope(metadata).close()
 
     assert close_count == 0
+
+
+def test_registration_transaction_rolls_back_new_resources_in_reverse_order():
+    """回滚不影响原登记；失败关闭仍保留归属并禁止再次登记。"""
+    from backend.service.application.runtime.resource_scope import ResourceScope
+
+    scope = ResourceScope(kind="test")
+    closed = []
+    scope.register("old", "old", closed.append)
+    try:
+        with scope.registration_transaction():
+            scope.register("a", "a", closed.append)
+            scope.register("b", "b", closed.append)
+            raise InterruptedError("cancel")
+    except InterruptedError:
+        pass
+    assert closed == ["b", "a"] and scope.resource_count == 1
+    assert not scope.close() and closed == ["b", "a", "old"]
+
+
+def test_registration_transaction_retains_failed_owner():
+    """关闭失败不由回滚丢失对象，继续沿用 Scope 隔离规则。"""
+    from backend.service.application.runtime.resource_scope import ResourceScope
+
+    scope = ResourceScope(kind="test")
+    owner = object()
+
+    def cannot_close(value):
+        assert value is owner
+        raise RuntimeError("borrowed")
+
+    try:
+        with scope.registration_transaction():
+            scope.register("owner", owner, cannot_close)
+            raise InterruptedError("cancel")
+    except InterruptedError:
+        pass
+    assert scope.close_errors and scope.resource_count == 1 and scope.owns(owner)

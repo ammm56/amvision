@@ -4,6 +4,7 @@ from backend.contracts.workflows.dimension3d_parameters import (
     ExtentsNodeParameters,
     EdgePairNodeParameters,
     HoleNodeParameters,
+    ArcNodeParameters,
 )
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
 from custom_nodes.metrology3d_nodes.backend.measurement_handlers import (
@@ -13,7 +14,36 @@ from custom_nodes.metrology3d_nodes.backend.measurement_handlers import (
 from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
 from custom_nodes.metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
 from custom_nodes.metrology3d_nodes.shared.measure_hole import measure_hole
+from custom_nodes.metrology3d_nodes.shared.measure_arc import measure_arc
 from custom_nodes.metrology3d_nodes.shared.node_runtime import require_node_runtime
+from custom_nodes.metrology3d_nodes.shared.node_runtime import cloud_input
+from custom_nodes.metrology3d_nodes.shared.relation_result import relation_evidence
+from backend.contracts.workflows.relation3d_parameters import RelationNodeParameters
+from backend.contracts.workflows.geometry3d_observations import Features3d
+from backend.contracts.workflows.deviation3d_evidence import DeviationNodeParameters
+from custom_nodes.metrology3d_nodes.shared.deviation_result import deviation_evidence
+
+
+def deviation(request):
+    """现有平面到完整目标的五项偏差，透传来源供显式保存与查看。"""
+    p = DeviationNodeParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    cloud, groups = cloud_input(request, env.runtime), _groups(request)
+    evidence = deviation_evidence(
+        env.runtime, cloud, groups, p.settings, cancel=env.cancel
+    )
+    features = Features3d(
+        run_id=cloud.run_id,
+        observation_id=cloud.observation_id,
+        frame_id=p.settings.frame_id,
+        length_unit=p.settings.length_unit,
+        items=tuple(f for group in groups for f in group.items),
+    )
+    return {
+        **_outputs(evidence),
+        "cloud": cloud.model_dump(mode="json"),
+        "features": features.model_dump(mode="json"),
+    }
 
 
 def extents(request):
@@ -49,3 +79,34 @@ def hole(request):
     return _outputs(
         measure_hole(env.runtime, _groups(request), p.settings, cancel=env.cancel)
     )
+
+
+def arc(request):
+    """已有圆和有序支持直接测弧，不重新拟合或自动选段。"""
+    p = ArcNodeParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    return _outputs(
+        measure_arc(env.runtime, _groups(request), p.settings, cancel=env.cancel)
+    )
+
+
+def relation(request):
+    """完整支持参与计算，特征集合透传给现有保存节点，不重新拟合。"""
+    p = RelationNodeParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    cloud, groups = cloud_input(request, env.runtime), _groups(request)
+    evidence = relation_evidence(
+        env.runtime, cloud, groups, p.settings, cancel=env.cancel
+    )
+    features = Features3d(
+        run_id=cloud.run_id,
+        observation_id=cloud.observation_id,
+        frame_id=p.settings.frame_id,
+        length_unit=p.settings.length_unit,
+        items=tuple(feature for group in groups for feature in group.items),
+    )
+    return {
+        **_outputs(evidence),
+        "cloud": cloud.model_dump(mode="json"),
+        "features": features.model_dump(mode="json"),
+    }

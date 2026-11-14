@@ -4,16 +4,17 @@
     <MetrologyWorkspace>
       <template #parameters>
       <section class="boundary-config">
-        <GeometryFields v-model="draft" :fields="identityFields" />
+        <GeometryFields v-if="!sampling" v-model="draft" :fields="identityFields" />
         <template v-if="extract">
-          <label>{{ label('提取方法','Extraction') }}<select :value="object(draft.method).kind??''" @change="changeMethod(($event.target as HTMLSelectElement).value)"><option value="" disabled>{{ label('选择方法','Select method') }}</option><option value="projection">{{ label('投影边界','Projection boundary') }}</option><option value="section">{{ label('平面截线','Plane section') }}</option><option value="contour">{{ label('显式基准等高线','Configured datum contour') }}</option><option value="pose-contour">{{ label('本次位姿等高线','Current pose contour') }}</option><option value="visible-envelope">{{ label('可见包络（栅格剖面）','Visible envelope (grid profiles)') }}</option></select></label>
+          <label>{{ label('提取方法','Extraction') }}<select :value="object(draft.method).kind??''" @change="changeMethod(($event.target as HTMLSelectElement).value)"><option value="" disabled>{{ label('选择方法','Select method') }}</option><option value="projection">{{ label('投影边界','Projection boundary') }}</option><option value="section">{{ label('平面截线','Plane section') }}</option><option value="contour">{{ label('显式基准等高线','Configured datum contour') }}</option><option value="pose-contour">{{ label('本次位姿等高线','Current pose contour') }}</option><option value="visible-envelope">{{ label('可见包络（栅格剖面）','Visible envelope (grid profiles)') }}</option><option value="height-jump">{{ label('高度跃变实测边','Measured height edge') }}</option><option value="normal-crease">{{ label('法向折边（A/B 实测侧）','Normal crease (measured A/B side)') }}</option><option value="sampling-boundary">{{ label('采样边界诊断','Sampling boundary diagnostic') }}</option></select></label>
+          <GeometryFields v-if="edge" v-model="draft" :fields="edgeParameterFields" />
           <label v-if="poseContour">{{ label('等高值来源','Contour height source') }}<select :value="object(object(draft.method).height).kind" @change="draft=put(draft,'method.height',newContourHeight(($event.target as HTMLSelectElement).value))"><option value="fixed">{{ label('固定基准高度','Fixed datum height') }}</option><option value="measurement-ratio">{{ label('本次测量比例','Current measurement ratio') }}</option></select></label>
           <GeometryFields v-model="draft" :fields="methodFields" :suggestions="suggestions" />
           <label v-if="poseContour&&object(object(draft.method).height).kind==='measurement-ratio'">{{ label('沿基准正法向的顺序','Order along positive datum normal') }}<select v-model="object(object(draft.method).height).order"><option :value="null" disabled>{{ label('选择顺序','Select order') }}</option><option value="target-above">{{ label('目标高于基体','Target above reference') }}</option><option value="target-below">{{ label('目标低于基体','Target below reference') }}</option></select></label>
-          <label>{{ label('编辑 ROI','Edit ROI') }}<select v-model="roiScope"><option value="surface">{{ label('表面 ROI','Surface ROI') }}</option><option v-if="target" value="target">{{ label('实测支持 ROI','Measured support ROI') }}</option></select></label>
-          <details><summary>{{ roiScope==='target'?label('实测支持 ROI','Measured support ROI'):label('表面 ROI','Surface ROI') }}</summary><RoiForm ref="roiForm" :key="roiScope+':'+targetIndex" :model-value="roiSource" :allow-input="false" :can-view="!!preview&&!!matchingRois.length" :visibility-scope="visibilityScope" @update:model-value="setRegion" @view="roiView=$event" @visibility="hiddenRois=$event" /></details>
+          <label v-if="!sampling">{{ label('编辑 ROI','Edit ROI') }}<select v-model="roiScope"><template v-if="edge"><option value="a">{{ label('A 侧拟面支持','Side A plane support') }}</option><option value="b">{{ label('B 侧拟面支持','Side B plane support') }}</option></template><option v-else value="surface">{{ label('表面 ROI','Surface ROI') }}</option><option v-if="target" value="target">{{ label('目标实测段','Target measured segment') }}</option></select></label>
+          <details v-if="!sampling"><summary>{{ roiScope==='target'?label('目标实测段 ROI','Target segment ROI'):edge?`${roiScope.toUpperCase()} ${label('侧拟面支持 ROI','side plane support ROI')}`:label('表面 ROI','Surface ROI') }}</summary><RoiForm ref="roiForm" :key="roiScope+':'+targetIndex" :model-value="roiSource" :allow-input="false" :can-view="!!preview&&!!matchingRois.length" :visibility-scope="visibilityScope" @update:model-value="setRegion" @view="roiView=$event" @visibility="hiddenRois=$event" /></details>
           <EnvelopeSettingsEditor v-if="visibleEnvelope" :model-value="object(object(draft.method).envelope)" @update:model-value="draft=put(draft,'method.envelope',$event)" />
-          <div v-else class="target-toolbar"><label>{{ label('目标边界','Target boundary') }}<select v-model="targetIndex"><option v-for="(target,i) in targets" :key="i" :value="i">{{ target.group_id||target.segment_id||`#${i+1}` }}</option></select></label><button :title="label('添加目标','Add target')" @click="addTarget"><Plus :size="16" /></button><button :title="label('删除目标','Remove target')" :disabled="!target" @click="removeTarget"><Trash2 :size="16" /></button></div>
+          <div v-else-if="!sampling" class="target-toolbar"><label>{{ label('目标边界','Target boundary') }}<select v-model="targetIndex"><option v-for="(target,i) in targets" :key="i" :value="i">{{ target.group_id||target.segment_id||`#${i+1}` }}</option></select></label><button :title="label('添加目标','Add target')" @click="addTarget"><Plus :size="16" /></button><button :title="label('删除目标','Remove target')" :disabled="!target" @click="removeTarget"><Trash2 :size="16" /></button></div>
           <template v-if="target">
             <label>{{ label('目标方式','Target mode') }}<select :value="'group_id' in target?'group':'single'" @change="changeTarget(($event.target as HTMLSelectElement).value)"><option value="single">{{ label('单连续段','Single continuous segment') }}</option><option value="group">{{ label('部分圆弧片段组','Partial circular arc group') }}</option></select></label>
             <GeometryFields :model-value="target" :fields="targetFields" @update:model-value="setTarget" />
@@ -30,14 +31,15 @@
           <EvaluationDirectionEditor v-if="kind==='fit-line'" v-model="draft.positive_direction" :label="label('直线正方向','Positive line direction')" />
         </template>
         <ArcSettingsForm v-if="!extract&&kind==='fit-circle'&&draft.robust" :model-value="draft.robust" :band="false" :unit="String(object(draft.evaluation).length_unit??'')" v-model:handle="arcHandle" :available="!!arcEdit" @update:model-value="draft=put(draft,'robust',$event)" />
-        <EvaluationEditor v-model="draft.evaluation" :allow-feature="!extract" :pose="poseContour" :suggestions="suggestions" />
+        <GeometryFields v-if="object(draft.method).kind==='height-jump'" v-model="draft" :fields="heightSpaceFields" />
+        <EvaluationEditor v-else-if="!sampling" v-model="draft.evaluation" :allow-feature="!extract" :pose="poseContour" :suggestions="suggestions" />
       </section>
       </template>
       <template #view="{presentation}">
       <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" :selected-roi-id="arcEdit?undefined:roiView.selectedId" :edit-arc="arcEdit??undefined" @arc-change="changeArc" @roi-change="changeRoi" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
       </template>
       <template #advanced>
-      <details class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details>
+      <details v-if="!sampling" class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope&&!edge" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="quality.rules" quality @update:model-value="draft=put(draft,qualityPath+'.rules',$event)" /></details>
       </template>
       <template #issues><p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="status">{{ referenceIssues.join(' · ') }}</p></template>
     </MetrologyWorkspace>
@@ -69,6 +71,7 @@ import {candidateUV} from './pose-pick'
 import RoiForm from './RoiForm.vue'
 import {object,copy,put,type Form,type Field} from './form'
 import {newBoundarySettings,newBoundaryMethod,newContourHeight,newRegion,regionSource,regionValue,boundaryIssues} from './boundary-form'
+import {isEdge,newEdgeSettings,edgeKinds,edgeFields} from './edge-form'
 defineOptions({inheritAttrs:false})
 const props=defineProps<{modelValue:unknown;nodeType:string;disabled?:boolean;inputSources?:ParameterEditorSources;draftIssues?:(value:unknown)=>string[]}>()
 const emit=defineEmits<{'update:modelValue':[value:Form]}>()
@@ -76,6 +79,11 @@ const CloudViewer=defineAsyncComponent(()=>import('@/workflows/workflow-editor/p
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN'),label=(cn:string,en:string)=>zh.value?cn:en
 const kind=computed(()=>props.nodeType.split('.').at(-1)!),extract=computed(()=>kind.value==='extract-boundary')
 const visibleEnvelope=computed(()=>extract.value&&object(draft.value.method).kind==='visible-envelope')
+const edge=computed(()=>extract.value&&isEdge(draft.value)),sampling=computed(()=>edge.value&&object(draft.value.method).kind==='sampling-boundary')
+const qualityPath=computed(()=>edge.value?'selection.quality_policy':'quality_policy')
+const quality=computed(()=>object(edge.value?object(draft.value.selection).quality_policy:draft.value.quality_policy))
+const edgeParameterFields=computed(()=>edgeFields(String(object(draft.value.method).kind),label))
+const heightSpaceFields=computed<Field[]>(()=>[{path:'evaluation.frame_id',label:label('高度图源坐标系','Height-map source frame')},{path:'evaluation.length_unit',label:label('长度单位','Length unit'),type:'select',options:['mm','m','um']}])
 const poseContour=computed(()=>extract.value&&['pose-contour','visible-envelope'].includes(String(object(draft.value.method).kind)))
 const title=computed(()=>extract.value?label('提取边界','Extract boundary'):kind.value==='fit-line'?label('拟合直线','Fit line'):label('拟合圆','Fit circle'))
 const open=ref(false),draft=ref<Form>({}),previewId=ref(''),targetIndex=ref(0)
@@ -85,18 +93,18 @@ const hiddenRois=shallowRef<ReadonlySet<string>>(new Set())
 const visibilityScope=computed(()=>JSON.stringify([state().runId,previewId.value,preview.value?.payload.observation_id,preview.value?.payload.spatial,roiScope.value,targetIndex.value,object(draft.value.method).kind]))
 function changeRoi(value:Form){if(open.value&&!props.disabled&&preview.value&&matchingRois.value.length&&value.roi_id===roiView.value.selectedId)roiForm.value?.setCurrent(value)}
 const initial=ref(''),changed=computed(()=>JSON.stringify(draft.value)!==initial.value)
-const roiRegion=computed(()=>roiScope.value==='target'&&target.value?target.value.region:draft.value.region)
+const roiRegion=computed(()=>roiScope.value==='target'&&target.value?target.value.region:edge.value?object(object(draft.value.method).candidates)[roiScope.value==='b'?'support_b':'support_a']:draft.value.region)
 const roiSource=computed(()=>regionSource(roiRegion.value))
 const matchingRois=computed(()=>{const s=object(preview.value?.payload.spatial);return extract.value&&roiView.value.rois.every(r=>r.frame_id===s.frame_id&&r.length_unit===s.length_unit)?roiView.value.rois:[]})
-function setRegion(value:Form){if(roiScope.value==='target'&&target.value)setTarget({...target.value,region:regionValue(value)});else draft.value=put(draft.value,'region',regionValue(value))}
+function setRegion(value:Form){if(roiScope.value==='target'&&target.value)setTarget({...target.value,region:regionValue(value)});else draft.value=put(draft.value,edge.value?`method.candidates.${roiScope.value==='b'?'support_b':'support_a'}`:'region',regionValue(value))}
 const resolve=inject(parameterCloudPreviewsKey,()=>[]),state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))
 const previews=computed(()=>state().succeeded?resolve():[]),preview=computed(()=>previews.value.find(p=>p.id===previewId.value))
 const previewFrame=computed(()=>object(object(preview.value?.payload.geometry).frame))
 const seedSize=computed(()=>{const seed=object(object(object(draft.value.method).envelope).selection),lo=seed.seed_min,hi=seed.seed_max;if(!Array.isArray(lo)||!Array.isArray(hi)||lo.length!==2||hi.length!==2||![...lo,...hi].every(v=>typeof v==='number'&&Number.isFinite(v)))return null;const size=hi.map((v,i)=>v-lo[i]);return size.every(v=>v>0)?size:null})
 const canPickSeed=computed(()=>{const e=object(draft.value.evaluation),s=object(preview.value?.payload.spatial),f=previewFrame.value;return visibleEnvelope.value&&!!seedSize.value&&!!preview.value&&e.frame_id===s.frame_id&&e.length_unit===s.length_unit&&f.state==='found'&&f.pose_id===e.pose_id&&f.target_frame_id===e.target_frame_id})
-const targets=computed(()=>(Array.isArray(draft.value.targets)?draft.value.targets:[]).map(object)),target=computed(()=>targets.value[targetIndex.value])
+const targets=computed(()=>{const items=edge.value?object(draft.value.selection).targets:draft.value.targets;return (Array.isArray(items)?items:[]).map(object)}),target=computed(()=>targets.value[targetIndex.value])
 const arcHandle=ref<ArcHandle|'none'>('none')
-const arcEdit=computed(()=>!open.value||props.disabled||arcHandle.value==='none'?null:boundaryArcEdit(kind.value,draft.value,target.value,preview.value?.payload,props.inputSources??{},state().runId,arcHandle.value))
+const arcEdit=computed(()=>!open.value||props.disabled||arcHandle.value==='none'||sampling.value?null:boundaryArcEdit(kind.value,draft.value,target.value,preview.value?.payload,props.inputSources??{},state().runId,arcHandle.value))
 function changeArc(event:{payload:Form;key:string;values:ArcValues}){if(!open.value||props.disabled||event.payload!==preview.value?.payload||event.key!==arcEdit.value?.key)return;if(extract.value&&target.value)setTarget({...target.value,arc:{...object(target.value.arc),...event.values}});else draft.value=put(draft.value,'robust',{...object(draft.value.robust),...event.values})}
 const issues=computed(()=>boundaryIssues(kind.value,draft.value)),referenceIssues=computed(()=>open.value?props.draftIssues?.(draft.value)??[]:[])
 const upstream=computed(()=>(props.inputSources?.features??[]).map(s=>({type:s.nodeTypeId,p:object(s.parameters.settings)})))
@@ -126,9 +134,11 @@ const selectionFields=computed<Field[]>(()=>[{path:'selection.feature_id',label:
 const fitFields=computed<Field[]>(()=>kind.value==='fit-line'?[{path:'min_orientation_cosine',label:label('最小方向余弦','Minimum orientation cosine'),type:'number'}]:[{path:'radius_range',label:label('半径搜索范围','Radius search range'),type:'pair'},{path:'max_arc_step',label:label('相邻支持最大转角 rad','Maximum adjacent angle rad'),type:'number'}])
 const surfaceFields=computed<Field[]>(()=>[['alpha_radius','支持圆半径','Support circle radius'],['max_edge_length','最大连接边长','Maximum edge length'],['max_normal_step','最大法向高度跳变','Maximum normal step'],['min_projected_area','最小投影三角面积','Minimum projected triangle area']].map(([key,cn,en])=>({path:`surface.${key}`,label:label(cn!,en!),type:'number'})))
 const solverFields=computed<Field[]>(()=>['ftol','xtol','gtol','max_nfev'].map(key=>({path:`solver.${key}`,label:key,type:'number'} as Field)).concat([{path:'solver.x_scale',label:label('求解变量尺度','Solver variable scale'),type:'vector'}]))
-const qualityFields=computed<Field[]>(()=>[{path:'quality_policy.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:'quality_policy.policy_version',label:label('策略版本','Policy version'),type:'number'}])
-function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newBoundarySettings(kind.value);targetIndex.value=0;previewId.value='';arcHandle.value='none';roiScope.value='surface';initial.value=JSON.stringify(draft.value);open.value=true}
+const qualityFields=computed<Field[]>(()=>[{path:qualityPath.value+'.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:qualityPath.value+'.policy_version',label:label('策略版本','Policy version'),type:'number'}])
+function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newBoundarySettings(kind.value);targetIndex.value=0;previewId.value='';arcHandle.value='none';roiScope.value=isEdge(draft.value)?'a':'surface';initial.value=JSON.stringify(draft.value);open.value=true}
 function changeMethod(kind:string){
+  if(edgeKinds.includes(kind)){draft.value=newEdgeSettings(kind,draft.value);roiScope.value='a';roiView.value={rois:[],selectedId:''};previewId.value='';targetIndex.value=0;return}
+  if(edge.value){draft.value=newBoundarySettings('extract-boundary');roiScope.value='surface';roiView.value={rois:[],selectedId:''}}
   const wasPose=poseContour.value,wasVisible=visibleEnvelope.value,visible=kind==='visible-envelope',q=object(draft.value.quality_policy)
   const extra=['profile_coverage','estimated_fraction','profile_max_gap','max_cell_span','missing_neighbor_fraction','added_cell_count','profile_max_jump']
   let rules=Array.isArray(q.rules)?q.rules.map(normalizeLimitRule):[]
@@ -137,9 +147,10 @@ function changeMethod(kind:string){
   draft.value={...draft.value,method:newBoundaryMethod(kind),evaluation:['pose-contour','visible-envelope'].includes(kind)?newEvaluation('pose',draft.value.evaluation):wasPose?newEvaluation('configured',draft.value.evaluation):draft.value.evaluation,surface:visible?null:wasVisible?{alpha_radius:null,max_edge_length:null,max_normal_step:null,min_projected_area:null}:draft.value.surface,targets:visible||wasVisible?[]:draft.value.targets,quality_policy:{...q,rules}}
   previewId.value='';targetIndex.value=0
 }
-function addTarget(){draft.value={...draft.value,targets:[...targets.value,{segment_id:'',closed:false,role:'unknown',region:newRegion()}]};targetIndex.value=targets.value.length-1}
-function removeTarget(){draft.value={...draft.value,targets:targets.value.filter((_,i)=>i!==targetIndex.value)};targetIndex.value=0}
-function setTarget(value:Form){const next=[...targets.value];next[targetIndex.value]=value;draft.value={...draft.value,targets:next}}
+function setTargets(value:Form[]){draft.value=put(draft.value,edge.value?'selection.targets':'targets',value)}
+function addTarget(){setTargets([...targets.value,{segment_id:'',closed:false,role:'unknown',region:newRegion()}]);targetIndex.value=targets.value.length-1}
+function removeTarget(){setTargets(targets.value.filter((_,i)=>i!==targetIndex.value));targetIndex.value=0}
+function setTarget(value:Form){const next=[...targets.value];next[targetIndex.value]=value;setTargets(next)}
 function changeTarget(mode:string){if(!target.value)return;setTarget(mode==='group'?newFragmentTarget(target.value):{segment_id:target.value.group_id??target.value.segment_id??'',closed:false,role:'unknown',region:target.value.region})}
 function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){if(!open.value||props.disabled||extract.value||value.payload!==preview.value?.payload)return;const source=boundaryChoices.value.filter(c=>c.id===value.featureId),feature=curveItems(value.payload).find(f=>f.kind==='boundary'&&f.valid&&f.feature_id===value.featureId);if(source.length!==1||!feature)return;const group=feature.topology?.segments.find(s=>s.segment_id===value.segmentId||s.group_id===value.segmentId)?.group_id;draft.value=put(draft.value,'selection',{feature_id:value.featureId,...(group?{group_ids:[group]}:{segment_ids:value.segmentId?[value.segmentId]:[]})})}
 function pickSeed(value:{payload:Form;xyz:number[]}){if(!open.value||props.disabled||!canPickSeed.value||value.payload!==preview.value?.payload)return;const uv=candidateUV(previewFrame.value,value.xyz),size=seedSize.value;if(!uv||!size)return;const path='method.envelope.selection';draft.value=put(put(draft.value,path+'.seed_min',uv.map((v,i)=>v-size[i]!/2)),path+'.seed_max',uv.map((v,i)=>v+size[i]!/2));candidate.value=[...value.xyz]}

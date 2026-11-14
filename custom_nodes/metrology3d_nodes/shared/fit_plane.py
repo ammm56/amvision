@@ -14,8 +14,8 @@ from backend.contracts.workflows.point_cloud_runtime import (
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import (
     InvalidRequestError,
-    ServiceConfigurationError,
 )
+from custom_nodes.metrology3d_nodes.shared.native_geometry import require_open3d
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
 )
@@ -71,12 +71,7 @@ def _ransac_support(runtime, reference, parameters, cancel):
     )
     if work_bytes > runtime.policy.max_working_bytes:
         raise InvalidRequestError("RANSAC 显式输入超过工作预算，请缩小 ROI 或配置容量")
-    try:
-        import open3d as o3d
-    except ImportError as error:
-        raise ServiceConfigurationError("稳健平面拟合需要已核定的 Open3D") from error
-    if o3d.__version__ != "0.20.0":
-        raise ServiceConfigurationError("稳健平面拟合只接受已核定的 Open3D 0.20.0")
+    o3d = require_open3d()
     points = native = raw_indices = indices = owner = reservation = block = None
     registered = False
     key = ("plane-support", uuid4().hex)

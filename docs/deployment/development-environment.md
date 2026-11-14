@@ -4,7 +4,7 @@
 
 生产发行包的组装、Bundled Python 和一键启动见 [生产环境](production-environment.md)。
 
-**开发笔记本复用预编译 Open3D：** Git 同步源码和文档，不同步 `runtimes/third_party/`。Windows 笔记本已有与构建机相同的开发环境时，只需手动复制对应 wheel 和构建记录；收到复制完成通知后，再按[笔记本离线安装说明](../../runtimes/python_patches/open3d/README.md#开发笔记本离线安装)校验、安装和验证。不需要安装 C++ 编译工具，也不需要复制整个构建缓存。此流程仅用于三维候选库验证，不是启动现有业务服务的前置步骤。
+**开发笔记本复用预编译 Open3D：** Git 同步源码和文档，不同步 `runtimes/third_party/`。当前三维节点要求受控版本 `0.20.0+amvision.1`；上游 `0.20.0` 不满足该节点包依赖。Windows 笔记本已有与构建机相同的开发环境时，手动复制对应 wheel 和构建记录，再按[笔记本离线安装说明](../../runtimes/python_patches/open3d/README.md#开发笔记本离线安装)校验、安装和验证。不需要安装 C++ 编译工具，也不需要复制整个构建缓存。该依赖用于三维节点，不应作为不使用三维节点的业务链路的启动前提。
 
 ## 完整进程关系
 

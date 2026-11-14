@@ -8,7 +8,7 @@ from scipy.spatial.transform import Rotation
 
 def native_cloud(points, normals=None):
     """只共享测试数组，检查原生 API 不会修改调用方输入。"""
-    assert o3d.__version__ == "0.20.0"
+    assert o3d.__version__ == "0.20.0+amvision.1"
     cloud = o3d.t.geometry.PointCloud(o3d.core.Tensor.from_numpy(points))
     if normals is not None:
         cloud.point.normals = o3d.core.Tensor.from_numpy(normals)

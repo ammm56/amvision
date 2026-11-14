@@ -142,6 +142,7 @@ def test_python_requirements_report_missing_or_uncontrolled_version(
             }
         )
     )
+
     issues = manifest.compatibility.current_incompatibilities()
     assert issues == (
         ()
@@ -155,3 +156,51 @@ def test_python_requirements_report_missing_or_uncontrolled_version(
             },
         )
     )
+
+
+def test_platform_dependencies_complete_unique_and_explicit(monkeypatch):
+    """每个平台明确登记发行名，不接受缺平台或同平台重复依赖。"""
+    from backend.contracts.nodes.node_pack_manifest import NodePackCompatibility
+    from backend.contracts.nodes import node_pack_manifest as module
+
+    raw = dict(
+        api=">=0.1,<1",
+        runtime=">=3.12",
+        operatingSystems=["windows", "linux"],
+        pythonDistributions=["numpy==2.4.4"],
+        platformPythonDistributions={
+            "windows": ["open3d==0.20.0+amvision.1"],
+            "linux": ["open3d-cpu==0.20.0+amvision.1"],
+        },
+    )
+    compatibility = NodePackCompatibility.model_validate(raw)
+    for system, name in (("windows", "open3d"), ("linux", "open3d-cpu")):
+        monkeypatch.setattr(module.platform, "system", lambda: system)
+        seen = []
+
+        def version(package):
+            seen.append(package)
+            return "2.4.4" if package == "numpy" else "0.20.0+amvision.1"
+
+        monkeypatch.setattr(module, "distribution_version", version)
+        assert not compatibility.current_incompatibilities()
+        assert seen == ["numpy", name]
+    with pytest.raises(ValueError):
+        compatibility.distributions_for("darwin")
+    for overrides in ({"linux": []}, {"windows": ["numpy==2.4.4"]}, {}):
+        values = dict(raw["platformPythonDistributions"])
+        values.update(overrides)
+        if not overrides:
+            del values["linux"]
+        with pytest.raises(ValidationError):
+            NodePackCompatibility.model_validate(
+                {**raw, "platformPythonDistributions": values}
+            )
+
+
+def test_absent_platform_dependencies_do_not_change_manifest_identity():
+    """无平台依赖的既有节点不因新增可选字段改变发布指纹。"""
+    from backend.contracts.nodes.node_pack_manifest import NodePackCompatibility
+
+    value = NodePackCompatibility(api=">=0.1,<1.0", runtime=">=3.12")
+    assert "platformPythonDistributions" not in value.model_dump(by_alias=True)

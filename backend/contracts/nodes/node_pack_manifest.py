@@ -120,6 +120,13 @@ class NodePackCompatibility(BaseModel):
     python_distributions: tuple[str, ...] = Field(
         default=(), alias="pythonDistributions"
     )
+    platform_python_distributions: dict[
+        Literal["windows", "linux", "darwin"], tuple[str, ...]
+    ] = Field(
+        default_factory=dict,
+        alias="platformPythonDistributions",
+        exclude_if=lambda value: not value,
+    )
 
     @model_validator(mode="after")
     def validate_compatibility(self) -> NodePackCompatibility:
@@ -141,8 +148,20 @@ class NodePackCompatibility(BaseModel):
             raise ValueError("compatibility.architectures 不能包含空值")
         if len(set(normalized_architectures)) != len(normalized_architectures):
             raise ValueError("compatibility.architectures 不能包含重复值")
+        if self.platform_python_distributions and (
+            set(self.platform_python_distributions) != set(self.operating_systems)
+            or any(not values for values in self.platform_python_distributions.values())
+        ):
+            raise ValueError("平台 Python 依赖必须非空并完整覆盖声明的操作系统")
+        for values in self.platform_python_distributions.values() or ((),):
+            self._validate_distributions((*self.python_distributions, *values))
+        return self
+
+    @staticmethod
+    def _validate_distributions(values: tuple[str, ...]) -> None:
+        """每个平台分别检查唯一包名，不允许条件表达式静默跳过准入。"""
         names = set()
-        for value in self.python_distributions:
+        for value in values:
             try:
                 requirement = Requirement(value)
             except InvalidRequirement as error:
@@ -161,7 +180,17 @@ class NodePackCompatibility(BaseModel):
                     "pythonDistributions 必须为唯一包名与明确版本范围，不含 URL、extras 或条件"
                 )
             names.add(name)
-        return self
+
+    def distributions_for(self, system: str) -> tuple[str, ...]:
+        """按明确目标平台解析唯一依赖集合，装配时不使用宿主平台推断。"""
+        if (
+            self.platform_python_distributions
+            and system not in self.platform_python_distributions
+        ):
+            raise ValueError(f"节点包没有平台 Python 依赖声明: {system}")
+        return self.python_distributions + self.platform_python_distributions.get(
+            system, ()
+        )
 
     def current_incompatibilities(self) -> tuple[dict[str, object], ...]:
         """返回当前平台不满足的兼容项；空元组表示兼容。"""
@@ -210,7 +239,13 @@ class NodePackCompatibility(BaseModel):
                     "actual": current_architecture,
                 }
             )
-        for value in self.python_distributions:
+        requirements = self.python_distributions
+        if (
+            not self.platform_python_distributions
+            or current_system in self.platform_python_distributions
+        ):
+            requirements = self.distributions_for(current_system)
+        for value in requirements:
             requirement = Requirement(value)
             try:
                 actual = distribution_version(requirement.name)

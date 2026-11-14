@@ -13,7 +13,9 @@ def working_bytes(source_count, reference_count, chunk_rows):
 
 def _cloud(points, normals=None):
     """CPU double 工作数组共享给原生库；ICP 内部克隆源点。"""
-    import open3d as o3d
+    from custom_nodes.metrology3d_nodes.shared.native_geometry import require_open3d
+
+    o3d = require_open3d()
 
     cloud = o3d.t.geometry.PointCloud(o3d.core.Tensor.from_numpy(points))
     if normals is not None:
@@ -146,7 +148,9 @@ def register_arrays(
     initial_matrix=None,
 ):
     """同一局部 ICP，接受显式初值或经审计的粗定位候选，不隐藏粗定位。"""
-    import open3d as o3d
+    from custom_nodes.metrology3d_nodes.shared.native_geometry import require_open3d
+
+    o3d = require_open3d()
 
     cancel()
     if working_bytes(len(source), len(reference), chunk_rows) > max_working_bytes:

@@ -57,7 +57,11 @@ export function measurementIssues(height:boolean, value:unknown):string[] {
     const rules=object(object(p.plane_fit).quality_policy).rules
     if(Array.isArray(rules)&&rules.map(normalizeLimitRule).some(r=>['rms','max_residual'].includes(r.item_id)&&r.unit!==p.length_unit))issues.push('plane_fit / unit')
   }
-  const q=object(s.quality_policy),rules=Array.isArray(q.rules)?q.rules.map(normalizeLimitRule):[],metrics=measurementMetrics(stat,String(p.length_unit)),byId=new Map(rules.map(r=>[r.item_id,r]))
+  issues.push(...measurementPolicyIssues(s.quality_policy,measurementMetrics(stat,String(p.length_unit)),stat))
+  return issues
+}
+export function measurementPolicyIssues(value:unknown,metrics:{item_id:string;unit:string}[],stat=false):string[]{
+  const issues:string[]=[],q=object(value),rules=Array.isArray(q.rules)?q.rules.map(normalizeLimitRule):[],byId=new Map(rules.map(r=>[r.item_id,r]))
   if(!id(q.policy_id)||!Number.isSafeInteger(q.policy_version)||Number(q.policy_version)<1)issues.push('quality_policy / identity')
   if(rules.length!==metrics.length||byId.size!==rules.length||rules.some(r=>limitRuleError(r)))issues.push('quality_policy / rules')
   for(const m of metrics){const r=byId.get(m.item_id)

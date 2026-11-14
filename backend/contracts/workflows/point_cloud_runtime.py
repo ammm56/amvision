@@ -35,6 +35,7 @@ from backend.contracts.workflows.boundary3d import (
     BoundarySelection,
 )
 from backend.contracts.workflows.boundary3d_resolution import BoundaryResolution
+from backend.contracts.workflows.edge_extraction import MeasuredEdgeParameters
 from backend.contracts.workflows.cloud_preprocess import (
     DenoiseCloudParameters,
     ResampleCloudParameters,
@@ -224,7 +225,7 @@ class BoundaryCloudMethod(Contract):
 
     method_id: Literal["extract-boundary"]
     method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
-    parameters: ExtractBoundaryParameters
+    parameters: ExtractBoundaryParameters | MeasuredEdgeParameters
     parameters_sha256: Sha256
     vertices_sha256: Sha256
     resolution: BoundaryResolution

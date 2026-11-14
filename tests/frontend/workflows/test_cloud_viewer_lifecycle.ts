@@ -18,6 +18,27 @@ vi.mock('@/workflows/workflow-editor/point-cloud/asset-details', () => ({readDet
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())
 function viewer() { return mount(CloudViewer, {props:{payload,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}}) }
+it('routes measured record focus through geometry and rejects stale display callbacks',async()=>{
+  mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockImplementation(async()=>({dispose:vi.fn()}))
+  const renderer={dispose:vi.fn(),geometry:vi.fn(),focus:vi.fn(),focusVoxel:vi.fn()};mocks.create.mockReturnValue(renderer)
+  const body={...payload,edge_diagnostics:{state:'ready'}}
+  const wrapper=mount(CloudViewer,{
+    props:{payload:body,projectId:'p'},
+    global:{
+      plugins:[createI18n({legacy:false,locale:'en-US'})],
+      stubs:{EdgeDiagnosticPanel:{name:'EdgeDiagnosticPanel',props:['payload','projectId'],template:'<div />'}},
+    },
+  })
+  try{
+    await flushPromises();await wrapper.get('[aria-label="Measurement and quality details"]').trigger('click')
+    const panel=wrapper.findComponent({name:'EdgeDiagnosticPanel'}),event={payload:panel.props('payload'),points:[[1,2,3]]}
+    panel.vm.$emit('select',event);panel.vm.$emit('focus',event);await nextTick()
+    expect(renderer.focus).toHaveBeenCalledWith('edge');expect(renderer.focusVoxel).not.toHaveBeenCalled()
+    const calls=renderer.focus.mock.calls.length
+    await wrapper.setProps({payload:{...body,observation_id:'next'}});await flushPromises();panel.vm.$emit('focus',event)
+    expect(renderer.focus).toHaveBeenCalledTimes(calls)
+  }finally{wrapper.unmount()}
+})
 it('requires explicit normal length, keeps settings display-only and resets on source switch',async()=>{
   const scene={dispose:vi.fn(),geometry:vi.fn(),normals:vi.fn()},data={dispose:vi.fn()}
   mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue(data);mocks.create.mockReturnValue(scene)

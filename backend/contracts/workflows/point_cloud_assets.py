@@ -31,16 +31,30 @@ from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from hashlib import sha256
 from backend.contracts.workflows.boundary3d_observations import BoundaryEvidence
+from backend.contracts.workflows.dimension3d_evidence import CircleSnapshot
+from backend.contracts.workflows.arc3d_evidence import ArcEvidenceItem
+from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.contracts.workflows.raster3d import RasterSource
 from backend.contracts.workflows.profile3d import ProfileSource
 from backend.contracts.workflows.height_map_evidence import HeightMapEvidence
+from backend.contracts.workflows.edge_sampling_evidence import SamplingEvidence
+from backend.contracts.workflows.edge_evidence import EdgeEvidence
+from backend.contracts.workflows.relation3d_assets import RelationAsset
 
 
 class CloudBlob(Contract):
     """仅允许格式规定的成员，实际对象键由服务生成。"""
 
     role: Literal[
-        "original", "data", "indices", "lineage", "profile-rows", "height-map"
+        "original",
+        "data",
+        "indices",
+        "lineage",
+        "profile-rows",
+        "height-map",
+        "sampling",
+        "edge",
+        "relation",
     ]
     name: Literal[
         "original.bin",
@@ -49,6 +63,9 @@ class CloudBlob(Contract):
         "lineage.bin",
         "profile-rows.bin",
         "height-map.bin",
+        "sampling.bin",
+        "edge.bin",
+        "relation.bin",
     ]
     content_length: JsonCount
     sha256: Sha256
@@ -65,6 +82,9 @@ class CloudBlob(Contract):
                 "lineage": "lineage.bin",
                 "profile-rows": "profile-rows.bin",
                 "height-map": "height-map.bin",
+                "sampling": "sampling.bin",
+                "edge": "edge.bin",
+                "relation": "relation.bin",
             }[self.role]
         ):
             raise ValueError("点云数据块角色与名称不一致")
@@ -251,7 +271,7 @@ class CloudAssetBase(Contract):
     source: AssetSource
     spatial: CloudSpatial
     provenance: AssetProvenance
-    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=4)]
+    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=7)]
     source_field_names: tuple[CloudSourceNames, ...]
     parent_assets: tuple[ResourceReference, ...]
     point_count: JsonCount
@@ -259,10 +279,19 @@ class CloudAssetBase(Contract):
     vertex_kind: Literal["source", "generated"]
     topology: BoundaryTopology | None
     boundary: BoundaryEvidence | None = None
+    circle: CircleSnapshot | None = Field(default=None, exclude_if=lambda v: v is None)
+    arc_evidence: tuple[ArcEvidenceItem, ...] = Field(
+        default=(), max_length=8192, exclude_if=lambda v: not v
+    )
     normal_info: CloudNormalInfo | None = None
     height_map: HeightMapEvidence | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
+    sampling: SamplingEvidence | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    edge: EdgeEvidence | None = Field(default=None, exclude_if=lambda v: v is None)
+    relation: RelationAsset | None = Field(default=None, exclude_if=lambda v: v is None)
 
     def original_observation(self) -> tuple[AssetSource, int]:
         """返回持久内容中的原始观测及记录总数，不解析外部父资产。"""
@@ -272,6 +301,68 @@ class CloudAssetBase(Contract):
     def check_common(self) -> Self:
         """不允许遗漏属性映射、伪造父保留或组织点数。"""
         unique_ids([b.role for b in self.blobs], "blobs")
+        relation_blob = next((b for b in self.blobs if b.role == "relation"), None)
+        if (self.relation is None) != (relation_blob is None):
+            raise ValueError("关系证据与派生数据块不一致")
+        if self.relation is not None and (
+            self.representation != "array-blocks"
+            or relation_blob.content_length != self.relation.byte_length()
+        ):
+            raise ValueError("关系资产必须保存原云数组和完整派生链")
+        if self.relation is not None:
+            if any(
+                (
+                    self.boundary,
+                    self.circle,
+                    self.arc_evidence,
+                    self.height_map,
+                    self.sampling,
+                    self.edge,
+                )
+            ):
+                raise ValueError("关系资产不能混入绑定其他输入的附属输出")
+            members = (self, *(step.state for step in self.relation.steps))
+            primary = members[self.relation.primary]
+            for stored in self.relation.items:
+                p = stored.evidence.method.parameters
+                if (p.frame_id, p.length_unit) != (
+                    primary.spatial.frame_id,
+                    primary.spatial.length_unit,
+                ):
+                    raise ValueError("关系资产主输入与测量空间不一致")
+                for side, member in zip(stored.evidence.support, stored.members):
+                    if member is not None and (
+                        side.point_count != members[member].point_count
+                        or members[member].spatial != primary.spatial
+                    ):
+                        raise ValueError("关系支持数量或空间与保存成员不一致")
+        edge_blob = next((b for b in self.blobs if b.role == "edge"), None)
+        if (self.edge is None) != (edge_blob is None):
+            raise ValueError("实测边证据与数据块不一致")
+        if self.edge is not None:
+            e = self.edge
+            if (
+                self.representation != "array-blocks"
+                or self.vertex_kind != "source"
+                or e.input_count != self.point_count
+                or (e.evaluation.frame_id, e.evaluation.length_unit)
+                != (self.spatial.frame_id, self.spatial.length_unit)
+                or edge_blob.content_length != e.byte_length()
+                or (e.method.kind == "height-jump" and self.height_map is None)
+                or (e.method.kind == "normal-crease" and self.normal_info is None)
+            ):
+                raise ValueError("实测边必须随同一完整输入及评价来源保存")
+        sampling_blob = next((b for b in self.blobs if b.role == "sampling"), None)
+        if (self.sampling is None) != (sampling_blob is None):
+            raise ValueError("采样诊断证据与数据块不一致")
+        if self.sampling is not None and (
+            self.representation != "array-blocks"
+            or self.normal_info is None
+            or self.sampling.input_count != self.point_count
+            or self.sampling.vertex_kind != self.vertex_kind
+            or sampling_blob.content_length != self.sampling.byte_length()
+        ):
+            raise ValueError("采样诊断必须与参与计算的完整点云及法向一同保存")
         height_blob = next((b for b in self.blobs if b.role == "height-map"), None)
         if (self.height_map is None) != (height_blob is None):
             raise ValueError("高度图证据与数据块不一致")
@@ -301,6 +392,23 @@ class CloudAssetBase(Contract):
                 raise ValueError("高度图必须与参与计算的完整数组一同保存")
         if self.topology is not None and self.topology.point_count != self.point_count:
             raise ValueError("资产边界连接与数量不一致")
+        if self.arc_evidence:
+            if self.circle is None:
+                raise ValueError("圆弧证据需要同资产圆模型")
+            MeasurementEvidence3d(
+                observation_id=self.circle.quality.metrics.observation_id,
+                frame_id=self.spatial.frame_id,
+                length_unit=self.spatial.length_unit,
+                items=self.arc_evidence,
+            )
+            if any(
+                len(i.support) != 1
+                or i.support[0].feature != self.circle
+                or i.support[0].topology != self.topology
+                or i.support[0].point_count != self.point_count
+                for i in self.arc_evidence
+            ):
+                raise ValueError("圆弧证据与资产模型或完整支持不一致")
         if self.boundary is not None:
             evaluation = self.boundary.method.parameters.evaluation
             if (
@@ -310,6 +418,34 @@ class CloudAssetBase(Contract):
                 != (self.spatial.frame_id, self.spatial.length_unit)
             ):
                 raise ValueError("资产边界证据与保存点云不一致")
+        if self.circle is not None:
+            circle = self.circle
+            metrics = {m.item_id: m.value for m in circle.quality.metrics.items}
+            evaluation = circle.method.evaluation
+            if (
+                self.boundary is not None
+                or self.representation != "array-blocks"
+                or self.edge is not None
+                or self.topology is None
+                or evaluation is None
+                or circle.method.boundary is None
+                or circle.method.boundary.geometry is None
+                or (evaluation.frame_id, evaluation.length_unit)
+                != (self.spatial.frame_id, self.spatial.length_unit)
+                or (circle.valid and metrics["support_count"] != self.point_count)
+                or tuple(s.segment_id for s in self.topology.segments)
+                != circle.method.resolved_segment_ids
+            ):
+                raise ValueError("资产圆模型必须对应唯一完整拟圆支持")
+            original = {
+                s.segment_id: s for s in circle.method.boundary.geometry.segments
+            }
+            if any(
+                original[s.segment_id].model_dump(exclude={"start"})
+                != s.model_dump(exclude={"start"})
+                for s in self.topology.segments
+            ):
+                raise ValueError("资产圆支持拓扑与拟圆来源不一致")
         if self.normal_info is not None:
             self.normal_info.check_fields(
                 self.fields, self.spatial, generated=self.vertex_kind == "generated"

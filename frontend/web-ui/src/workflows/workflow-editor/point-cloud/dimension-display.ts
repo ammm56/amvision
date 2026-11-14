@@ -1,5 +1,6 @@
 /** 只核对显示结构与版本分支；不在浏览器拟合、测量或重新判定质量。 */
 import {object} from './preview-data'
+import {openArcComponents,unionArcComponents,validateArcGeometry} from './arc-display'
 
 function fail():never{throw new Error('cloud_preview_invalid')}
 function finite(value:unknown):number {if(typeof value!=='number'||!Number.isFinite(value))fail();return value}
@@ -10,7 +11,7 @@ function points(value:unknown,length:number):number[][] {if(!Array.isArray(value
 export function validateDimensionGeometry(item:Record<string,unknown>,geometry:Record<string,unknown>|null,support:Record<string,unknown>[]):void{
   const evaluation=object(item.method).evaluation
   if(evaluation!==null){const e=object(evaluation);if(typeof e.frame_id!=='string'||!['m','mm','um'].includes(String(e.length_unit)))fail();vector(e.origin);points(e.rotation,3)}else if(item.valid)fail()
-  const allowed=item.kind==='measure-extents'?['u','v','length','width']:item.kind==='measure-edge-pair'?['distance']:['diameter','center_x','center_y','center_z']
+  const allowed=item.kind==='measure-arc'?[...openArcComponents,...unionArcComponents]:item.kind==='measure-extents'?['u','v','length','width']:item.kind==='measure-edge-pair'?['distance']:['diameter','center_x','center_y','center_z']
   if(!allowed.includes(String(item.component))||(item.valid?item.diagnostic!==null:!item.diagnostic))fail()
   for(const side of support){
     if(side.point_count!==null){
@@ -18,8 +19,9 @@ export function validateDimensionGeometry(item:Record<string,unknown>,geometry:R
       if(!['source','generated'].includes(String(side.vertex_kind))||(side.vertex_kind==='source'&&n>source)||typeof side.content_sha256!=='string'||!/^[0-9a-f]{64}$/.test(side.content_sha256))fail()
       if(n){const bounds=object(side.bounds);vector(bounds.min);vector(bounds.max)}else if(side.bounds!==null)fail()
     }else if([side.source_point_count,side.vertex_kind,side.content_sha256,side.bounds].some(v=>v!==null))fail()
-    if(side.feature){const f=object(side.feature);if(item.kind==='measure-hole'&&f.kind!=='circle'||item.kind==='measure-edge-pair'&&f.kind!=='line')fail()}
+    if(side.feature){const f=object(side.feature);if(['measure-hole','measure-arc'].includes(String(item.kind))&&f.kind!=='circle'||item.kind==='measure-edge-pair'&&f.kind!=='line')fail()}
   }
+  if(item.kind==='measure-arc'){validateArcGeometry(item,geometry);return}
   if(!geometry)return
   if(item.kind==='measure-extents'){
     if(geometry.kind!=='projected-extents')fail()

@@ -53,6 +53,90 @@ from tests.test_metrology3d_height_map import parameters
 from tests.test_metrology3d_preprocess import make_cloud
 
 
+def verify_edge_asset(runtime, cloud, result, height, directory):
+    """完整支持的所有候选/失败记录随资产恢复，不重新计算拟合或配对。"""
+    from backend.service.application.runtime.resource_scope import ResourceScope
+    from backend.service.application.workflows.point_cloud.runtime import (
+        get_cloud_runtime,
+    )
+    from backend.service.application.workflows.documents.cloud_resource_blobs import (
+        CloudAssetPolicy,
+    )
+    from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
+        save_cloud,
+        read_asset,
+    )
+    from custom_nodes.metrology3d_nodes.shared.edge_assets import read_edge
+    from tests.point_cloud_support import create_resource_service
+
+    service = create_resource_service(directory)
+    limits = CloudAssetPolicy(
+        max_asset_bytes=128 * 1024**2,
+        max_archive_bytes=129 * 1024**2,
+        chunk_bytes=65536,
+    )
+    asset = save_cloud(
+        runtime,
+        cloud,
+        edge=result,
+        height_map=height,
+        service=service,
+        project_id="test",
+        name="full-edge",
+        mode="derived",
+        write_identity="8" * 64,
+        policy=limits,
+        cancel=lambda: None,
+    )
+    scope = ResourceScope(kind="full-edge-restore")
+    restored_runtime = get_cloud_runtime(
+        scope,
+        run_id="restored-edge",
+        policy=runtime.policy.model_copy(
+            update={"max_decoded_bytes": limits.max_asset_bytes}
+        ),
+    )
+    digest = sha256()
+    try:
+        loaded = read_asset(
+            restored_runtime,
+            asset,
+            service=service,
+            project_id="test",
+            policy=limits,
+            cancel=lambda: None,
+        )
+        restored = read_edge(
+            restored_runtime,
+            loaded,
+            document=service.read(asset, project_id="test"),
+            service=service,
+            project_id="test",
+            policy=limits,
+            cancel=lambda: None,
+        )
+        objects = (
+            result.chains.pairs.candidates,
+            result.chains.pairs,
+            result.chains,
+            result,
+        )
+        with restored.borrow(restored_runtime) as after:
+            for group, obj in zip(
+                ("candidates", "pairs", "chains", "targets"), objects
+            ):
+                with obj.borrow(runtime) as before:
+                    for name in sorted(before):
+                        np.testing.assert_array_equal(before[name], after[group][name])
+                        digest.update(before[name].tobytes())
+        assert [r.reason for r in restored.reports(loaded)] == [
+            json.loads(raw)["reason"] for raw in result.reports_json
+        ]
+        return dict(sha256=digest.hexdigest(), asset_roundtrip=True)
+    finally:
+        assert scope.close() == () and restored_runtime.budget.used == 0
+
+
 def test_full_input_and_complete_steel_support(tmp_path, request):
     """读完并核验完整源文件，用既有工程搜索 ROI，不使用显示采样。"""
     sample = request.config.getoption("--cloud-sample")
@@ -291,6 +375,9 @@ def test_full_input_and_complete_steel_support(tmp_path, request):
             targets=target_reports,
             target_parameters=target_parameters.model_dump(mode="json"),
         )
+        record["height_edge_asset"] = verify_edge_asset(
+            runtime, selected, targets, result, tmp_path / "height-assets"
+        )
         runtime.storage_scope.close_resource(targets.resource_key)
         runtime.storage_scope.close_resource(chains.resource_key)
         runtime.storage_scope.close_resource(pairs.resource_key)
@@ -396,9 +483,120 @@ def test_full_input_and_complete_steel_support(tmp_path, request):
                 targets=[json.loads(s) for s in normal_targets.reports_json],
                 pair_chain_target_seconds=perf_counter() - started,
             )
+        normal_record["edge_asset"] = verify_edge_asset(
+            runtime, normal_cloud, normal_targets, None, tmp_path / "normal-assets"
+        )
         for resource in (normal_targets, normal_chains, normal_pairs, crease):
             runtime.storage_scope.close_resource(resource.resource_key)
         record["normal_candidates"] = normal_record
+        from backend.contracts.workflows.edge3d import SamplingBoundarySettings
+        from custom_nodes.metrology3d_nodes.shared.edge_sampling import (
+            sampling_candidates,
+        )
+        from custom_nodes.metrology3d_nodes.shared.edge_sampling_context import (
+            sampling_context,
+        )
+
+        sampling_settings = SamplingBoundarySettings(
+            kind="sampling-boundary",
+            radius=0.3,
+            max_neighbors=256,
+            min_neighbors=3,
+            angle_degrees=120,
+        )
+        sampling_baseline = runtime.budget.used
+        sampling = sampling_candidates(
+            runtime, normal_cloud, sampling_settings, cancel=lambda: None
+        )
+        diagnostic = sampling_context(runtime, sampling, cancel=lambda: None)
+        with diagnostic.borrow(runtime) as (data, facts):
+            np.testing.assert_array_equal(data["identity_rows"][:, 0], source_rows)
+            assert len(data["candidate"]) == len(actual)
+            assert not data["candidate"][data["status"] != 0].any()
+            assert np.all(facts["context"][data["candidate"] == 0] == 0)
+            record["sampling"] = dict(
+                candidate_count=sampling.candidate_count,
+                status_counts=dict(Counter(map(int, data["status"][:, 0]))),
+                context_counts=dict(Counter(map(int, facts["context"][:, 0]))),
+                sha256=sha256(
+                    data["candidate"].tobytes()
+                    + data["status"].tobytes()
+                    + facts["context"].tobytes()
+                ).hexdigest(),
+                settings=sampling_settings.model_dump(mode="json"),
+            )
+        from backend.service.application.runtime.resource_scope import ResourceScope
+        from backend.service.application.workflows.point_cloud.runtime import (
+            get_cloud_runtime,
+        )
+        from backend.service.application.workflows.documents.cloud_resource_blobs import (
+            CloudAssetPolicy,
+        )
+        from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
+            save_cloud,
+            read_asset,
+        )
+        from custom_nodes.metrology3d_nodes.shared.edge_sampling_assets import (
+            read_sampling,
+        )
+        from tests.point_cloud_support import create_resource_service
+
+        service = create_resource_service(tmp_path / "sampling-assets")
+        limits = CloudAssetPolicy(
+            max_asset_bytes=128 * 1024**2,
+            max_archive_bytes=129 * 1024**2,
+            chunk_bytes=65536,
+        )
+        asset = save_cloud(
+            runtime,
+            normal_cloud,
+            sampling=diagnostic,
+            service=service,
+            project_id="test",
+            name="full-sample-diagnostic",
+            mode="derived",
+            write_identity="9" * 64,
+            policy=limits,
+            cancel=lambda: None,
+        )
+        restored_scope = ResourceScope(kind="full-sampling-restore")
+        restored_runtime = get_cloud_runtime(
+            restored_scope,
+            run_id="restored-sampling",
+            policy=runtime.policy.model_copy(
+                update={"max_decoded_bytes": limits.max_asset_bytes}
+            ),
+        )
+        try:
+            loaded = read_asset(
+                restored_runtime,
+                asset,
+                service=service,
+                project_id="test",
+                policy=limits,
+                cancel=lambda: None,
+            )
+            restored = read_sampling(
+                restored_runtime,
+                loaded,
+                document=service.read(asset, project_id="test"),
+                service=service,
+                project_id="test",
+                policy=limits,
+                cancel=lambda: None,
+            )
+            with (
+                diagnostic.borrow(runtime) as (before, before_facts),
+                restored.borrow(restored_runtime) as (after, after_facts),
+            ):
+                for name, array in {**before, **before_facts}.items():
+                    np.testing.assert_array_equal(array, {**after, **after_facts}[name])
+            record["sampling"]["asset_roundtrip"] = True
+        finally:
+            assert restored_scope.close() == () and restored_runtime.budget.used == 0
+        runtime.storage_scope.close_resource(diagnostic.resource_key)
+        runtime.storage_scope.close_resource(sampling.resource_key)
+        assert runtime.budget.used == sampling_baseline
         report = request.config.getoption("--cloud-report-dir")
         if report:
             destination = Path(report)

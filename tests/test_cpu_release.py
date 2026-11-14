@@ -41,7 +41,7 @@ def test_ubuntu_layout_and_explicit_dependency_lock(tmp_path, monkeypatch):
     requirements = (root / "app/requirements.txt").read_text("utf-8")
     for locked in manifest["metrology_dependencies"]["requirements"]:
         assert locked in requirements
-    assert len(manifest["metrology_dependencies"]["wheels"]) == 2
+    assert len(manifest["metrology_dependencies"]["wheels"]) == 3
     launcher = _module(
         "a12_full_start", "runtimes/launchers/full/start_amvision_full.py"
     )

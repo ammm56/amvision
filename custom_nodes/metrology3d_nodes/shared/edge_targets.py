@@ -47,6 +47,7 @@ class EdgeTargetResults:
     reports_json: tuple[str, ...]
     owner: OwnedCloudArrays
     resource_key: tuple
+    extraction_json: str | None = None
 
     @property
     def reason(self):
@@ -71,18 +72,23 @@ class EdgeTargetResults:
 
 def height_evaluation(ref):
     """将本次网格评价轴映回源空间；目标 ROI 始终使用源云真实坐标。"""
-    grid = ref.evidence.parameters.grid
+    return height_evaluation_from_evidence(ref.evidence, ref.cloud)
+
+
+def height_evaluation_from_evidence(evidence, cloud):
+    """运行和持久证据共用评价面计算，不构造历史运行引用。"""
+    grid = evidence.parameters.grid
     axes = np.asarray(
         [grid.column_direction, grid.row_direction, grid.height_direction]
     ).T
     origin = np.asarray(grid.origin)
-    if ref.evidence.pose:
-        matrix = np.asarray(ref.evidence.pose.transform.matrix)
+    if evidence.pose:
+        matrix = np.asarray(evidence.pose.transform.matrix)
         origin = matrix[:3, :3].T @ (origin - matrix[:3, 3])
         axes = matrix[:3, :3].T @ axes
     return EvaluationPlane3d(
-        frame_id=ref.cloud.spatial.frame_id,
-        length_unit=ref.cloud.spatial.length_unit,
+        frame_id=cloud.spatial.frame_id,
+        length_unit=cloud.spatial.length_unit,
         origin=origin.tolist(),
         rotation=axes.tolist(),
     )

@@ -989,7 +989,9 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             _validate_cpu_requirements(requirements_path)
         _copy_launcher_tree(release_dir, target_os=target_os)
         point_cloud_tools = copy_point_cloud_delivery(REPOSITORY_ROOT, release_dir)
-        metrology_dependencies = copy_metrology_dependencies(REPOSITORY_ROOT, release_dir)
+        metrology_dependencies = copy_metrology_dependencies(
+            REPOSITORY_ROOT, release_dir, target_os=target_os
+        )
         native_libraries = copy_native_libraries(REPOSITORY_ROOT, release_dir, platform_tag)
         generated_root_launchers = _copy_full_root_launchers(
             release_dir,
