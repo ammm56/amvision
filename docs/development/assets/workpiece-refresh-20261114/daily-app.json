@@ -1,0 +1,29 @@
+{
+  "application_id": "lithium-workpiece-file-full",
+  "version": "workflow-app-version-7ac1557674204ce0824559b4077da9a3",
+  "fingerprint": "sha256:ba000b3baa2246bb2019bd393db8e4a2cee03437cde45fd9795353bba3047f2a",
+  "nodes": 80,
+  "edges": 250,
+  "expanded_groups": 16,
+  "input_points": 14745099,
+  "input_bytes": 479677235,
+  "runs": [
+    "workflow-run-dcb748040f6c498baef6f00663da3aa9",
+    "workflow-run-186f4c9420a3417184ecd713d710cfcd"
+  ],
+  "valid_items": 50,
+  "decision": "ok",
+  "f4_absolute_tolerance_mm": 1e-07,
+  "before_after_values_identical": true,
+  "saved_matches_reply": true,
+  "browser_result_rows": 50,
+  "browser_full_workpiece_overview_points": 500000,
+  "stopped_and_started": true,
+  "recovered_after_backend_reload": true,
+  "restart_worker_pid": 86924,
+  "recovered_worker_pid": 181352,
+  "backend_port": 5600,
+  "frontend_port": 5601,
+  "performance_gate_tested": false,
+  "physical_accuracy_certified": false
+}

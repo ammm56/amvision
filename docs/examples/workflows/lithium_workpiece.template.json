@@ -48,7 +48,7 @@
       "enabled": true,
       "ui_state": {
         "x": 40,
-        "y": 90
+        "y": 100
       },
       "metadata": {}
     },
@@ -64,7 +64,7 @@
       "enabled": true,
       "ui_state": {
         "x": 520,
-        "y": 90
+        "y": 100
       },
       "metadata": {}
     },
@@ -79,8 +79,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4840,
-        "y": 9690
+        "x": 6360,
+        "y": 3500
       },
       "metadata": {}
     },
@@ -145,7 +145,7 @@
       "enabled": true,
       "ui_state": {
         "x": 1000,
-        "y": 90
+        "y": 100
       },
       "metadata": {}
     },
@@ -210,7 +210,7 @@
       "enabled": true,
       "ui_state": {
         "x": 40,
-        "y": 510
+        "y": 840
       },
       "metadata": {}
     },
@@ -275,7 +275,7 @@
       "enabled": true,
       "ui_state": {
         "x": 520,
-        "y": 510
+        "y": 840
       },
       "metadata": {}
     },
@@ -340,7 +340,7 @@
       "enabled": true,
       "ui_state": {
         "x": 1000,
-        "y": 510
+        "y": 840
       },
       "metadata": {}
     },
@@ -405,7 +405,7 @@
       "enabled": true,
       "ui_state": {
         "x": 40,
-        "y": 930
+        "y": 1580
       },
       "metadata": {}
     },
@@ -470,7 +470,7 @@
       "enabled": true,
       "ui_state": {
         "x": 520,
-        "y": 930
+        "y": 1580
       },
       "metadata": {}
     },
@@ -799,8 +799,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 40,
-        "y": 1350
+        "x": 1000,
+        "y": 1580
       },
       "metadata": {}
     },
@@ -932,8 +932,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 1350
+        "x": 40,
+        "y": 2320
       },
       "metadata": {}
     },
@@ -1103,7 +1103,7 @@
       "enabled": true,
       "ui_state": {
         "x": 520,
-        "y": 1770
+        "y": 2320
       },
       "metadata": {}
     },
@@ -1272,8 +1272,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 40,
-        "y": 2190
+        "x": 1000,
+        "y": 2320
       },
       "metadata": {}
     },
@@ -1405,8 +1405,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 2190
+        "x": 40,
+        "y": 3060
       },
       "metadata": {}
     },
@@ -1539,7 +1539,7 @@
       "enabled": true,
       "ui_state": {
         "x": 520,
-        "y": 2610
+        "y": 3060
       },
       "metadata": {}
     },
@@ -1671,8 +1671,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 40,
-        "y": 3030
+        "x": 1000,
+        "y": 3060
       },
       "metadata": {}
     },
@@ -1804,8 +1804,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2120,
-        "y": 90
+        "x": 1640,
+        "y": 110
       },
       "metadata": {}
     },
@@ -1937,8 +1937,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3720,
-        "y": 90
+        "x": 3640,
+        "y": 110
       },
       "metadata": {}
     },
@@ -2070,8 +2070,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5320,
-        "y": 90
+        "x": 1640,
+        "y": 890
       },
       "metadata": {}
     },
@@ -2203,8 +2203,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 520,
-        "y": 3290
+        "x": 3640,
+        "y": 890
       },
       "metadata": {}
     },
@@ -2336,8 +2336,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2120,
-        "y": 3290
+        "x": 1640,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -2469,8 +2469,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3720,
-        "y": 3290
+        "x": 3640,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -2602,8 +2602,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5320,
-        "y": 3290
+        "x": 1640,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -2735,8 +2735,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 520,
-        "y": 6490
+        "x": 3640,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -2868,8 +2868,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2120,
-        "y": 6490
+        "x": 1640,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -3001,8 +3001,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3720,
-        "y": 6490
+        "x": 3640,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -3134,8 +3134,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5320,
-        "y": 6490
+        "x": 1640,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -3267,8 +3267,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 520,
-        "y": 9690
+        "x": 3640,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -3341,8 +3341,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 520,
-        "y": 3030
+        "x": 40,
+        "y": 3800
       },
       "metadata": {}
     },
@@ -3642,8 +3642,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2600,
-        "y": 90
+        "x": 2100,
+        "y": 110
       },
       "metadata": {}
     },
@@ -3829,8 +3829,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2120,
-        "y": 510
+        "x": 2560,
+        "y": 110
       },
       "metadata": {}
     },
@@ -3893,8 +3893,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2600,
-        "y": 510
+        "x": 3020,
+        "y": 110
       },
       "metadata": {}
     },
@@ -4194,8 +4194,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4200,
-        "y": 90
+        "x": 4100,
+        "y": 110
       },
       "metadata": {}
     },
@@ -4381,8 +4381,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3720,
-        "y": 510
+        "x": 4560,
+        "y": 110
       },
       "metadata": {}
     },
@@ -4445,8 +4445,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4200,
-        "y": 510
+        "x": 5020,
+        "y": 110
       },
       "metadata": {}
     },
@@ -4746,8 +4746,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5800,
-        "y": 90
+        "x": 2100,
+        "y": 890
       },
       "metadata": {}
     },
@@ -4933,8 +4933,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5320,
-        "y": 510
+        "x": 2560,
+        "y": 890
       },
       "metadata": {}
     },
@@ -4997,8 +4997,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5800,
-        "y": 510
+        "x": 3020,
+        "y": 890
       },
       "metadata": {}
     },
@@ -5298,8 +5298,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 3290
+        "x": 4100,
+        "y": 890
       },
       "metadata": {}
     },
@@ -5485,8 +5485,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 520,
-        "y": 3710
+        "x": 4560,
+        "y": 890
       },
       "metadata": {}
     },
@@ -5549,8 +5549,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 3710
+        "x": 5020,
+        "y": 890
       },
       "metadata": {}
     },
@@ -5850,8 +5850,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2600,
-        "y": 3290
+        "x": 2100,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -6037,8 +6037,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2120,
-        "y": 3710
+        "x": 2560,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -6101,8 +6101,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2600,
-        "y": 3710
+        "x": 3020,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -6402,8 +6402,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4200,
-        "y": 3290
+        "x": 4100,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -6589,8 +6589,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3720,
-        "y": 3710
+        "x": 4560,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -6653,8 +6653,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4200,
-        "y": 3710
+        "x": 5020,
+        "y": 1670
       },
       "metadata": {}
     },
@@ -6954,8 +6954,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5800,
-        "y": 3290
+        "x": 2100,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -7141,8 +7141,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5320,
-        "y": 3710
+        "x": 2560,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -7205,8 +7205,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5800,
-        "y": 3710
+        "x": 3020,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -7506,8 +7506,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 6490
+        "x": 4100,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -7693,8 +7693,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 520,
-        "y": 6910
+        "x": 4560,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -7757,8 +7757,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 6910
+        "x": 5020,
+        "y": 2450
       },
       "metadata": {}
     },
@@ -8058,8 +8058,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2600,
-        "y": 6490
+        "x": 2100,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -8245,8 +8245,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2120,
-        "y": 6910
+        "x": 2560,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -8309,8 +8309,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2600,
-        "y": 6910
+        "x": 3020,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -8610,8 +8610,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4200,
-        "y": 6490
+        "x": 4100,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -8797,8 +8797,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3720,
-        "y": 6910
+        "x": 4560,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -8861,8 +8861,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4200,
-        "y": 6910
+        "x": 5020,
+        "y": 3230
       },
       "metadata": {}
     },
@@ -9162,8 +9162,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5800,
-        "y": 6490
+        "x": 2100,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -9349,8 +9349,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5320,
-        "y": 6910
+        "x": 2560,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -9413,8 +9413,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 5800,
-        "y": 6910
+        "x": 3020,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -9714,8 +9714,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 9690
+        "x": 4100,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -9901,8 +9901,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 520,
-        "y": 10110
+        "x": 4560,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -9965,8 +9965,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 1000,
-        "y": 10110
+        "x": 5020,
+        "y": 4010
       },
       "metadata": {}
     },
@@ -10216,7 +10216,7 @@
       "enabled": true,
       "ui_state": {
         "x": 1640,
-        "y": 9690
+        "y": 4790
       },
       "metadata": {}
     },
@@ -10335,8 +10335,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2120,
-        "y": 9690
+        "x": 2100,
+        "y": 4790
       },
       "metadata": {}
     },
@@ -10382,8 +10382,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 2600,
-        "y": 9690
+        "x": 2560,
+        "y": 4790
       },
       "metadata": {}
     },
@@ -10596,8 +10596,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3240,
-        "y": 9690
+        "x": 3640,
+        "y": 4790
       },
       "metadata": {}
     },
@@ -10797,8 +10797,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 3720,
-        "y": 9690
+        "x": 4100,
+        "y": 4790
       },
       "metadata": {}
     },
@@ -10844,8 +10844,8 @@
       },
       "enabled": true,
       "ui_state": {
-        "x": 4200,
-        "y": 9690
+        "x": 4560,
+        "y": 4790
       },
       "metadata": {}
     },
@@ -10855,8 +10855,8 @@
       "parameters": {},
       "enabled": true,
       "ui_state": {
-        "x": 5320,
-        "y": 9690
+        "x": 5640,
+        "y": 100
       },
       "metadata": {}
     },
@@ -10866,8 +10866,8 @@
       "parameters": {},
       "enabled": true,
       "ui_state": {
-        "x": 5800,
-        "y": 9690
+        "x": 6360,
+        "y": 100
       },
       "metadata": {}
     },
@@ -11379,8 +11379,8 @@
         ]
       },
       "ui_state": {
-        "x": 4840,
-        "y": 10110
+        "x": 5640,
+        "y": 950
       }
     },
     {
@@ -11422,8 +11422,8 @@
         }
       },
       "ui_state": {
-        "x": 5320,
-        "y": 10110
+        "x": 6360,
+        "y": 950
       }
     },
     {
@@ -11431,8 +11431,8 @@
       "node_type_id": "core.output.result-record",
       "parameters": {},
       "ui_state": {
-        "x": 5800,
-        "y": 10110
+        "x": 5640,
+        "y": 1800
       }
     },
     {
@@ -11440,8 +11440,8 @@
       "node_type_id": "core.logic.payload-to-value",
       "parameters": {},
       "ui_state": {
-        "x": 4840,
-        "y": 10530
+        "x": 6360,
+        "y": 1800
       }
     },
     {
@@ -11454,8 +11454,8 @@
         "indent": 2
       },
       "ui_state": {
-        "x": 5320,
-        "y": 10530
+        "x": 5640,
+        "y": 2650
       }
     },
     {
@@ -11466,8 +11466,8 @@
         "message": "measured"
       },
       "ui_state": {
-        "x": 5800,
-        "y": 10530
+        "x": 6360,
+        "y": 2650
       }
     },
     {
@@ -11516,8 +11516,8 @@
         ]
       },
       "ui_state": {
-        "x": 4840,
-        "y": 10950
+        "x": 5640,
+        "y": 3500
       }
     }
   ],
@@ -13492,12 +13492,12 @@
   "groups": [
     {
       "group_id": "input",
-      "name": "输入与基准",
+      "name": "01 输入、共享 ROI 与基准",
       "rect": {
         "x": 0,
         "y": 0,
-        "width": 1520,
-        "height": 3480
+        "width": 1500,
+        "height": 4700
       },
       "member_node_ids": [
         "read",
@@ -13517,16 +13517,17 @@
         "C_bottom.B",
         "frame"
       ],
-      "color": "#256D85"
+      "color": "#256D85",
+      "collapsed": false
     },
     {
       "group_id": "A_top_L",
-      "name": "A_top_L",
+      "name": "02 钢片 A_top_L",
       "rect": {
         "x": 1600,
         "y": 0,
-        "width": 1520,
-        "height": 960
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "A_top_L.T",
@@ -13534,16 +13535,17 @@
         "A_top_L.boundary",
         "A_top_L.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "A_top_R",
-      "name": "A_top_R",
+      "name": "02 钢片 A_top_R",
       "rect": {
-        "x": 3200,
+        "x": 3600,
         "y": 0,
-        "width": 1520,
-        "height": 960
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "A_top_R.T",
@@ -13551,16 +13553,17 @@
         "A_top_R.boundary",
         "A_top_R.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "B_top_L",
-      "name": "B_top_L",
+      "name": "02 钢片 B_top_L",
       "rect": {
-        "x": 4800,
-        "y": 0,
-        "width": 1520,
-        "height": 960
+        "x": 1600,
+        "y": 780,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "B_top_L.T",
@@ -13568,16 +13571,17 @@
         "B_top_L.boundary",
         "B_top_L.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "B_top_R",
-      "name": "B_top_R",
+      "name": "02 钢片 B_top_R",
       "rect": {
-        "x": 0,
-        "y": 3200,
-        "width": 1520,
-        "height": 960
+        "x": 3600,
+        "y": 780,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "B_top_R.T",
@@ -13585,16 +13589,17 @@
         "B_top_R.boundary",
         "B_top_R.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "A_bottom_L",
-      "name": "A_bottom_L",
+      "name": "02 钢片 A_bottom_L",
       "rect": {
         "x": 1600,
-        "y": 3200,
-        "width": 1520,
-        "height": 960
+        "y": 1560,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "A_bottom_L.T",
@@ -13602,16 +13607,17 @@
         "A_bottom_L.boundary",
         "A_bottom_L.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "A_bottom_R",
-      "name": "A_bottom_R",
+      "name": "02 钢片 A_bottom_R",
       "rect": {
-        "x": 3200,
-        "y": 3200,
-        "width": 1520,
-        "height": 960
+        "x": 3600,
+        "y": 1560,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "A_bottom_R.T",
@@ -13619,16 +13625,17 @@
         "A_bottom_R.boundary",
         "A_bottom_R.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "B_bottom_L",
-      "name": "B_bottom_L",
+      "name": "02 钢片 B_bottom_L",
       "rect": {
-        "x": 4800,
-        "y": 3200,
-        "width": 1520,
-        "height": 960
+        "x": 1600,
+        "y": 2340,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "B_bottom_L.T",
@@ -13636,16 +13643,17 @@
         "B_bottom_L.boundary",
         "B_bottom_L.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "B_bottom_R",
-      "name": "B_bottom_R",
+      "name": "02 钢片 B_bottom_R",
       "rect": {
-        "x": 0,
-        "y": 6400,
-        "width": 1520,
-        "height": 960
+        "x": 3600,
+        "y": 2340,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "B_bottom_R.T",
@@ -13653,16 +13661,17 @@
         "B_bottom_R.boundary",
         "B_bottom_R.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "C_top_L",
-      "name": "C_top_L",
+      "name": "02 钢片 C_top_L",
       "rect": {
         "x": 1600,
-        "y": 6400,
-        "width": 1520,
-        "height": 960
+        "y": 3120,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "C_top_L.T",
@@ -13670,16 +13679,17 @@
         "C_top_L.boundary",
         "C_top_L.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "C_top_R",
-      "name": "C_top_R",
+      "name": "02 钢片 C_top_R",
       "rect": {
-        "x": 3200,
-        "y": 6400,
-        "width": 1520,
-        "height": 960
+        "x": 3600,
+        "y": 3120,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "C_top_R.T",
@@ -13687,16 +13697,17 @@
         "C_top_R.boundary",
         "C_top_R.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "C_bottom_L",
-      "name": "C_bottom_L",
+      "name": "02 钢片 C_bottom_L",
       "rect": {
-        "x": 4800,
-        "y": 6400,
-        "width": 1520,
-        "height": 960
+        "x": 1600,
+        "y": 3900,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "C_bottom_L.T",
@@ -13704,16 +13715,17 @@
         "C_bottom_L.boundary",
         "C_bottom_L.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "C_bottom_R",
-      "name": "C_bottom_R",
+      "name": "02 钢片 C_bottom_R",
       "rect": {
-        "x": 0,
-        "y": 9600,
-        "width": 1520,
-        "height": 960
+        "x": 3600,
+        "y": 3900,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "C_bottom_R.T",
@@ -13721,48 +13733,51 @@
         "C_bottom_R.boundary",
         "C_bottom_R.extents"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "S1",
-      "name": "S1 半圆",
+      "name": "03 S1 半圆",
       "rect": {
         "x": 1600,
-        "y": 9600,
-        "width": 1520,
-        "height": 620
+        "y": 4680,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "S1.boundary",
         "S1.circle",
         "S1.diameter"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "S2",
-      "name": "S2 部分圆弧",
+      "name": "03 S2 部分圆弧",
       "rect": {
-        "x": 3200,
-        "y": 9600,
-        "width": 1520,
-        "height": 620
+        "x": 3600,
+        "y": 4680,
+        "width": 1900,
+        "height": 680
       },
       "member_node_ids": [
         "S2.boundary",
         "S2.circle",
         "S2.diameter"
       ],
-      "color": "#657787"
+      "color": "#657787",
+      "collapsed": false
     },
     {
       "group_id": "delivery",
-      "name": "判定与交付",
+      "name": "04 五十项判定、显示与保存",
       "rect": {
-        "x": 4800,
-        "y": 9600,
-        "width": 1520,
-        "height": 1800
+        "x": 5600,
+        "y": 0,
+        "width": 1500,
+        "height": 4700
       },
       "member_node_ids": [
         "preview",
@@ -13776,7 +13791,8 @@
         "response",
         "decision-table"
       ],
-      "color": "#376B42"
+      "color": "#376B42",
+      "collapsed": false
     }
   ],
   "notes": [],

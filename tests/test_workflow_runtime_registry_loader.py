@@ -170,6 +170,44 @@ def test_runtime_registry_loader_registers_python_and_worker_handlers_from_entry
     ]
 
 
+@pytest.mark.parametrize("failure", ["disabled", "version", "unknown"])
+def test_required_node_failure_keeps_pack_diagnostics(tmp_path, failure):
+    """恢复依赖缺失保留包拒绝原因；未知类型不伪造失败包。"""
+    root = _create_executable_node_pack_fixture(tmp_path)
+    manifest_path = root / "text_basic_nodes" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    if failure == "disabled":
+        manifest["enabledByDefault"] = False
+    if failure == "version":
+        manifest["version"] = "0.2.0"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    packs = LocalNodePackLoader(root)
+    packs.refresh()
+    catalog = NodeCatalogRegistry(node_pack_loader=packs)
+    required = "custom.text.missing" if failure == "unknown" else "custom.text.normalize"
+    loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=catalog, node_pack_loader=packs,
+        required_node_type_ids={required},
+    )
+    with pytest.raises(ServiceConfigurationError, match="所需节点未加载") as caught:
+        loader.refresh()
+    assert caught.value.details["missing_node_type_ids"] == [required]
+    issues = caught.value.details["node_pack_issues"]
+    if failure == "unknown":
+        assert issues == []
+    else:
+        assert issues[0]["node_pack_id"] == "text.basic-nodes"
+        if failure == "disabled":
+            assert issues[0]["state"] == "disabled"
+        else:
+            assert issues[0]["issues"]
+    # 无关图仍能启动，不把全目录健康变成执行前提。
+    WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=catalog, node_pack_loader=packs,
+        required_node_type_ids={"core.logic.payload-to-value"},
+    ).refresh()
+
+
 def test_runtime_registry_loader_requires_backend_entrypoint_for_executable_custom_nodes(
     tmp_path: Path,
 ) -> None:

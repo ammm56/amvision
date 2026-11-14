@@ -168,7 +168,34 @@ class WorkflowNodeRuntimeRegistryLoader:
         """刷新当前 workflow 节点运行时注册表。"""
 
         self._runtime_registry.clear()
-        for node_definition in self.node_catalog_registry.get_workflow_node_definitions():
+        definitions = self.node_catalog_registry.get_workflow_node_definitions()
+        if self.required_node_type_ids is not None:
+            missing = self.required_node_type_ids - {
+                item.node_type_id for item in definitions
+            }
+            if missing:
+                # 只在实际依赖缺失时附带加载诊断，不让无关坏包阻塞有效图。
+                snapshot = self.node_pack_loader.get_node_pack_status_snapshot()
+                raise ServiceConfigurationError(
+                    "Workflow 所需节点未加载，请检查节点包状态",
+                    details={
+                        "missing_node_type_ids": sorted(missing),
+                        "node_pack_issues": [
+                            {
+                                "node_pack_id": item.node_pack_id,
+                                "version": item.version,
+                                "state": item.state,
+                                "issues": [
+                                    {"code": issue.code, "message": issue.message,
+                                     "details": issue.details}
+                                    for issue in item.issues
+                                ],
+                            }
+                            for item in snapshot.items if item.state != "loaded"
+                        ],
+                    },
+                )
+        for node_definition in definitions:
             self._runtime_registry.register_node_definition(node_definition)
         register_core_node_handlers(self._runtime_registry)
 

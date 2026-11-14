@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from copy import copy
 from functools import partial
+import logging
+import multiprocessing
+from multiprocessing.synchronize import Event
 from socket import socket
 import sys
 
@@ -12,14 +15,59 @@ from uvicorn import Config, Server
 from uvicorn.config import LOGGING_CONFIG
 from uvicorn.main import main as uvicorn_command
 from uvicorn.supervisors import ChangeReload
+from uvicorn._subprocess import get_subprocess
 
 
-def serve(config: Config, sockets: list[socket] | None = None) -> None:
+class ReloadServer(Server):
+    """复用 Uvicorn 服务循环接收父进程重载事件，不广播控制台信号。"""
+
+    def __init__(self, config: Config, stop_event: Event) -> None:
+        """stop_event 仅属于本次重载器；不参与 Workflow 停止控制。"""
+        super().__init__(config)
+        self.stop_event = stop_event
+
+    async def on_tick(self, counter: int) -> bool:
+        """沿原服务周期检查退出，不创建线程或另一套调度器。"""
+        if self.stop_event.is_set():
+            self.should_exit = True
+        return await super().on_tick(counter)
+
+
+class ServiceReload(ChangeReload):
+    """沿现有文件监控和 spawn 实现重载，只替换内部停止通知。"""
+
+    def __init__(self, config: Config, *, stop_event: Event, **kwargs) -> None:
+        """保存同一个跨进程事件，启动仍由 Uvicorn 负责。"""
+        super().__init__(config, **kwargs)
+        self.stop_event = stop_event
+
+    def restart(self) -> None:
+        """旧服务完整关闭后重建监听，不能把内部重载变成用户 Ctrl+C。"""
+        self.stop_event.set()
+        self.process.join()
+        if self.should_exit.is_set():
+            return
+        self.stop_event.clear()
+        self.process = get_subprocess(
+            config=self.config, target=self.target, sockets=self.sockets,
+        )
+        self.process.start()
+
+    def shutdown(self) -> None:
+        """正常停止也走相同事件，外层受管组负责最终强制回收边界。"""
+        self.stop_event.set()
+        self.process.join()
+        for listener in self.sockets:
+            listener.close()
+        logging.getLogger("uvicorn.error").info("Stopping reloader process [%s]", self.pid)
+
+
+def serve(config: Config, *, stop_event: Event, sockets: list[socket] | None = None) -> None:
     """在子进程内绑定监听；config 为服务配置，sockets 必须为空。"""
     if sockets:
         raise ValueError("开发热重载不接受父进程共享的监听 socket")
     enable_reload_interrupt()
-    Server(config).run()
+    ReloadServer(config, stop_event).run()
 
 
 def enable_reload_interrupt() -> None:
@@ -55,7 +103,11 @@ def run_reload(**options: object) -> None:
     if config.workers != 1:
         raise click.UsageError("开发热重载仅支持一个 HTTP 服务进程")
     # 不在父进程加载应用、创建事件循环或 bind_socket；旧进程退出后再由新进程绑定。
-    ChangeReload(config, target=partial(serve, config), sockets=[]).run()
+    stop_event = multiprocessing.get_context("spawn").Event()
+    ServiceReload(
+        config, stop_event=stop_event,
+        target=partial(serve, config, stop_event=stop_event), sockets=[],
+    ).run()
 
 
 def build_command() -> click.Command:

@@ -16,6 +16,23 @@ from tests.integration.metrology3d.workpiece_workflow import workpiece_documents
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_delivery_expanded_layout_keeps_objects_and_groups_separate():
+    """共享区、对象行及交付区不重叠，全部节点留在自己的展开分组内。"""
+    graph, _ = build_documents()
+    nodes = {node.node_id: node for node in graph.nodes}
+    for index, group in enumerate(graph.groups):
+        box = group.rect
+        assert not group.collapsed
+        for other in graph.groups[index + 1:]:
+            b = other.rect
+            assert (box.x + box.width <= b.x or b.x + b.width <= box.x
+                    or box.y + box.height <= b.y or b.y + b.height <= box.y)
+        for node_id in group.member_node_ids:
+            point = nodes[node_id].ui_state
+            assert box.x <= point['x'] and point['x'] + 360 <= box.x + box.width
+            assert box.y + 60 <= point['y'] and point['y'] + 500 <= box.y + box.height
+
+
 @pytest.mark.parametrize("input_kind", ["file", "array"])
 @pytest.mark.parametrize("view", ["full", "numeric"])
 def test_delivery_preserves_measurement_algorithms(input_kind, view):
