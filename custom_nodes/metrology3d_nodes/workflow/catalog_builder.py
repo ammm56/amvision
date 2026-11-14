@@ -46,6 +46,8 @@ from backend.contracts.workflows.relation3d_parameters import RelationNodeParame
 from backend.contracts.workflows.deviation3d_evidence import DeviationNodeParameters
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightNodeParameters,
+)
+from custom_nodes.metrology3d_nodes.shared.step_node_parameters import (
     StepNodeParameters,
 )
 from custom_nodes.metrology3d_nodes.shared.geometry_parameters import (
@@ -459,7 +461,11 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.34"
+                version="0.1.36"
+                if key == "measure-step"
+                else "0.1.35"
+                if key == "fit-plane"
+                else "0.1.34"
                 if key
                 in {"measure-deviation", "read-cloud", "save-cloud", "cloud-preview"}
                 else "0.1.33"

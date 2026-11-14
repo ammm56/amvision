@@ -279,9 +279,3 @@ class HeightNodeParameters(Contract):
     """高度配置与前端使用同一原子草稿。"""
 
     settings: HeightQueryParameters
-
-
-class StepNodeParameters(Contract):
-    """高差模式及其配置原子更新，不保留隐藏模式旧参数。"""
-
-    settings: MeasureStepParameters

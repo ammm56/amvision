@@ -52,10 +52,19 @@ class CropNodeParameters(Contract):
     source: Annotated[ParameterRoiSource | InputRoiSource, Field(discriminator="kind")]
 
 
+class WholeCloudSupport(Contract):
+    """直接使用输入点云，包含上游已经显式裁剪的共享子集。"""
+
+    kind: Literal["cloud"] = "cloud"
+
+
 class PlaneNodeParameters(Contract):
-    """一份算法配置对应一个原子编辑草稿。"""
+    """拟合算法与支持范围分开配置，不改变拟面方法及其质量契约。"""
 
     settings: FitPlaneParameters
+    support: Annotated[
+        WholeCloudSupport | ParameterRoiSource, Field(discriminator="kind")
+    ] = Field(default_factory=WholeCloudSupport)
 
 
 class FrameNodeParameters(Contract):

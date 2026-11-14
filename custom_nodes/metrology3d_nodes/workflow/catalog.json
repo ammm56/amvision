@@ -64747,7 +64747,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -65035,7 +65035,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -65470,7 +65470,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -65973,7 +65973,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -66737,7 +66737,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -66814,7 +66814,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -66900,7 +66900,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -67449,7 +67449,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -67937,7 +67937,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -68346,7 +68346,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -68680,7 +68680,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -69824,7 +69824,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -76105,7 +76105,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -76502,7 +76502,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -77011,7 +77011,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -77629,7 +77629,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -77640,7 +77640,7 @@
       "description": "Measure Step",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.28",
+      "version": "0.1.36",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -77702,193 +77702,612 @@
       ],
       "parameter_schema": {
         "additionalProperties": false,
-        "description": "高差模式及其配置原子更新，不保留隐藏模式旧参数。",
+        "description": "模式及全部量项原子更新。",
         "properties": {
           "settings": {
-            "additionalProperties": false,
-            "description": "两种测量定义互斥；切换模式必须提交完整新配置。",
-            "properties": {
-              "item_id": {
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                "title": "Item Id",
-                "type": "string"
-              },
-              "frame_id": {
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                "title": "Frame Id",
-                "type": "string"
-              },
-              "length_unit": {
-                "enum": [
-                  "m",
-                  "mm",
-                  "um"
-                ],
-                "title": "Length Unit",
-                "type": "string"
-              },
-              "mode": {
-                "discriminator": {
-                  "mapping": {
-                    "directional-planes": "#/$defs/DirectionalStep",
-                    "roi-statistic": "#/$defs/StatisticalStep"
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "两种测量定义互斥；切换模式必须提交完整新配置。",
+                "properties": {
+                  "item_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Item Id",
+                    "type": "string"
                   },
-                  "propertyName": "kind"
-                },
-                "oneOf": [
-                  {
-                    "additionalProperties": false,
-                    "description": "两个既有平面在同一评价位置的有符号方向距离。",
-                    "properties": {
-                      "support_radius": {
-                        "exclusiveMinimum": 0,
-                        "title": "Support Radius",
-                        "type": "number"
+                  "frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "discriminator": {
+                      "mapping": {
+                        "directional-planes": "#/$defs/DirectionalStep",
+                        "roi-statistic": "#/$defs/StatisticalStep"
                       },
-                      "quality_policy": {
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
                         "additionalProperties": false,
-                        "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                        "description": "两个既有平面在同一评价位置的有符号方向距离。",
                         "properties": {
-                          "policy_id": {
-                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                            "title": "Policy Id",
+                          "support_radius": {
+                            "exclusiveMinimum": 0,
+                            "title": "Support Radius",
+                            "type": "number"
+                          },
+                          "quality_policy": {
+                            "additionalProperties": false,
+                            "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                            "properties": {
+                              "policy_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Policy Id",
+                                "type": "string"
+                              },
+                              "policy_version": {
+                                "minimum": 1,
+                                "title": "Policy Version",
+                                "type": "integer"
+                              },
+                              "rules": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                                  "properties": {
+                                    "item_id": {
+                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                      "title": "Item Id",
+                                      "type": "string"
+                                    },
+                                    "unit": {
+                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                      "title": "Unit",
+                                      "type": "string"
+                                    },
+                                    "enabled": {
+                                      "default": true,
+                                      "title": "Enabled",
+                                      "type": "boolean"
+                                    },
+                                    "required": {
+                                      "default": true,
+                                      "title": "Required",
+                                      "type": "boolean"
+                                    },
+                                    "lower": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null,
+                                      "title": "Lower"
+                                    },
+                                    "upper": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null,
+                                      "title": "Upper"
+                                    },
+                                    "include_lower": {
+                                      "default": true,
+                                      "title": "Include Lower",
+                                      "type": "boolean"
+                                    },
+                                    "include_upper": {
+                                      "default": true,
+                                      "title": "Include Upper",
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "item_id",
+                                    "unit"
+                                  ],
+                                  "title": "LimitRule",
+                                  "type": "object"
+                                },
+                                "maxItems": 8192,
+                                "minItems": 1,
+                                "title": "Rules",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "policy_id",
+                              "policy_version",
+                              "rules"
+                            ],
+                            "title": "GeometryQualityPolicy",
+                            "type": "object"
+                          },
+                          "reference_policy": {
+                            "discriminator": {
+                              "mapping": {
+                                "measured-support": "#/$defs/MeasuredReference",
+                                "plane-extension": "#/$defs/ExtendedReference"
+                              },
+                              "propertyName": "kind"
+                            },
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "description": "基准交点必须有满足原质量条件的实际支持。",
+                                "properties": {
+                                  "kind": {
+                                    "const": "measured-support",
+                                    "title": "Kind",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "title": "MeasuredReference",
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "description": "只延伸有效基准平面，距离上限来自配方而不是默认值。",
+                                "properties": {
+                                  "kind": {
+                                    "const": "plane-extension",
+                                    "title": "Kind",
+                                    "type": "string"
+                                  },
+                                  "max_extension_distance": {
+                                    "exclusiveMinimum": 0,
+                                    "title": "Max Extension Distance",
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "max_extension_distance"
+                                ],
+                                "title": "ExtendedReference",
+                                "type": "object"
+                              }
+                            ],
+                            "title": "Reference Policy"
+                          },
+                          "query": {
+                            "discriminator": {
+                              "mapping": {
+                                "configured": "#/$defs/ConfiguredQuery",
+                                "pose-uv": "#/$defs/PoseUvQuery"
+                              },
+                              "propertyName": "kind"
+                            },
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "description": "配方直接给出源坐标中的测量线。",
+                                "properties": {
+                                  "kind": {
+                                    "const": "configured",
+                                    "title": "Kind",
+                                    "type": "string"
+                                  },
+                                  "query_position": {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "title": "Query Position",
+                                    "type": "array"
+                                  },
+                                  "direction": {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "title": "Direction",
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "query_position",
+                                  "direction"
+                                ],
+                                "title": "ConfiguredQuery",
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "description": "固定 U/V 属于显式指定的本次基准坐标，不是源 XY。",
+                                "properties": {
+                                  "kind": {
+                                    "const": "pose-uv",
+                                    "title": "Kind",
+                                    "type": "string"
+                                  },
+                                  "pose_id": {
+                                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                    "title": "Pose Id",
+                                    "type": "string"
+                                  },
+                                  "target_frame_id": {
+                                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                    "title": "Target Frame Id",
+                                    "type": "string"
+                                  },
+                                  "uv": {
+                                    "maxItems": 2,
+                                    "minItems": 2,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "title": "Uv",
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "pose_id",
+                                  "target_frame_id",
+                                  "uv"
+                                ],
+                                "title": "PoseUvQuery",
+                                "type": "object"
+                              }
+                            ],
+                            "title": "Query"
+                          },
+                          "kind": {
+                            "const": "directional-planes",
+                            "title": "Kind",
                             "type": "string"
                           },
-                          "policy_version": {
-                            "minimum": 1,
-                            "title": "Policy Version",
-                            "type": "integer"
+                          "reference_feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Reference Feature Id",
+                            "type": "string"
                           },
-                          "rules": {
-                            "items": {
-                              "additionalProperties": false,
-                              "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
-                              "properties": {
-                                "item_id": {
-                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                                  "title": "Item Id",
-                                  "type": "string"
-                                },
-                                "unit": {
-                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                                  "title": "Unit",
-                                  "type": "string"
-                                },
-                                "enabled": {
-                                  "default": true,
-                                  "title": "Enabled",
-                                  "type": "boolean"
-                                },
-                                "required": {
-                                  "default": true,
-                                  "title": "Required",
-                                  "type": "boolean"
-                                },
-                                "lower": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ],
-                                  "default": null,
-                                  "title": "Lower"
-                                },
-                                "upper": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ],
-                                  "default": null,
-                                  "title": "Upper"
-                                },
-                                "include_lower": {
-                                  "default": true,
-                                  "title": "Include Lower",
-                                  "type": "boolean"
-                                },
-                                "include_upper": {
-                                  "default": true,
-                                  "title": "Include Upper",
-                                  "type": "boolean"
-                                }
-                              },
-                              "required": [
-                                "item_id",
-                                "unit"
-                              ],
-                              "title": "LimitRule",
-                              "type": "object"
-                            },
-                            "maxItems": 8192,
-                            "minItems": 1,
-                            "title": "Rules",
-                            "type": "array"
+                          "target_feature_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Target Feature Id",
+                            "type": "string"
                           }
                         },
                         "required": [
-                          "policy_id",
-                          "policy_version",
-                          "rules"
+                          "support_radius",
+                          "quality_policy",
+                          "reference_policy",
+                          "query",
+                          "kind",
+                          "reference_feature_id",
+                          "target_feature_id"
                         ],
-                        "title": "GeometryQualityPolicy",
+                        "title": "DirectionalStep",
                         "type": "object"
                       },
-                      "reference_policy": {
-                        "discriminator": {
-                          "mapping": {
-                            "measured-support": "#/$defs/MeasuredReference",
-                            "plane-extension": "#/$defs/ExtendedReference"
+                      {
+                        "additionalProperties": false,
+                        "description": "两个已明确裁剪 ROI 的统计差，不虚构实际端点。",
+                        "properties": {
+                          "kind": {
+                            "const": "roi-statistic",
+                            "title": "Kind",
+                            "type": "string"
                           },
-                          "propertyName": "kind"
-                        },
-                        "oneOf": [
-                          {
-                            "additionalProperties": false,
-                            "description": "基准交点必须有满足原质量条件的实际支持。",
-                            "properties": {
-                              "kind": {
-                                "const": "measured-support",
-                                "title": "Kind",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "kind"
-                            ],
-                            "title": "MeasuredReference",
-                            "type": "object"
-                          },
-                          {
-                            "additionalProperties": false,
-                            "description": "只延伸有效基准平面，距离上限来自配方而不是默认值。",
-                            "properties": {
-                              "kind": {
-                                "const": "plane-extension",
-                                "title": "Kind",
-                                "type": "string"
+                          "origin": {
+                            "maxItems": 3,
+                            "minItems": 3,
+                            "prefixItems": [
+                              {
+                                "type": "number"
                               },
-                              "max_extension_distance": {
-                                "exclusiveMinimum": 0,
-                                "title": "Max Extension Distance",
+                              {
+                                "type": "number"
+                              },
+                              {
                                 "type": "number"
                               }
+                            ],
+                            "title": "Origin",
+                            "type": "array"
+                          },
+                          "direction": {
+                            "maxItems": 3,
+                            "minItems": 3,
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ],
+                            "title": "Direction",
+                            "type": "array"
+                          },
+                          "statistic": {
+                            "discriminator": {
+                              "mapping": {
+                                "mean": "#/$defs/MeanStatistic",
+                                "median": "#/$defs/MedianStatistic",
+                                "quantile": "#/$defs/QuantileStatistic"
+                              },
+                              "propertyName": "kind"
+                            },
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "description": "全支持点投影的算术均值。",
+                                "properties": {
+                                  "kind": {
+                                    "const": "mean",
+                                    "title": "Kind",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "title": "MeanStatistic",
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "description": "全支持点投影中位数，偶数样本取中间两项的均值。",
+                                "properties": {
+                                  "kind": {
+                                    "const": "median",
+                                    "title": "Kind",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "title": "MedianStatistic",
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "description": "精确分位数；概率和 NumPy 方法均为显式配方参数。",
+                                "properties": {
+                                  "kind": {
+                                    "const": "quantile",
+                                    "title": "Kind",
+                                    "type": "string"
+                                  },
+                                  "probability": {
+                                    "maximum": 1,
+                                    "minimum": 0,
+                                    "title": "Probability",
+                                    "type": "number"
+                                  },
+                                  "method": {
+                                    "enum": [
+                                      "inverted_cdf",
+                                      "averaged_inverted_cdf",
+                                      "closest_observation",
+                                      "interpolated_inverted_cdf",
+                                      "hazen",
+                                      "weibull",
+                                      "linear",
+                                      "median_unbiased",
+                                      "normal_unbiased",
+                                      "lower",
+                                      "higher",
+                                      "midpoint",
+                                      "nearest"
+                                    ],
+                                    "title": "Method",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "probability",
+                                  "method"
+                                ],
+                                "title": "QuantileStatistic",
+                                "type": "object"
+                              }
+                            ],
+                            "title": "Statistic"
+                          },
+                          "quality_policy": {
+                            "additionalProperties": false,
+                            "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                            "properties": {
+                              "policy_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Policy Id",
+                                "type": "string"
+                              },
+                              "policy_version": {
+                                "minimum": 1,
+                                "title": "Policy Version",
+                                "type": "integer"
+                              },
+                              "rules": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                                  "properties": {
+                                    "item_id": {
+                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                      "title": "Item Id",
+                                      "type": "string"
+                                    },
+                                    "unit": {
+                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                      "title": "Unit",
+                                      "type": "string"
+                                    },
+                                    "enabled": {
+                                      "default": true,
+                                      "title": "Enabled",
+                                      "type": "boolean"
+                                    },
+                                    "required": {
+                                      "default": true,
+                                      "title": "Required",
+                                      "type": "boolean"
+                                    },
+                                    "lower": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null,
+                                      "title": "Lower"
+                                    },
+                                    "upper": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null,
+                                      "title": "Upper"
+                                    },
+                                    "include_lower": {
+                                      "default": true,
+                                      "title": "Include Lower",
+                                      "type": "boolean"
+                                    },
+                                    "include_upper": {
+                                      "default": true,
+                                      "title": "Include Upper",
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "item_id",
+                                    "unit"
+                                  ],
+                                  "title": "LimitRule",
+                                  "type": "object"
+                                },
+                                "maxItems": 8192,
+                                "minItems": 1,
+                                "title": "Rules",
+                                "type": "array"
+                              }
                             },
                             "required": [
-                              "kind",
-                              "max_extension_distance"
+                              "policy_id",
+                              "policy_version",
+                              "rules"
                             ],
-                            "title": "ExtendedReference",
+                            "title": "GeometryQualityPolicy",
                             "type": "object"
                           }
+                        },
+                        "required": [
+                          "kind",
+                          "origin",
+                          "direction",
+                          "statistic",
+                          "quality_policy"
                         ],
-                        "title": "Reference Policy"
+                        "title": "StatisticalStep",
+                        "type": "object"
+                      }
+                    ],
+                    "title": "Mode"
+                  }
+                },
+                "required": [
+                  "item_id",
+                  "frame_id",
+                  "length_unit",
+                  "mode"
+                ],
+                "title": "MeasureStepParameters",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "仅减少重复接线，不更改每项算法、数值和证据格式。",
+                "properties": {
+                  "frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "additionalProperties": false,
+                    "description": "顶面和查询线显式共用，参考平面按行配置。",
+                    "properties": {
+                      "kind": {
+                        "const": "directional-references",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "target_feature_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Target Feature Id",
+                        "type": "string"
                       },
                       "query": {
                         "discriminator": {
@@ -77997,283 +78416,208 @@
                         ],
                         "title": "Query"
                       },
-                      "kind": {
-                        "const": "directional-planes",
-                        "title": "Kind",
-                        "type": "string"
-                      },
-                      "reference_feature_id": {
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                        "title": "Reference Feature Id",
-                        "type": "string"
-                      },
-                      "target_feature_id": {
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                        "title": "Target Feature Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "support_radius",
-                      "quality_policy",
-                      "reference_policy",
-                      "query",
-                      "kind",
-                      "reference_feature_id",
-                      "target_feature_id"
-                    ],
-                    "title": "DirectionalStep",
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "description": "两个已明确裁剪 ROI 的统计差，不虚构实际端点。",
-                    "properties": {
-                      "kind": {
-                        "const": "roi-statistic",
-                        "title": "Kind",
-                        "type": "string"
-                      },
-                      "origin": {
-                        "maxItems": 3,
-                        "minItems": 3,
-                        "prefixItems": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ],
-                        "title": "Origin",
-                        "type": "array"
-                      },
-                      "direction": {
-                        "maxItems": 3,
-                        "minItems": 3,
-                        "prefixItems": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ],
-                        "title": "Direction",
-                        "type": "array"
-                      },
-                      "statistic": {
-                        "discriminator": {
-                          "mapping": {
-                            "mean": "#/$defs/MeanStatistic",
-                            "median": "#/$defs/MedianStatistic",
-                            "quantile": "#/$defs/QuantileStatistic"
-                          },
-                          "propertyName": "kind"
-                        },
-                        "oneOf": [
-                          {
-                            "additionalProperties": false,
-                            "description": "全支持点投影的算术均值。",
-                            "properties": {
-                              "kind": {
-                                "const": "mean",
-                                "title": "Kind",
-                                "type": "string"
-                              }
+                      "items": {
+                        "items": {
+                          "additionalProperties": false,
+                          "description": "独立量项与基准支持策略，不共享较宽松的质量条件。",
+                          "properties": {
+                            "support_radius": {
+                              "exclusiveMinimum": 0,
+                              "title": "Support Radius",
+                              "type": "number"
                             },
-                            "required": [
-                              "kind"
-                            ],
-                            "title": "MeanStatistic",
-                            "type": "object"
-                          },
-                          {
-                            "additionalProperties": false,
-                            "description": "全支持点投影中位数，偶数样本取中间两项的均值。",
-                            "properties": {
-                              "kind": {
-                                "const": "median",
-                                "title": "Kind",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "kind"
-                            ],
-                            "title": "MedianStatistic",
-                            "type": "object"
-                          },
-                          {
-                            "additionalProperties": false,
-                            "description": "精确分位数；概率和 NumPy 方法均为显式配方参数。",
-                            "properties": {
-                              "kind": {
-                                "const": "quantile",
-                                "title": "Kind",
-                                "type": "string"
-                              },
-                              "probability": {
-                                "maximum": 1,
-                                "minimum": 0,
-                                "title": "Probability",
-                                "type": "number"
-                              },
-                              "method": {
-                                "enum": [
-                                  "inverted_cdf",
-                                  "averaged_inverted_cdf",
-                                  "closest_observation",
-                                  "interpolated_inverted_cdf",
-                                  "hazen",
-                                  "weibull",
-                                  "linear",
-                                  "median_unbiased",
-                                  "normal_unbiased",
-                                  "lower",
-                                  "higher",
-                                  "midpoint",
-                                  "nearest"
-                                ],
-                                "title": "Method",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "kind",
-                              "probability",
-                              "method"
-                            ],
-                            "title": "QuantileStatistic",
-                            "type": "object"
-                          }
-                        ],
-                        "title": "Statistic"
-                      },
-                      "quality_policy": {
-                        "additionalProperties": false,
-                        "description": "几何质量沿现有规则，值来自配方而非节点默认。",
-                        "properties": {
-                          "policy_id": {
-                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                            "title": "Policy Id",
-                            "type": "string"
-                          },
-                          "policy_version": {
-                            "minimum": 1,
-                            "title": "Policy Version",
-                            "type": "integer"
-                          },
-                          "rules": {
-                            "items": {
+                            "quality_policy": {
                               "additionalProperties": false,
-                              "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                              "description": "几何质量沿现有规则，值来自配方而非节点默认。",
                               "properties": {
-                                "item_id": {
+                                "policy_id": {
                                   "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                                  "title": "Item Id",
+                                  "title": "Policy Id",
                                   "type": "string"
                                 },
-                                "unit": {
-                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                                  "title": "Unit",
-                                  "type": "string"
+                                "policy_version": {
+                                  "minimum": 1,
+                                  "title": "Policy Version",
+                                  "type": "integer"
                                 },
-                                "enabled": {
-                                  "default": true,
-                                  "title": "Enabled",
-                                  "type": "boolean"
-                                },
-                                "required": {
-                                  "default": true,
-                                  "title": "Required",
-                                  "type": "boolean"
-                                },
-                                "lower": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
+                                "rules": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                                    "properties": {
+                                      "item_id": {
+                                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                        "title": "Item Id",
+                                        "type": "string"
+                                      },
+                                      "unit": {
+                                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                        "title": "Unit",
+                                        "type": "string"
+                                      },
+                                      "enabled": {
+                                        "default": true,
+                                        "title": "Enabled",
+                                        "type": "boolean"
+                                      },
+                                      "required": {
+                                        "default": true,
+                                        "title": "Required",
+                                        "type": "boolean"
+                                      },
+                                      "lower": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "default": null,
+                                        "title": "Lower"
+                                      },
+                                      "upper": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "default": null,
+                                        "title": "Upper"
+                                      },
+                                      "include_lower": {
+                                        "default": true,
+                                        "title": "Include Lower",
+                                        "type": "boolean"
+                                      },
+                                      "include_upper": {
+                                        "default": true,
+                                        "title": "Include Upper",
+                                        "type": "boolean"
+                                      }
                                     },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ],
-                                  "default": null,
-                                  "title": "Lower"
-                                },
-                                "upper": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ],
-                                  "default": null,
-                                  "title": "Upper"
-                                },
-                                "include_lower": {
-                                  "default": true,
-                                  "title": "Include Lower",
-                                  "type": "boolean"
-                                },
-                                "include_upper": {
-                                  "default": true,
-                                  "title": "Include Upper",
-                                  "type": "boolean"
+                                    "required": [
+                                      "item_id",
+                                      "unit"
+                                    ],
+                                    "title": "LimitRule",
+                                    "type": "object"
+                                  },
+                                  "maxItems": 8192,
+                                  "minItems": 1,
+                                  "title": "Rules",
+                                  "type": "array"
                                 }
                               },
                               "required": [
-                                "item_id",
-                                "unit"
+                                "policy_id",
+                                "policy_version",
+                                "rules"
                               ],
-                              "title": "LimitRule",
+                              "title": "GeometryQualityPolicy",
                               "type": "object"
                             },
-                            "maxItems": 8192,
-                            "minItems": 1,
-                            "title": "Rules",
-                            "type": "array"
-                          }
+                            "reference_policy": {
+                              "discriminator": {
+                                "mapping": {
+                                  "measured-support": "#/$defs/MeasuredReference",
+                                  "plane-extension": "#/$defs/ExtendedReference"
+                                },
+                                "propertyName": "kind"
+                              },
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "description": "基准交点必须有满足原质量条件的实际支持。",
+                                  "properties": {
+                                    "kind": {
+                                      "const": "measured-support",
+                                      "title": "Kind",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "title": "MeasuredReference",
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "description": "只延伸有效基准平面，距离上限来自配方而不是默认值。",
+                                  "properties": {
+                                    "kind": {
+                                      "const": "plane-extension",
+                                      "title": "Kind",
+                                      "type": "string"
+                                    },
+                                    "max_extension_distance": {
+                                      "exclusiveMinimum": 0,
+                                      "title": "Max Extension Distance",
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "max_extension_distance"
+                                  ],
+                                  "title": "ExtendedReference",
+                                  "type": "object"
+                                }
+                              ],
+                              "title": "Reference Policy"
+                            },
+                            "item_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Item Id",
+                              "type": "string"
+                            },
+                            "reference_feature_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Reference Feature Id",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "support_radius",
+                            "quality_policy",
+                            "reference_policy",
+                            "item_id",
+                            "reference_feature_id"
+                          ],
+                          "title": "ReferenceMeasurement",
+                          "type": "object"
                         },
-                        "required": [
-                          "policy_id",
-                          "policy_version",
-                          "rules"
-                        ],
-                        "title": "GeometryQualityPolicy",
-                        "type": "object"
+                        "maxItems": 8192,
+                        "minItems": 1,
+                        "title": "Items",
+                        "type": "array"
                       }
                     },
                     "required": [
                       "kind",
-                      "origin",
-                      "direction",
-                      "statistic",
-                      "quality_policy"
+                      "target_feature_id",
+                      "query",
+                      "items"
                     ],
-                    "title": "StatisticalStep",
+                    "title": "MultiReferenceMode",
                     "type": "object"
                   }
+                },
+                "required": [
+                  "frame_id",
+                  "length_unit",
+                  "mode"
                 ],
-                "title": "Mode"
+                "title": "MultiReferenceStepParameters",
+                "type": "object"
               }
-            },
-            "required": [
-              "item_id",
-              "frame_id",
-              "length_unit",
-              "mode"
             ],
-            "title": "MeasureStepParameters",
-            "type": "object"
+            "title": "Settings"
           }
         },
         "required": [
@@ -78288,7 +78632,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -79724,7 +80068,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -79735,7 +80079,7 @@
       "description": "Fit Plane",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.8",
+      "version": "0.1.35",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -79761,7 +80105,7 @@
       ],
       "parameter_schema": {
         "additionalProperties": false,
-        "description": "一份算法配置对应一个原子编辑草稿。",
+        "description": "拟合算法与支持范围分开配置，不改变拟面方法及其质量契约。",
         "properties": {
           "settings": {
             "additionalProperties": false,
@@ -79971,6 +80315,928 @@
             ],
             "title": "FitPlaneParameters",
             "type": "object"
+          },
+          "support": {
+            "discriminator": {
+              "mapping": {
+                "cloud": "#/$defs/WholeCloudSupport",
+                "parameters": "#/$defs/ParameterRoiSource"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "直接使用输入点云，包含上游已经显式裁剪的共享子集。",
+                "properties": {
+                  "kind": {
+                    "const": "cloud",
+                    "default": "cloud",
+                    "title": "Kind",
+                    "type": "string"
+                  }
+                },
+                "title": "WholeCloudSupport",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "目标与有限边界均来自显式配方。",
+                "properties": {
+                  "kind": {
+                    "const": "parameters",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "roi": {
+                    "discriminator": {
+                      "mapping": {
+                        "box": "#/$defs/BoxRoi",
+                        "cylinder": "#/$defs/CylinderRoi",
+                        "section-band": "#/$defs/SectionRoi",
+                        "union": "#/$defs/UnionRoi"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "description": "有向盒 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "box",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "以局部坐标轴为 rotation 列向量的有向盒。",
+                            "properties": {
+                              "center": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Center",
+                                "type": "array"
+                              },
+                              "rotation": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  },
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  },
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  }
+                                ],
+                                "title": "Rotation",
+                                "type": "array"
+                              },
+                              "size": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  },
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  },
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Size",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "center",
+                              "rotation",
+                              "size"
+                            ],
+                            "title": "BoxGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "BoxRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限圆柱 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "cylinder",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "中心位于轴段中点，轴向端面与径向边界均包含。",
+                            "properties": {
+                              "center": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Center",
+                                "type": "array"
+                              },
+                              "axis": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Axis",
+                                "type": "array"
+                              },
+                              "radius": {
+                                "exclusiveMinimum": 0,
+                                "title": "Radius",
+                                "type": "number"
+                              },
+                              "length": {
+                                "exclusiveMinimum": 0,
+                                "title": "Length",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "center",
+                              "axis",
+                              "radius",
+                              "length"
+                            ],
+                            "title": "CylinderGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "CylinderRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限截面带 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "section-band",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "有界截面带，引用同组中的有限 ROI。",
+                            "properties": {
+                              "origin": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Origin",
+                                "type": "array"
+                              },
+                              "normal": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Normal",
+                                "type": "array"
+                              },
+                              "thickness": {
+                                "exclusiveMinimum": 0,
+                                "title": "Thickness",
+                                "type": "number"
+                              },
+                              "bounds_roi_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Bounds Roi Id",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "origin",
+                              "normal",
+                              "thickness",
+                              "bounds_roi_id"
+                            ],
+                            "title": "SectionGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "SectionRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限成员的逻辑并集，不自带包围盒或变换。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "union",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "同一父云上的有限 ROI 并集；成员正文位于同组依赖集合。",
+                            "properties": {
+                              "roi_ids": {
+                                "items": {
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                  "type": "string"
+                                },
+                                "maxItems": 8192,
+                                "minItems": 1,
+                                "title": "Roi Ids",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "roi_ids"
+                            ],
+                            "title": "UnionGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "UnionRoi",
+                        "type": "object"
+                      }
+                    ],
+                    "title": "Roi"
+                  },
+                  "bounds": {
+                    "default": [],
+                    "items": {
+                      "discriminator": {
+                        "mapping": {
+                          "box": "#/$defs/BoxRoi",
+                          "cylinder": "#/$defs/CylinderRoi",
+                          "section-band": "#/$defs/SectionRoi",
+                          "union": "#/$defs/UnionRoi"
+                        },
+                        "propertyName": "kind"
+                      },
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "description": "有向盒 ROI。",
+                          "properties": {
+                            "format_id": {
+                              "const": "amvision.roi3d.v1",
+                              "default": "amvision.roi3d.v1",
+                              "title": "Format Id",
+                              "type": "string"
+                            },
+                            "roi_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Roi Id",
+                              "type": "string"
+                            },
+                            "frame_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Frame Id",
+                              "type": "string"
+                            },
+                            "length_unit": {
+                              "enum": [
+                                "m",
+                                "mm",
+                                "um"
+                              ],
+                              "title": "Length Unit",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "box",
+                              "title": "Kind",
+                              "type": "string"
+                            },
+                            "geometry": {
+                              "additionalProperties": false,
+                              "description": "以局部坐标轴为 rotation 列向量的有向盒。",
+                              "properties": {
+                                "center": {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "title": "Center",
+                                  "type": "array"
+                                },
+                                "rotation": {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "maxItems": 3,
+                                      "minItems": 3,
+                                      "prefixItems": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ],
+                                      "type": "array"
+                                    },
+                                    {
+                                      "maxItems": 3,
+                                      "minItems": 3,
+                                      "prefixItems": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ],
+                                      "type": "array"
+                                    },
+                                    {
+                                      "maxItems": 3,
+                                      "minItems": 3,
+                                      "prefixItems": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ],
+                                      "type": "array"
+                                    }
+                                  ],
+                                  "title": "Rotation",
+                                  "type": "array"
+                                },
+                                "size": {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "exclusiveMinimum": 0,
+                                      "type": "number"
+                                    },
+                                    {
+                                      "exclusiveMinimum": 0,
+                                      "type": "number"
+                                    },
+                                    {
+                                      "exclusiveMinimum": 0,
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "title": "Size",
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "center",
+                                "rotation",
+                                "size"
+                              ],
+                              "title": "BoxGeometry",
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "roi_id",
+                            "frame_id",
+                            "length_unit",
+                            "kind",
+                            "geometry"
+                          ],
+                          "title": "BoxRoi",
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "有限圆柱 ROI。",
+                          "properties": {
+                            "format_id": {
+                              "const": "amvision.roi3d.v1",
+                              "default": "amvision.roi3d.v1",
+                              "title": "Format Id",
+                              "type": "string"
+                            },
+                            "roi_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Roi Id",
+                              "type": "string"
+                            },
+                            "frame_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Frame Id",
+                              "type": "string"
+                            },
+                            "length_unit": {
+                              "enum": [
+                                "m",
+                                "mm",
+                                "um"
+                              ],
+                              "title": "Length Unit",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "cylinder",
+                              "title": "Kind",
+                              "type": "string"
+                            },
+                            "geometry": {
+                              "additionalProperties": false,
+                              "description": "中心位于轴段中点，轴向端面与径向边界均包含。",
+                              "properties": {
+                                "center": {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "title": "Center",
+                                  "type": "array"
+                                },
+                                "axis": {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "title": "Axis",
+                                  "type": "array"
+                                },
+                                "radius": {
+                                  "exclusiveMinimum": 0,
+                                  "title": "Radius",
+                                  "type": "number"
+                                },
+                                "length": {
+                                  "exclusiveMinimum": 0,
+                                  "title": "Length",
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "center",
+                                "axis",
+                                "radius",
+                                "length"
+                              ],
+                              "title": "CylinderGeometry",
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "roi_id",
+                            "frame_id",
+                            "length_unit",
+                            "kind",
+                            "geometry"
+                          ],
+                          "title": "CylinderRoi",
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "有限截面带 ROI。",
+                          "properties": {
+                            "format_id": {
+                              "const": "amvision.roi3d.v1",
+                              "default": "amvision.roi3d.v1",
+                              "title": "Format Id",
+                              "type": "string"
+                            },
+                            "roi_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Roi Id",
+                              "type": "string"
+                            },
+                            "frame_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Frame Id",
+                              "type": "string"
+                            },
+                            "length_unit": {
+                              "enum": [
+                                "m",
+                                "mm",
+                                "um"
+                              ],
+                              "title": "Length Unit",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "section-band",
+                              "title": "Kind",
+                              "type": "string"
+                            },
+                            "geometry": {
+                              "additionalProperties": false,
+                              "description": "有界截面带，引用同组中的有限 ROI。",
+                              "properties": {
+                                "origin": {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "title": "Origin",
+                                  "type": "array"
+                                },
+                                "normal": {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "title": "Normal",
+                                  "type": "array"
+                                },
+                                "thickness": {
+                                  "exclusiveMinimum": 0,
+                                  "title": "Thickness",
+                                  "type": "number"
+                                },
+                                "bounds_roi_id": {
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                  "title": "Bounds Roi Id",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "origin",
+                                "normal",
+                                "thickness",
+                                "bounds_roi_id"
+                              ],
+                              "title": "SectionGeometry",
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "roi_id",
+                            "frame_id",
+                            "length_unit",
+                            "kind",
+                            "geometry"
+                          ],
+                          "title": "SectionRoi",
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "有限成员的逻辑并集，不自带包围盒或变换。",
+                          "properties": {
+                            "format_id": {
+                              "const": "amvision.roi3d.v1",
+                              "default": "amvision.roi3d.v1",
+                              "title": "Format Id",
+                              "type": "string"
+                            },
+                            "roi_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Roi Id",
+                              "type": "string"
+                            },
+                            "frame_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Frame Id",
+                              "type": "string"
+                            },
+                            "length_unit": {
+                              "enum": [
+                                "m",
+                                "mm",
+                                "um"
+                              ],
+                              "title": "Length Unit",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "union",
+                              "title": "Kind",
+                              "type": "string"
+                            },
+                            "geometry": {
+                              "additionalProperties": false,
+                              "description": "同一父云上的有限 ROI 并集；成员正文位于同组依赖集合。",
+                              "properties": {
+                                "roi_ids": {
+                                  "items": {
+                                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                    "type": "string"
+                                  },
+                                  "maxItems": 8192,
+                                  "minItems": 1,
+                                  "title": "Roi Ids",
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "roi_ids"
+                              ],
+                              "title": "UnionGeometry",
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "roi_id",
+                            "frame_id",
+                            "length_unit",
+                            "kind",
+                            "geometry"
+                          ],
+                          "title": "UnionRoi",
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 8191,
+                    "title": "Bounds",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "roi"
+                ],
+                "title": "ParameterRoiSource",
+                "type": "object"
+              }
+            ],
+            "title": "Support"
           }
         },
         "required": [
@@ -79985,7 +81251,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -80344,7 +81610,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -80401,7 +81667,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -80808,7 +82074,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -80880,7 +82146,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -81018,7 +82284,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -81139,7 +82405,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -81367,7 +82633,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -81766,7 +83032,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -82009,7 +83275,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -82211,7 +83477,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     },
     {
@@ -82410,7 +83676,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.34",
+      "node_pack_version": "0.1.36",
       "metadata": {}
     }
   ],

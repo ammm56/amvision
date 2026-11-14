@@ -3,12 +3,14 @@
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightNodeParameters,
+)
+from custom_nodes.metrology3d_nodes.shared.step_node_parameters import (
     StepNodeParameters,
 )
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes.metrology3d_nodes.shared.height_query import height_query
-from custom_nodes.metrology3d_nodes.shared.measure_step import measure_step
+from custom_nodes.metrology3d_nodes.shared.measure_step_node import measure_step_node
 from custom_nodes.metrology3d_nodes.shared.node_runtime import (
     cloud_input,
     require_node_runtime,
@@ -64,7 +66,7 @@ def step(request):
         else None
         for name in ("reference", "target")
     }
-    evidence = measure_step(
+    evidence = measure_step_node(
         env.runtime,
         p.settings,
         groups=_groups(request),

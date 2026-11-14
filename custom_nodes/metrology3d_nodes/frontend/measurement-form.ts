@@ -18,12 +18,32 @@ export function newMeasurementMode(statistic=false):Form {
   const quality_policy = {policy_id:'',policy_version:null,rules:measurementMetrics(statistic,'').map(normalizeLimitRule)}
   return statistic?{kind:'roi-statistic',origin:[null,null,null],direction:[null,null,null],statistic:{kind:'mean'},quality_policy}:{kind:'directional-planes',reference_feature_id:'',target_feature_id:'',query:newMeasurementQuery(),support_radius:null,reference_policy:{kind:'measured-support'},quality_policy}
 }
+export function newReferenceMeasurement():Form {
+  const {kind:_,target_feature_id:__,query:___,...row}=newMeasurementMode()
+  return {item_id:'',...row}
+}
+export function expandedStepMeasurements(value:unknown):Form[] {
+  const p=object(value),m=object(p.mode)
+  if(m.kind!=='directional-references')return [p]
+  return (Array.isArray(m.items)?m.items:[]).map(value=>{
+    const {item_id,...row}=object(value)
+    return {item_id,frame_id:p.frame_id,length_unit:p.length_unit,mode:{...row,kind:'directional-planes',target_feature_id:m.target_feature_id,query:m.query}}
+  })
+}
 export function newMeasurement(height:boolean):Form {
   const {kind:_,target_feature_id:__,...directional}=newMeasurementMode()
   return {item_id:'',frame_id:'',length_unit:null,...(height?{...directional,search_radius:null,search_interval:[null,null],plane_fit:newSettings(true)}:{mode:newMeasurementMode()})}
 }
 export function measurementIssues(height:boolean, value:unknown):string[] {
   const p=object(value),s=height?p:object(p.mode),stat=s.kind==='roi-statistic',issues:string[]=[]
+  if(!height&&s.kind==='directional-references'){
+    const rows=expandedStepMeasurements(p),ids=rows.map(r=>r.item_id)
+    if(!rows.length||rows.length>8192||new Set(ids).size!==ids.length)issues.push('items / unique IDs')
+    if(Object.keys(p).some(k=>!['frame_id','length_unit','mode'].includes(k))||Object.keys(s).some(k=>!['kind','target_feature_id','query','items'].includes(k)))issues.push('mode / fields')
+    if(Array.isArray(s.items)&&s.items.some(row=>Object.keys(object(row)).some(k=>!['item_id','reference_feature_id','support_radius','reference_policy','quality_policy'].includes(k))))issues.push('items / fields')
+    for(const [index,row] of rows.entries())issues.push(...measurementIssues(false,row).map(issue=>`${index+1}: ${issue}`))
+    return issues
+  }
   if(!id(p.item_id)||!id(p.frame_id)||!['m','mm','um'].includes(String(p.length_unit)))issues.push('item_id / frame_id / length_unit')
   if(!height&&!['directional-planes','roi-statistic'].includes(String(s.kind)))issues.push('mode')
   if(stat){
@@ -72,10 +92,15 @@ export function measurementPolicyIssues(value:unknown,metrics:{item_id:string;un
 }
 export const measurementNumericItems:NumericItemProvider=source=>{
   const p=object(source.parameters.settings)
+  if(object(p.mode).kind==='directional-references'){
+    const rows=expandedStepMeasurements(p)
+    return rows.length&&new Set(rows.map(r=>r.item_id)).size===rows.length&&rows.every(r=>id(r.item_id))&&['m','mm','um'].includes(String(p.length_unit))?rows.map(r=>({item_id:String(r.item_id),unit:String(p.length_unit)})):null
+  }
   return id(p.item_id)&&['m','mm','um'].includes(String(p.length_unit))?[{item_id:String(p.item_id),unit:String(p.length_unit)}]:null
 }
 export const measurementRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const height=node.node_type_id.endsWith('height-query'),p=object(node.parameters.settings),s=height?p:object(p.mode),stat=s.kind==='roi-statistic'
+  if(!height&&s.kind==='directional-references')return [...new Set([...measurementIssues(false,p),...expandedStepMeasurements(p).flatMap(settings=>measurementRecipeValidator({...node,parameters:{...node.parameters,settings}},sources,zh))])]
   const issues=measurementIssues(height,p)
   const query=object(s.query),poses=sources.pose??[]
   if(stat||query.kind==='configured'){

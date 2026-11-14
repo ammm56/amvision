@@ -20,10 +20,12 @@ import RasterSettingsEditor from '../../../../../../custom_nodes/metrology3d_nod
 import ProfileSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/ProfileSettingsEditor.vue'
 import HeightMapSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/HeightMapSettingsEditor.vue'
 import CloudFileSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/CloudFileSettingsEditor.vue'
+import PlaneSupportEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/PlaneSupportEditor.vue'
 
 const editors: Record<string, Component> = { 'core.rule.check-limits:rules':WorkflowLimitRulesEditor, 'custom.connector.pin-array-locate:layout': PinLayoutEditor, 'custom.connector.measure:items': MeasurementEditor,
   'custom.opencv.planar-calibrate:control_points':WorkflowCalibrationPointsEditor, 'custom.opencv.planar-calibrate:validation_points':WorkflowCalibrationPointsEditor }
 export function trustedParameterEditor(nodeType: string, parameter: string): Component | undefined {
+  if(nodeType==='custom.metrology3d.fit-plane'&&parameter==='support')return PlaneSupportEditor
   if(nodeType==='custom.metrology3d.read-cloud'&&parameter==='file_options')return CloudFileSettingsEditor
   if(nodeType==='custom.metrology3d.measure-deviation'&&parameter==='settings')return DeviationSettingsEditor
   if(nodeType==='custom.metrology3d.measure-relation'&&parameter==='settings')return RelationSettingsEditor

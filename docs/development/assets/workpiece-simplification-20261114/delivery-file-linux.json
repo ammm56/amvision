@@ -1,0 +1,13 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input": "file",
+  "view": "numeric",
+  "version": "workflow-app-version-31484eaa08c144f994552b23d5637c69",
+  "item_count": 50,
+  "state": "ok",
+  "saved_matches_reply": true,
+  "measurements_match_f4": true,
+  "resources_reclaimed": true,
+  "stopped": true,
+  "elapsed_with_transfer_and_display_seconds": 23.444023371004732
+}

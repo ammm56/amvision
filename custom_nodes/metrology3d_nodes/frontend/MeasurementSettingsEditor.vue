@@ -1,14 +1,15 @@
 <template>
-  <button class="geometry-open" :disabled="disabled" @click="show">{{ title }} · {{ object(modelValue).item_id || '-' }}</button>
+  <button class="geometry-open" :disabled="disabled" @click="show">{{ title }} · {{ object(modelValue).item_id || (object(object(modelValue).mode).kind==='directional-references'?(zh?'同线多基准':'Multiple datums'):'-') }}</button>
   <Teleport to="body"><ConfirmDialog v-if="open" class="measurement-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="zh?'应用':'Apply'" :cancel-label="zh?'取消':'Cancel'" :confirm-disabled="!!issues.length||disabled" @confirm="apply" @cancel="open=false">
     <MetrologyWorkspace>
       <template #parameters>
       <section class="measurement-config">
-        <label v-if="!height">{{ zh?'测量定义':'Measurement' }}<select :value="settings.kind" @change="changeMode(($event.target as HTMLSelectElement).value)"><option value="directional-planes">{{ zh?'两平面方向距离':'Directional plane distance' }}</option><option value="roi-statistic">{{ zh?'两区域统计差':'ROI statistic difference' }}</option></select></label>
+        <label v-if="!height">{{ zh?'测量定义':'Measurement' }}<select :value="settings.kind" @change="changeMode(($event.target as HTMLSelectElement).value)"><option value="directional-planes">{{ zh?'两平面方向距离':'Directional plane distance' }}</option><option value="directional-references">{{ zh?'同线多基准距离':'Same-line multiple datums' }}</option><option value="roi-statistic">{{ zh?'两区域统计差':'ROI statistic difference' }}</option></select></label>
         <GeometryFields v-model="draft" :fields="identityFields" />
         <label v-if="!statistic">{{ zh?'查询来源':'Query source' }}<select :value="query.kind" @change="changeQuery(($event.target as HTMLSelectElement).value)"><option value="configured">{{ zh?'配置位置和方向':'Configured position and direction' }}</option><option value="pose-uv">{{ zh?'本次基准坐标 U/V':'Current datum U/V' }}</option></select></label>
         <GeometryFields :model-value="settings" :fields="fields" :suggestions="suggestions" @update:model-value="setSettings" />
-        <template v-if="!statistic">
+        <ReferenceMeasurementRows v-if="multiple" :model-value="settings.items" :unit="String(draft.length_unit??'')" :suggestions="suggestions" @update:model-value="setSettings({...settings,items:$event})" />
+        <template v-if="!statistic&&!multiple">
           <label>{{ zh?'基准支持':'Datum support' }}<select :value="object(settings.reference_policy).kind" @change="changeReference(($event.target as HTMLSelectElement).value)"><option value="measured-support">{{ zh?'基准处需实测支持':'Measured support required' }}</option><option value="plane-extension">{{ zh?'基准平面有限延伸':'Bounded datum plane extension' }}</option></select></label>
           <GeometryFields v-if="object(settings.reference_policy).kind==='plane-extension'" :model-value="settings" :fields="extensionFields" @update:model-value="setSettings" />
         </template>
@@ -26,7 +27,7 @@
       </section>
       </template>
       <template #advanced>
-      <details class="measurement-quality"><summary>{{ zh?'测量质量':'Measurement quality' }}</summary>
+      <details v-if="!multiple" class="measurement-quality"><summary>{{ zh?'测量质量':'Measurement quality' }}</summary>
         <GeometryFields :model-value="settings" :fields="qualityFields" @update:model-value="setSettings" />
         <WorkflowLimitRulesEditor :model-value="object(settings.quality_policy).rules" quality @update:model-value="setSettings(put(settings,'quality_policy.rules',$event))" />
       </details>
@@ -48,8 +49,9 @@ import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/Wor
 import {parameterCloudPreviewsKey,parameterPreviewStateKey,type ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
 import GeometryFields from './GeometryFields.vue'
 import GeometrySettingsForm from './GeometrySettingsForm.vue'
+import ReferenceMeasurementRows from './ReferenceMeasurementRows.vue'
 import {object,copy,put,vector,type Form,type Field} from './form'
-import {newMeasurement,newMeasurementMode,newMeasurementQuery,measurementIssues,quantileMethods} from './measurement-form'
+import {newMeasurement,newMeasurementMode,newMeasurementQuery,newReferenceMeasurement,measurementIssues,quantileMethods} from './measurement-form'
 import {candidateUV} from './pose-pick'
 defineOptions({inheritAttrs:false})
 const props=defineProps<{modelValue:unknown;nodeType:string;disabled?:boolean;inputSources?:ParameterEditorSources;draftIssues?:(value:unknown)=>string[]}>()
@@ -63,17 +65,18 @@ const initial=ref(''),changed=computed(()=>JSON.stringify(draft.value)!==initial
 const resolve=inject(parameterCloudPreviewsKey,()=>[]),state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))
 const previews=computed(()=>state().succeeded?resolve():[]),preview=computed(()=>previews.value.find(p=>p.id===previewId.value))
 const settings=computed(()=>height.value?draft.value:object(draft.value.mode)),statistic=computed(()=>settings.value.kind==='roi-statistic')
+const multiple=computed(()=>!height.value&&settings.value.kind==='directional-references')
 const query=computed(()=>object(settings.value.query))
 const previewFrame=computed(()=>object(object(preview.value?.payload.geometry).frame))
 const issues=computed(()=>measurementIssues(height.value,draft.value)),referenceIssues=computed(()=>open.value?props.draftIssues?.(draft.value)??[]:[])
 const canPick=computed(()=>!statistic.value&&!!preview.value&&draft.value.frame_id===object(preview.value.payload.spatial).frame_id&&draft.value.length_unit===object(preview.value.payload.spatial).length_unit&&(query.value.kind==='configured'||previewFrame.value.state==='found'&&previewFrame.value.pose_id===query.value.pose_id&&previewFrame.value.target_frame_id===query.value.target_frame_id))
-const identityFields=computed<Field[]>(()=>[{path:'item_id',label:label('测量项 ID','Measurement ID')},{path:'frame_id',label:label('坐标系 ID','Frame ID')},{path:'length_unit',label:label('长度单位','Length unit'),type:'select',options:['m','mm','um']}])
+const identityFields=computed<Field[]>(()=>[...(!multiple.value?[{path:'item_id',label:label('测量项 ID','Measurement ID')}]:[]),{path:'frame_id',label:label('坐标系 ID','Frame ID')},{path:'length_unit',label:label('长度单位','Length unit'),type:'select',options:['m','mm','um']}])
 const fields=computed<Field[]>(()=>[
-  ...(statistic.value?[]:[{path:'reference_feature_id',label:label('基准平面 ID','Reference plane ID')},...(!height.value?[{path:'target_feature_id',label:label('目标平面 ID','Target plane ID')}]:[])]),
+  ...(statistic.value?[]:[...(!multiple.value?[{path:'reference_feature_id',label:label('基准平面 ID','Reference plane ID')}]:[]),...(!height.value?[{path:'target_feature_id',label:label('目标平面 ID','Target plane ID')}]:[])]),
   ...(statistic.value?[{path:'origin',label:label('投影原点 XYZ','Projection origin XYZ'),type:'vector',unit:String(draft.value.length_unit??'')},{path:'direction',label:label('测量方向（单位向量）','Measurement unit direction'),type:'vector'}] as Field[]:query.value.kind==='pose-uv'?[
     {path:'query.pose_id',label:label('位姿 ID','Pose ID')},{path:'query.target_frame_id',label:label('基准坐标系 ID','Datum frame ID')},{path:'query.uv',label:`U / V (${draft.value.length_unit??'-'})`,type:'pair',components:['U','V']},
   ] as Field[]:[{path:'query.query_position',label:label('查询位置 XYZ','Query position XYZ'),type:'vector',unit:String(draft.value.length_unit??'')},{path:'query.direction',label:label('测量方向（单位向量）','Measurement unit direction'),type:'vector'}] as Field[]),
-  ...(statistic.value?[]:[{path:'support_radius',label:label('支持搜索半径','Support radius'),unit:String(draft.value.length_unit??''),type:'number'} as Field]),
+  ...(statistic.value||multiple.value?[]:[{path:'support_radius',label:label('支持搜索半径','Support radius'),unit:String(draft.value.length_unit??''),type:'number'} as Field]),
 ])
 const searchFields=computed<Field[]>(()=>[{path:'search_radius',label:label('目标搜索半径','Target search radius'),unit:String(draft.value.length_unit??''),type:'number'},{path:'search_interval',label:label('轴向搜索区间（起 / 止）','Axial interval (start / end)'),unit:String(draft.value.length_unit??''),type:'pair',components:[label('起','Start'),label('止','End')]}])
 const quantileFields=computed<Field[]>(()=>[{path:'statistic.probability',label:label('分位概率','Quantile probability'),type:'number'},{path:'statistic.method',label:label('分位方法','Quantile method'),type:'select',options:quantileMethods}])
@@ -82,7 +85,7 @@ const extensionFields=computed<Field[]>(()=>[{path:'reference_policy.max_extensi
 const suggestions=computed(()=>{const ids=(props.inputSources?.features??[]).map(s=>object(s.nodeTypeId.endsWith('height-query')?object(s.parameters.settings).plane_fit:s.parameters.settings).feature_id).filter((v):v is string=>typeof v==='string');const poses=(props.inputSources?.pose??[]).map(s=>object(s.parameters.settings));return {reference_feature_id:ids,target_feature_id:ids,'query.pose_id':poses.map(p=>String(p.pose_id??'')).filter(Boolean),'query.target_frame_id':poses.map(p=>String(p.target_frame_id??'')).filter(Boolean)}})
 function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newMeasurement(height.value);initial.value=JSON.stringify(draft.value);previewId.value='';candidate.value=null;open.value=true}
 function setSettings(value:Form){draft.value=height.value?value:{...draft.value,mode:value}}
-function changeMode(kind:string){draft.value={...draft.value,mode:newMeasurementMode(kind==='roi-statistic')};candidate.value=null}
+function changeMode(kind:string){const {item_id,...common}=draft.value;draft.value=kind==='directional-references'?{...common,mode:{kind,target_feature_id:'',query:newMeasurementQuery(),items:[newReferenceMeasurement()]}}:{...common,item_id:item_id??'',mode:newMeasurementMode(kind==='roi-statistic')};candidate.value=null}
 function changeQuery(kind:string){setSettings({...settings.value,query:newMeasurementQuery(kind)});candidate.value=null}
 function changeStatistic(kind:string){setSettings({...settings.value,statistic:kind==='quantile'?{kind,probability:null,method:null}:{kind}})}
 function changeReference(kind:string){setSettings({...settings.value,reference_policy:kind==='plane-extension'?{kind,max_extension_distance:null}:{kind:'measured-support'}})}
