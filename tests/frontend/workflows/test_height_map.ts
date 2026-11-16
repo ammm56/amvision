@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,beforeEach,expect,it,vi} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -40,8 +41,8 @@ it('applies only valid parameters, removes conflicting frame keys and drops stal
   const w=mount(HeightMapSettingsEditor,{props:{modelValue:valid(),nodeType:'custom.metrology3d.cloud-to-height-map'},attachTo:document.body,global:{plugins:plugins()}})
   try{
     await w.get('button').trigger('click');await flushPromises();button('Apply').click();await flushPromises();expect(w.emitted('update:modelValue')?.[0]?.[0]).toEqual(valid())
-    await w.get('button').trigger('click');await flushPromises();const source=document.querySelector<HTMLSelectElement>('[aria-label="Coordinate source"]')!;source.value='pose-frame';source.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises();expect(button('Apply').disabled).toBe(true)
-    source.value='current-frame';source.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises();expect(button('Apply').disabled).toBe(true)
+    await w.get('button').trigger('click');await flushPromises();await chooseSelect(selectWithOption(w,'pose-frame'),'pose-frame');expect(button('Apply').disabled).toBe(true)
+    await chooseSelect(selectWithOption(w,'current-frame'),'current-frame');expect(button('Apply').disabled).toBe(true)
     button('Cancel').click();await flushPromises();expect(w.emitted('update:modelValue')).toHaveLength(1)
     await w.get('button').trigger('click');await flushPromises();await w.setProps({inputSources:{cloud:[]}});expect(document.querySelector('[role=dialog]')).toBeNull()
     await w.get('button').trigger('click');await flushPromises();await w.setProps({disabled:true});expect(document.querySelector('[role=dialog]')).toBeNull()

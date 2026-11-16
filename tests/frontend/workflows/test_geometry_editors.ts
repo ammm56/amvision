@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -27,7 +28,7 @@ it('requires explicit preview selection and clears it on run invalidation',async
   const state=ref({runId:'one',succeeded:true}),views=ref([{id:'v',label:'Cloud',projectId:'p',payload:{state:'ready'}}])
   const w=mount(RoiEditor,{props:{modelValue:source()},attachTo:document.body,global:{plugins:[plugin()],provide:{[parameterCloudPreviewsKey as symbol]:()=>views.value,[parameterPreviewStateKey as symbol]:()=>state.value}}})
   await w.get('button').trigger('click');await flushPromises();expect(document.querySelector('[data-test=cloud]')).toBeNull()
-  const select=[...document.querySelectorAll('select')].find(e=>e.textContent?.includes('Cloud'))!;select.value='v';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises();expect(document.querySelector('[data-test=cloud]')).not.toBeNull()
+  await chooseSelect(selectWithOption(w,'v'),'v');expect(document.querySelector('[data-test=cloud]')).not.toBeNull()
   state.value={runId:'two',succeeded:false};await flushPromises();expect(document.querySelector('[data-test=cloud]')).toBeNull();w.unmount();expect(document.querySelector('[role=dialog]')).toBeNull()
 })
 it('does not invent geometric quality thresholds or accept degenerate ROI recipes',()=>{
@@ -39,7 +40,7 @@ it('does not invent geometric quality thresholds or accept degenerate ROI recipe
 })
 it('changes RANSAC and frame modes without preserving inactive fields or filling thresholds',async()=>{
   const w=mount(GeometrySettingsEditor,{props:{modelValue:null,nodeType:'custom.metrology3d.fit-plane'},attachTo:document.body,global:{plugins:[plugin()]}})
-  await w.get('button').trigger('click');await flushPromises();const select=document.querySelector('select')!;select.value='ransac-svd';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await w.get('button').trigger('click');await flushPromises();await chooseSelect(selectWithOption(w,'ransac-svd'),'ransac-svd')
   expect(document.querySelector<HTMLInputElement>('input[aria-label="Inlier distance (cloud unit)"]')!.value).toBe('');expect(buttons('Apply').disabled).toBe(true)
   await w.setProps({nodeType:'custom.metrology3d.build-frame'});expect(document.querySelector('[role=dialog]')).toBeNull();w.unmount()
 })

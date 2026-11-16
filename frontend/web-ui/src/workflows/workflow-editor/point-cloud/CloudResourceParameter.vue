@@ -1,14 +1,12 @@
 <template>
   <div class="cloud-parameter" :style="{ height: `${cloudResourceFieldHeight(schema)}px` }">
-    <label>{{ t('source') }}<select :value="kind" :disabled="disabled" @change="changeMode(($event.target as HTMLSelectElement).value)">
-      <option value="" disabled>{{ t('selectSource') }}</option>
-      <option :value="liveKind">{{ t(liveKind) }}</option><option :value="assetKind">{{ t(assetKind) }}</option>
-    </select></label>
+    <label>{{ t('source') }}<UiSelect :model-value="kind" :disabled="disabled" @change="changeMode(String($event))" :options="[...[{ value: '', label: String(t('selectSource')), disabled: true }], ...[{ value: liveKind, label: String(t(liveKind)), disabled: false }], ...[{ value: assetKind, label: String(t(assetKind)), disabled: false }]]" floating /></label>
     <label v-if="target && kind">{{ t('name') }}<input :value="name" maxlength="128" :disabled="disabled" @input="changeName(($event.target as HTMLInputElement).value)"></label>
     <CloudResourcePicker v-if="kind === assetKind" ref="picker" :model-value="reference" :disabled="disabled" @update:model-value="choose" @cancel="resetMode" />
   </div>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import CloudResourcePicker from './CloudResourcePicker.vue'

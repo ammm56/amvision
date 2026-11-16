@@ -1,10 +1,10 @@
 <template><section class="roi-config">
-      <div class="geometry-toolbar"><label v-if="allowInput !== false">{{ zh?'ROI 来源':'ROI source' }}<select :value="draft.kind" @change="changeSource(($event.target as HTMLSelectElement).value)"><option value="parameters">{{ zh?'节点参数':'Node parameters' }}</option><option value="input">{{ zh?'输入端口':'Input port' }}</option></select></label>
-        <label>{{ zh?'编辑对象':'Edit ROI' }}<select v-model="selected"><option v-if="draft.kind==='parameters'" value="target">{{ zh?'目标 ROI':'Target ROI' }}</option><option v-for="(roi,i) in bounds" :key="i" :value="String(i)">{{ String(roi.roi_id||`#${i+1}`) }}</option></select></label>
+      <div class="geometry-toolbar"><label v-if="allowInput !== false">{{ zh?'ROI 来源':'ROI source' }}<UiSelect :model-value="draft.kind" @change="changeSource(String($event))" :options="[...[{ value: 'parameters', label: String(zh?'节点参数':'Node parameters'), disabled: false }], ...[{ value: 'input', label: String(zh?'输入端口':'Input port'), disabled: false }]]" floating /></label>
+        <label>{{ zh?'编辑对象':'Edit ROI' }}<UiSelect v-model="selected" :options="[...(draft.kind==='parameters' ? [{ value: 'target', label: String(zh?'目标 ROI':'Target ROI'), disabled: false }] : []), ...(bounds ?? []).flatMap((roi,i) => [{ value: String(i), label: String(String(roi.roi_id||`#${i+1}`)), disabled: false }])]" floating /></label>
         <RoiVisibilityButton v-if="current" :roi-id="String(current.roi_id??'')" :state="visibility.state(String(current.roi_id??''))" :disabled="!canView" @toggle="visibility.toggle(String(current.roi_id))" />
         <button :title="zh?'添加有限边界':'Add finite bound'" @click="add"><Plus :size="18" /></button><button :title="referencedBy.length?(zh?'被引用：':'Referenced by: ')+referencedBy.join(', '):(zh?'删除边界':'Remove bound')" :disabled="selected==='target'||!current||!!referencedBy.length" @click="remove"><Trash2 :size="18" /></button>
       </div>
-      <template v-if="current"><label>{{ zh?'几何类型':'Geometry' }}<select :value="current.kind" @change="changeKind(($event.target as HTMLSelectElement).value)"><option value="box">{{ zh?'有向盒':'Oriented box' }}</option><option value="cylinder">{{ zh?'有限圆柱':'Finite cylinder' }}</option><option value="section-band">{{ zh?'有限截面带':'Bounded section' }}</option><option value="union">{{ zh?'并集':'Union' }}</option></select></label>
+      <template v-if="current"><label>{{ zh?'几何类型':'Geometry' }}<UiSelect :model-value="current.kind" @change="changeKind(String($event))" :options="[...[{ value: 'box', label: String(zh?'有向盒':'Oriented box'), disabled: false }], ...[{ value: 'cylinder', label: String(zh?'有限圆柱':'Finite cylinder'), disabled: false }], ...[{ value: 'section-band', label: String(zh?'有限截面带':'Bounded section'), disabled: false }], ...[{ value: 'union', label: String(zh?'并集':'Union'), disabled: false }]]" floating /></label>
         <GeometryFields :model-value="current" :fields="fields" @update:model-value="setCurrent" />
         <fieldset v-if="current.kind==='union'" class="roi-members"><legend>{{ zh?'成员 ROI':'Member ROIs' }}</legend>
           <div v-for="id in memberOptions" :key="id" class="roi-member"><label><input type="checkbox" :value="id" :checked="members.includes(id)" @change="toggleMember(id,($event.target as HTMLInputElement).checked)" />{{ id }}<span v-if="!rois.some(r=>r.roi_id===id)">{{ zh?'（缺失）':' (missing)' }}</span></label><RoiVisibilityButton :roi-id="id" :state="visibility.state(id)" :disabled="!canView||!validRois.some(r=>r.roi_id===id)" @toggle="visibility.toggle(id)" /></div>
@@ -13,6 +13,7 @@
 
 </section></template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Plus,Trash2} from '@lucide/vue'

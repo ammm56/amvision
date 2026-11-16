@@ -1,12 +1,13 @@
 <template>
   <fieldset class="boundary-selection">
     <legend>{{ zh?'支持选择':'Support selection' }}</legend>
-    <label>{{ zh?'选择方式':'Selection mode' }}<select :value="mode" @change="setMode(($event.target as HTMLSelectElement).value)"><option value="segment_ids">{{ zh?'明确段':'Explicit segments' }}</option><option v-if="!segmentsOnly" value="group_ids">{{ zh?'目标片段组':'Target fragment groups' }}</option></select></label>
+    <label>{{ zh?'选择方式':'Selection mode' }}<UiSelect :model-value="mode" @change="setMode(String($event))" :options="[...[{ value: 'segment_ids', label: String(zh?'明确段':'Explicit segments'), disabled: false }], ...(!segmentsOnly ? [{ value: 'group_ids', label: String(zh?'目标片段组':'Target fragment groups'), disabled: false }] : [])]" floating /></label>
     <label v-for="id in choices" :key="id"><input type="checkbox" :checked="selected.includes(id)" @change="toggle(id,($event.target as HTMLInputElement).checked)">{{ id }}</label>
     <template v-if="!choices.length"><div v-for="(id,index) in selected" :key="index" class="row"><input :aria-label="zh?'支持 ID':'Support ID'" :value="id" @input="setId(index,($event.target as HTMLInputElement).value)"><button type="button" :title="zh?'删除':'Remove'" @click="publish(selected.filter((_,i)=>i!==index))"><Trash2 :size="16" /></button></div><button type="button" :title="zh?'添加支持':'Add support'" @click="publish([...selected,''])"><Plus :size="16" /></button></template>
   </fieldset>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Plus,Trash2} from '@lucide/vue'

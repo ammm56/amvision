@@ -3,7 +3,7 @@
   <Teleport to="body"><ConfirmDialog v-if="open" class="geometry-dialog" :title="zh?'平面拟合':'Plane fit'" size="wide" scroll-body :confirm-label="zh?'应用':'Apply'" :cancel-label="zh?'取消':'Cancel'" confirm-variant="primary" :confirm-disabled="disabled||issues.length>0||!batch" @confirm="apply" @cancel="open=false">
     <MetrologyWorkspace>
       <template #parameters>
-        <label>{{ zh?'拟面支持范围':'Fitting support' }}<select :value="support.kind" @change="changeMode(($event.target as HTMLSelectElement).value)"><option value="cloud">{{ zh?'完整输入点云':'Entire input cloud' }}</option><option value="parameters">{{ zh?'显式 ROI':'Explicit ROI' }}</option></select></label>
+        <label>{{ zh?'拟面支持范围':'Fitting support' }}<UiSelect :model-value="support.kind" @change="changeMode(String($event))" :options="[...[{ value: 'cloud', label: String(zh?'完整输入点云':'Entire input cloud'), disabled: false }], ...[{ value: 'parameters', label: String(zh?'显式 ROI':'Explicit ROI'), disabled: false }]]" floating /></label>
         <RoiForm v-if="support.kind==='parameters'" ref="form" v-model="support" :allow-input="false" :can-view="matching" :visibility-scope="scope" @view="roiView=$event" @visibility="hidden=$event" />
         <GeometrySettingsForm v-model="settings" plane :input-sources="inputSources" />
       </template>
@@ -18,6 +18,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,defineAsyncComponent,inject,nextTick,onBeforeUnmount,ref,shallowRef,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Play} from '@lucide/vue'

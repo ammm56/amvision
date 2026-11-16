@@ -1,3 +1,4 @@
+import { chooseLabel } from './select-control'
 import graph from '../../../docs/examples/workflows/lithium_workpiece.template.json'
 import {afterEach,expect,it} from 'vitest'
 import {flushPromises,mount,type VueWrapper} from '@vue/test-utils'
@@ -15,8 +16,11 @@ function editor(value:unknown=existing,locale='en-US'){
 }
 const button=(name:string)=>[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()===name)!
 async function change(label:string,value:string){
-  const field=[...document.querySelectorAll('label')].find(l=>l.firstChild?.textContent?.trim()===label)!.querySelector('input,select') as HTMLInputElement|HTMLSelectElement
-  field.value=value;field.dispatchEvent(new Event(field.tagName==='SELECT'?'change':'input',{bubbles:true}));await flushPromises()
+  const container=[...document.querySelectorAll('label')].find(l=>l.firstChild?.textContent?.trim()===label)!
+  const trigger=container.querySelector('.ui-select__button')
+  if(trigger){await chooseLabel(trigger,({'':'Unknown',m:'m',left:'Left-handed','xyzn-whitespace':'XYZN · Positions and normals'} as Record<string,string>)[value]??value);return}
+  const field=container.querySelector('input')!
+  field.value=value;field.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises()
 }
 it('registers only the Read Cloud file options and preserves the full workpiece contract',async()=>{
   expect(trustedParameterEditor('custom.metrology3d.read-cloud','file_options')).toBe(CloudFileSettingsEditor)
@@ -70,8 +74,7 @@ it('requires explicit confirmation before replacing text mappings',async()=>{
   button('Use selected text layout').click();await flushPromises();button('Replace').click();await flushPromises()
   expect(document.querySelectorAll('.mapping-row').length).toBe(2)
   expect(button('Apply').disabled).toBe(true)
-  const dtype=document.querySelectorAll<HTMLSelectElement>('.mapping-row select')[1]!
-  dtype.value='float64';dtype.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await chooseLabel(document.querySelectorAll('.mapping-row .ui-select__button')[1]!,'float64')
   button('Apply').click();await flushPromises()
   const v=w.emitted('update:modelValue')![0]![0] as FileOptions
   expect(v.field_mapping[1]!.source_names).toEqual(['nx','ny','nz']);expect(v.field_mapping[0]!.dtype).toBe('float32')

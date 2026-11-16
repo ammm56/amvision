@@ -6,10 +6,7 @@
       <MetrologyWorkspace>
         <template #parameters>
           <label>{{ label('输入来源', 'Input source') }}
-            <select aria-label="Input source" :value="draft.kind" @change="changeInput">
-              <option value="file">{{ label('NPZ 文件', 'NPZ file') }}</option>
-              <option value="local-array">{{ label('同机标定数组', 'Same-host calibrated array') }}</option>
-            </select>
+            <UiSelect aria-label="Input source" :model-value="draft.kind" @change="changeInput" :options="[...[{ value: 'file', label: String(label('NPZ 文件', 'NPZ file')), disabled: false }], ...[{ value: 'local-array', label: String(label('同机标定数组', 'Same-host calibrated array')), disabled: false }]]" floating />
           </label>
           <dl v-if="draft.kind === 'local-array'"><dt>{{ label('标定来源', 'Calibration source') }}</dt><dd>{{ label('本次载荷', 'Current payload') }}</dd></dl>
           <template v-else>
@@ -18,10 +15,7 @@
             <fieldset><legend>{{ label('标定身份与坐标', 'Calibration and coordinates') }}</legend><GeometryFields v-model="draft" :fields="identityFields" /></fieldset>
             <fieldset><legend>{{ label('采集坐标基', 'Acquisition basis') }}</legend><GeometryFields v-model="draft" :fields="basisFields" /></fieldset>
             <label>{{ label('扫描位移', 'Scan displacement') }}
-              <select aria-label="Scan displacement" :value="displacement.kind" @change="changeMethod">
-                <option value="fixed-step">{{ label('原采集行号固定步距', 'Fixed step by acquisition ID') }}</option>
-                <option value="encoder-positions">{{ label('逐行编码器位置', 'Per-profile encoder positions') }}</option>
-              </select>
+              <UiSelect aria-label="Scan displacement" :model-value="displacement.kind" @change="changeMethod" :options="[...[{ value: 'fixed-step', label: String(label('原采集行号固定步距', 'Fixed step by acquisition ID')), disabled: false }], ...[{ value: 'encoder-positions', label: String(label('逐行编码器位置', 'Per-profile encoder positions')), disabled: false }]]" floating />
             </label>
             <GeometryFields v-model="draft" :fields="methodFields" />
             <p v-if="!profilesValid(draft)" role="status">{{ label('标定参数不完整或无效', 'Calibration parameters are incomplete or invalid') }}</p>
@@ -38,6 +32,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import { computed, defineAsyncComponent, inject, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -67,8 +62,8 @@ const methodFields = computed(() => displacement.value.kind === 'encoder-positio
   ? [field('profiles.displacement.dtype','编码器原值类型','Encoder raw type','select',['float32','float64']),field('profiles.displacement.scale','编码器物理乘数','Encoder physical multiplier','number'),field('profiles.displacement.origin','编码器零位原值','Encoder zero raw value','number')]
   : [field('profiles.displacement.origin_line_id','零位采集行号','Zero-position acquisition ID','number'),field('profiles.displacement.step','物理步距','Physical spacing','number')])
 function show() { draft.value = props.modelValue && typeof props.modelValue === 'object' ? copy(object(props.modelValue)) : newProfileInput(); initial.value = JSON.stringify(draft.value); previewId.value = ''; open.value = true }
-function changeInput(e: Event) { draft.value = newProfileInput((e.target as HTMLSelectElement).value) }
-function changeMethod(e: Event) { draft.value = put(draft.value,'profiles.displacement',newDisplacement((e.target as HTMLSelectElement).value)) }
+function changeInput(e: string | number | boolean | null) { draft.value = newProfileInput(String(e)) }
+function changeMethod(e: string | number | boolean | null) { draft.value = put(draft.value,'profiles.displacement',newDisplacement(String(e))) }
 function apply() { if (!props.disabled && profilesValid(draft.value)) { emit('update:modelValue',copy(draft.value)); open.value = false } }
 watch([() => props.modelValue, () => props.nodeType, () => props.disabled, () => parameterSourceSignature(props.inputSources)], () => { open.value = false; previewId.value = '' })
 watch(() => [state().runId,state().succeeded], () => { previewId.value = '' })

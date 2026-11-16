@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach, expect, it} from 'vitest'
 import {flushPromises, mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -28,9 +29,7 @@ it('separates eye actions from union membership and carries visibility only thro
   expect(w.get('[aria-label="Partly visible; show all · all"]').attributes('aria-pressed')).toBe('mixed')
   expect((w.get('input[value="left"]').element as HTMLInputElement).checked).toBe(true)
   expect(w.emitted('update:modelValue')).toBeUndefined();expect(JSON.stringify(value)).toBe(before)
-  await w.get('select option[value="target"]').element.parentElement!.dispatchEvent(new Event('focus'))
-  const select=w.get('select option[value="target"]').element.parentElement as HTMLSelectElement
-  await change(select,'0')
+  await chooseSelect(selectWithOption(w,'target'),'0')
   await w.get('input[aria-label="ROI ID"]').setValue('renamed')
   expect(w.find('[aria-label="Show region · renamed"]').exists()).toBe(true)
   expect((w.emitted('update:modelValue')!.at(-1)![0] as ReturnType<typeof source>).roi.geometry.roi_ids).toEqual(['renamed','right'])
@@ -66,8 +65,7 @@ it('edits union members atomically, blocks empty sets and preserves cancellation
 it('renames member references together and prevents deleting a referenced member',async()=>{
   const w=mount(RoiEditor,{props:{modelValue:source()},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
   await w.get('button').trigger('click');await flushPromises()
-  const selection=[...document.querySelectorAll('select')].find(s=>s.textContent?.includes('Target ROI'))!
-  await change(selection,'0')
+  await chooseSelect(selectWithOption(w,'target'),'0')
   expect(document.querySelector<HTMLButtonElement>('button[title="Referenced by: all"]')!.disabled).toBe(true)
   await change(document.querySelector<HTMLInputElement>('input[aria-label="ROI ID"]')!,'renamed','input')
   button('Apply').click();await flushPromises()

@@ -4,17 +4,17 @@
     <MetrologyWorkspace>
       <template #parameters>
       <section class="measurement-config">
-        <label v-if="!height">{{ zh?'测量定义':'Measurement' }}<select :value="settings.kind" @change="changeMode(($event.target as HTMLSelectElement).value)"><option value="directional-planes">{{ zh?'两平面方向距离':'Directional plane distance' }}</option><option value="directional-references">{{ zh?'同线多基准距离':'Same-line multiple datums' }}</option><option value="roi-statistic">{{ zh?'两区域统计差':'ROI statistic difference' }}</option></select></label>
+        <label v-if="!height">{{ zh?'测量定义':'Measurement' }}<UiSelect :model-value="settings.kind" @change="changeMode(String($event))" :options="[...[{ value: 'directional-planes', label: String(zh?'两平面方向距离':'Directional plane distance'), disabled: false }], ...[{ value: 'directional-references', label: String(zh?'同线多基准距离':'Same-line multiple datums'), disabled: false }], ...[{ value: 'roi-statistic', label: String(zh?'两区域统计差':'ROI statistic difference'), disabled: false }]]" floating /></label>
         <GeometryFields v-model="draft" :fields="identityFields" />
-        <label v-if="!statistic">{{ zh?'查询来源':'Query source' }}<select :value="query.kind" @change="changeQuery(($event.target as HTMLSelectElement).value)"><option value="configured">{{ zh?'配置位置和方向':'Configured position and direction' }}</option><option value="pose-uv">{{ zh?'本次基准坐标 U/V':'Current datum U/V' }}</option></select></label>
+        <label v-if="!statistic">{{ zh?'查询来源':'Query source' }}<UiSelect :model-value="query.kind" @change="changeQuery(String($event))" :options="[...[{ value: 'configured', label: String(zh?'配置位置和方向':'Configured position and direction'), disabled: false }], ...[{ value: 'pose-uv', label: String(zh?'本次基准坐标 U/V':'Current datum U/V'), disabled: false }]]" floating /></label>
         <GeometryFields :model-value="settings" :fields="fields" :suggestions="suggestions" @update:model-value="setSettings" />
         <ReferenceMeasurementRows v-if="multiple" :model-value="settings.items" :unit="String(draft.length_unit??'')" :suggestions="suggestions" @update:model-value="setSettings({...settings,items:$event})" />
         <template v-if="!statistic&&!multiple">
-          <label>{{ zh?'基准支持':'Datum support' }}<select :value="object(settings.reference_policy).kind" @change="changeReference(($event.target as HTMLSelectElement).value)"><option value="measured-support">{{ zh?'基准处需实测支持':'Measured support required' }}</option><option value="plane-extension">{{ zh?'基准平面有限延伸':'Bounded datum plane extension' }}</option></select></label>
+          <label>{{ zh?'基准支持':'Datum support' }}<UiSelect :model-value="object(settings.reference_policy).kind" @change="changeReference(String($event))" :options="[...[{ value: 'measured-support', label: String(zh?'基准处需实测支持':'Measured support required'), disabled: false }], ...[{ value: 'plane-extension', label: String(zh?'基准平面有限延伸':'Bounded datum plane extension'), disabled: false }]]" floating /></label>
           <GeometryFields v-if="object(settings.reference_policy).kind==='plane-extension'" :model-value="settings" :fields="extensionFields" @update:model-value="setSettings" />
         </template>
         <template v-if="height"><GeometryFields v-model="draft" :fields="searchFields" /><details><summary>{{ zh?'目标局部平面':'Target local plane' }}</summary><GeometrySettingsForm :model-value="object(draft.plane_fit)" :plane="true" @update:model-value="draft=put(draft,'plane_fit',$event)" /></details></template>
-        <label v-if="statistic">{{ zh?'统计量':'Statistic' }}<select :value="object(settings.statistic).kind" @change="changeStatistic(($event.target as HTMLSelectElement).value)"><option value="mean">{{ zh?'均值':'Mean' }}</option><option value="median">{{ zh?'中位数':'Median' }}</option><option value="quantile">{{ zh?'分位数':'Quantile' }}</option></select></label>
+        <label v-if="statistic">{{ zh?'统计量':'Statistic' }}<UiSelect :model-value="object(settings.statistic).kind" @change="changeStatistic(String($event))" :options="[...[{ value: 'mean', label: String(zh?'均值':'Mean'), disabled: false }], ...[{ value: 'median', label: String(zh?'中位数':'Median'), disabled: false }], ...[{ value: 'quantile', label: String(zh?'分位数':'Quantile'), disabled: false }]]" floating /></label>
         <GeometryFields v-if="statistic&&object(settings.statistic).kind==='quantile'" :model-value="settings" :fields="quantileFields" @update:model-value="setSettings" />
         <p v-if="candidate" role="status">{{ zh?'候选位置':'Candidate position' }}: {{ candidate.join(', ') }}</p>
       </section>
@@ -40,6 +40,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'

@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -30,7 +31,7 @@ it('applies one settings object and discards drafts on cancel, source switch and
     await w.get('button').trigger('click');await flushPromises();expect(button('Apply').disabled).toBe(false)
     button('Apply').click();await flushPromises();expect(w.emitted('update:modelValue')![0]![0]).toEqual(valid())
     await w.get('button').trigger('click');await flushPromises()
-    const n=document.querySelector('select')!;n.value='radius';n.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises();expect(button('Apply').disabled).toBe(true)
+    await chooseSelect(selectWithOption(w,'radius'),'radius');expect(button('Apply').disabled).toBe(true)
     button('Cancel').click();await flushPromises();expect(w.emitted('update:modelValue')).toHaveLength(1)
     await w.get('button').trigger('click');await flushPromises()
     await w.setProps({inputSources:{cloud:[]}});expect(document.querySelector('[role=dialog]')).toBeNull()

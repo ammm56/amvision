@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
@@ -179,8 +180,8 @@ it.skipIf(!env.AMVISION_I2_DISPLAY)('switches complete captured evidence through
     await vi.waitFor(()=>expect(mocks.create).toHaveBeenCalledOnce(),{timeout:30000})
     await flushPromises()
     await w.findAll('[role=tab]').find(t=>t.text()==='Extraction debug')!.trigger('click')
-    const select=w.get('.debug-summary select'),options=select.findAll('option')
-    for(const option of options){await select.setValue(option.attributes('value'));await flushPromises()}
+    const select=selectWithOption(w,'A_top_L'),options=select.props('options')
+    for(const option of options){await chooseSelect(select,option.value)}
     await w.setProps({presentation:'hidden'});await w.setProps({presentation:'view'});await flushPromises()
     expect(mocks.decode).toHaveBeenCalledOnce();expect(mocks.debug).toHaveBeenCalledOnce();expect(mocks.create).toHaveBeenCalledOnce()
   }finally{w.unmount()}
@@ -216,10 +217,10 @@ it('selects another captured evidence through the rendered selector without deco
     await flushPromises()
     expect(mocks.capabilities.mock.calls.map(c=>c[0])).toEqual(['evidence-test'])
     expect(mocks.debug).toHaveBeenCalledOnce();expect(mocks.create).toHaveBeenCalledOnce()
-    await w.get('.debug-summary select').setValue('A_top_L');await flushPromises()
+    await chooseSelect(selectWithOption(w,'A_top_L'),'A_top_L')
     expect(scene.geometry.mock.lastCall![0].debug).toBe(records[1])
     await w.setProps({presentation:'view'});await w.setProps({presentation:'evidence'});await flushPromises()
-    expect((w.get('.debug-summary select').element as HTMLSelectElement).value).toBe('A_top_L')
+    expect(selectWithOption(w,'A_top_L').props('modelValue')).toBe('A_top_L')
     expect(mocks.debug).toHaveBeenCalledOnce()
   }finally{w.unmount()}
 })
@@ -346,20 +347,20 @@ it('uses renderer view state and rejects stale view and failure callbacks',async
     scenes.push(scene);changed('iso');return scene
   })
   const wrapper=viewer();await flushPromises()
-  const select=wrapper.get('select option[value="free"]').element.parentElement as HTMLSelectElement
+  const select=selectWithOption(wrapper,'free')
   const oldChanged=mocks.create.mock.calls[0]![5],oldFailed=mocks.create.mock.calls[0]![4]
-  expect(select.value).toBe('iso')
-  oldChanged('free');await nextTick();expect(select.value).toBe('free')
-  select.value='z';select.dispatchEvent(new Event('change'));await nextTick()
-  expect(scenes[0]!.fit).toHaveBeenLastCalledWith('z');expect(select.value).toBe('z')
+  expect(select.props('modelValue')).toBe('iso')
+  oldChanged('free');await nextTick();expect(select.props('modelValue')).toBe('free')
+  await chooseSelect(select,'z')
+  expect(scenes[0]!.fit).toHaveBeenLastCalledWith('z');expect(select.props('modelValue')).toBe('z')
   oldChanged('free');await nextTick()
-  select.value='z';select.dispatchEvent(new Event('change'));await nextTick()
+  await chooseSelect(select,'z')
   expect(scenes[0]!.fit).toHaveBeenCalledTimes(2)
   await wrapper.get('[aria-label="Reset view"]').trigger('click')
-  expect(select.value).toBe('iso')
+  expect(select.props('modelValue')).toBe('iso')
   await wrapper.setProps({payload:{...payload,cloud_id:'replacement'}});await flushPromises()
   oldChanged('x');oldFailed(new Error('cloud_context_lost'));await nextTick()
-  expect(select.value).toBe('iso');expect(wrapper.find('[role=alert]').exists()).toBe(false)
+  expect(select.props('modelValue')).toBe('iso');expect(wrapper.find('[role=alert]').exists()).toBe(false)
   expect(scenes[0]!.dispose).toHaveBeenCalledOnce();expect(owners[0]!.dispose).toHaveBeenCalledOnce()
   expect(scenes[1]!.dispose).not.toHaveBeenCalled();expect(owners[1]!.dispose).not.toHaveBeenCalled()
   const latest=mocks.create.mock.calls.at(-1)!

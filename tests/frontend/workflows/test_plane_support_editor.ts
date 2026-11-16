@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -17,10 +18,10 @@ const batch=vi.fn((_node:string,_expected:WorkflowJsonObject,_updates:WorkflowJs
 const preview=vi.fn(async(_node:string)=>{})
 function editor(value:unknown={kind:'cloud'}){batch.mockClear();preview.mockReset();const w=mount(PlaneSupportEditor,{props:{modelValue:value,parameters:{settings,support:value} as never},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})],provide:{[parameterNodePreviewKey as symbol]:preview,[parameterBatchUpdateKey as symbol]:batch,[parameterNodeContextKey as symbol]:()=>({nodeId:'plane',cloudPorts:[],sources:{}})}}});wrappers.push(w);return w}
 const button=(name:string)=>[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()===name)!
-async function mode(value:string){const select=document.querySelector('select')!;select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()}
+async function mode(w:ReturnType<typeof mount>,value:string){await chooseSelect(selectWithOption(w,value),value)}
 it('registers the existing ROI editor without enabling an unconnected ROI input',async()=>{
   expect(trustedParameterEditor('custom.metrology3d.fit-plane','support')).toBe(PlaneSupportEditor)
-  const w=editor();await w.get('button').trigger('click');await mode('parameters')
+  const w=editor();await w.get('button').trigger('click');await mode(w,'parameters')
   expect(button('Apply').disabled).toBe(true)
   expect(w.getComponent(RoiForm).props('allowInput')).toBe(false)
   w.getComponent(RoiForm).vm.$emit('update:modelValue',roi);await flushPromises()
@@ -29,10 +30,10 @@ it('registers the existing ROI editor without enabling an unconnected ROI input'
   expect(batch).toHaveBeenCalledWith('plane',{settings,support:{kind:'cloud'}},{settings,support:roi})
 })
 it('keeps explicit support on cancel and removes all ROI configuration when whole input is applied',async()=>{
-  const w=editor(roi);await w.get('button').trigger('click');await mode('cloud');button('Cancel').click();await flushPromises()
+  const w=editor(roi);await w.get('button').trigger('click');await mode(w,'cloud');button('Cancel').click();await flushPromises()
   expect(w.emitted('update:modelValue')).toBeUndefined()
   await w.get('button').trigger('click');expect(w.getComponent(RoiForm).props('modelValue')).toEqual(roi)
-  await mode('cloud');button('Apply').click();await flushPromises()
+  await mode(w,'cloud');button('Apply').click();await flushPromises()
   expect(batch).toHaveBeenCalledWith('plane',{settings,support:roi},{settings,support:{kind:'cloud'}})
 })
 it('closes nested drafts on source changes, disable and unmount without submitting',async()=>{
@@ -59,14 +60,14 @@ it('does not silently replace a malformed null support with whole input',async()
 })
 it('keeps the dialog open when an atomic update rejects a changed graph',async()=>{
   const w=editor(roi);batch.mockReturnValueOnce(false)
-  await w.get('button').trigger('click');await mode('cloud')
+  await w.get('button').trigger('click');await mode(w,'cloud')
   button('Apply').click();await flushPromises()
   expect(document.querySelector('[role=dialog]')).not.toBeNull()
   expect(document.querySelector('[role=alert]')?.textContent).toContain('Node changed')
   expect(w.emitted('update:modelValue')).toBeUndefined()
 })
 it('applies the exact draft then previews without closing or saving the App',async()=>{
-  const w=editor(roi);await w.get('button').trigger('click');await mode('cloud')
+  const w=editor(roi);await w.get('button').trigger('click');await mode(w,'cloud')
   batch.mockImplementationOnce((_node,expected,updates)=>{void w.setProps({parameters:{...expected,...updates}});return true})
   button('Apply and preview fit').click();await flushPromises()
   expect(preview).toHaveBeenCalledWith('plane')

@@ -10,7 +10,7 @@
         <tr v-for="index in pageRows" :key="index" :class="{'limits-invalid':rowErrors[index]}">
           <td><input v-model="selection" type="checkbox" :value="index" :aria-label="`${text.select} ${index+1}`"></td>
           <td><SelectField v-if="available" :model-value="draft[index]!.item_id" :options="itemOptions(draft[index]!.item_id)" :aria-label="`${text.item} ${index+1}`" @update:model-value="chooseItem(index,String($event))" /><input v-else v-model="draft[index]!.item_id" :aria-label="`${text.item} ${index+1}`"><small v-if="rowErrors[index]" role="alert">{{ rowErrors[index] }}</small></td>
-          <td><span v-if="availableIndex.get(draft[index]!.item_id)?.unit!==undefined" :title="draft[index]!.unit">{{ formatResultUnit(draft[index]!.unit) }}</span><select v-else-if="unitOptions(draft[index]!.item_id)" v-model="draft[index]!.unit" :aria-label="`${text.unit} ${index+1}`"><option value="" disabled>{{ locale==='zh-CN'?'请选择单位':'Select unit' }}</option><option v-if="draft[index]!.unit&&!unitOptions(draft[index]!.item_id)!.includes(draft[index]!.unit)" :value="draft[index]!.unit" disabled>{{ draft[index]!.unit }}</option><option v-for="unit in unitOptions(draft[index]!.item_id)" :key="unit" :value="unit">{{ formatResultUnit(unit) }}</option></select><input v-else v-model="draft[index]!.unit" :aria-label="`${text.unit} ${index+1}`"></td>
+          <td><span v-if="availableIndex.get(draft[index]!.item_id)?.unit!==undefined" :title="draft[index]!.unit">{{ formatResultUnit(draft[index]!.unit) }}</span><UiSelect v-else-if="unitOptions(draft[index]!.item_id)" v-model="draft[index]!.unit" :aria-label="`${text.unit} ${index+1}`" :options="[...[{ value: '', label: String(locale==='zh-CN'?'请选择单位':'Select unit'), disabled: true }], ...(draft[index]!.unit&&!unitOptions(draft[index]!.item_id)!.includes(draft[index]!.unit) ? [{ value: draft[index]!.unit, label: String(draft[index]!.unit), disabled: true }] : []), ...(unitOptions(draft[index]!.item_id) ?? []).flatMap((unit) => [{ value: unit, label: String(formatResultUnit(unit)), disabled: false }])]" floating /><input v-else v-model="draft[index]!.unit" :aria-label="`${text.unit} ${index+1}`"></td>
           <td v-for="bound in bounds" :key="bound"><div class="limits-bound"><input type="number" step="any" placeholder="—" :aria-label="`${text[bound]} ${index+1}`" :value="draft[index]![bound] ?? ''" @input="setBound(index,bound,$event)"><label><input v-model="draft[index]![bound==='lower'?'include_lower':'include_upper']" type="checkbox" :aria-label="`${text[bound==='lower'?'include_lower':'include_upper']} ${index+1}`">{{ locale==='zh-CN'?'含边界':'Inclusive' }}</label></div></td>
           <td v-for="key in flags" :key="key"><input v-model="draft[index]![key]" type="checkbox" :aria-label="`${text[key]} ${index+1}`"></td>
           <td><button type="button" :aria-label="`${text.remove} ${index+1}`" @click="remove(index)">×</button></td>
@@ -29,6 +29,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,ref,inject,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'

@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -25,7 +26,7 @@ it('checks fields, sentinel precision and color without inventing values',()=>{
 it('edits structured color and cancels without changing the recipe',async()=>{
   const value={mode:'solid'},w=mount(Editor,{props:{modelValue:value,parameterName:'color'},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'zh-CN'})]}});wrappers.push(w)
   await w.get('button').trigger('click');await flushPromises()
-  const select=document.querySelector('select')!;select.value='scalar';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await chooseSelect(selectWithOption(w,'scalar'),'scalar')
   expect([...document.querySelectorAll('button')].find(b=>b.textContent==='应用')!.disabled).toBe(true)
   ;[...document.querySelectorAll('button')].find(b=>b.textContent==='取消')!.click();await flushPromises()
   expect(w.emitted('update:modelValue')).toBeUndefined();expect(value).toEqual({mode:'solid'})

@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -23,8 +24,7 @@ it('closes on task/source changes and clears previous-run preview before accepti
   try{
     await w.get('button').trigger('click');await flushPromises()
     expect(document.querySelector('[data-test=cloud]')).toBeNull()
-    const select=[...document.querySelectorAll('select')].find(s=>s.textContent?.includes('Cloud'))!
-    select.value='v';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'v'),'v')
     expect(document.querySelector('[data-test=cloud]')).not.toBeNull()
     state.value={runId:'two',succeeded:false};await flushPromises();expect(document.querySelector('[data-test=cloud]')).toBeNull()
     await w.setProps({inputSources:{features:[{nodeId:'read',nodeTypeId:'custom.metrology3d.read-cloud',parameters:{},outputPort:'features'}]}})
@@ -48,7 +48,7 @@ it('isolates late arc events across target, run and dialog changes without apply
   const arc={center:[1,2],radius_range:[2,3],start_angle:0,sweep:Math.PI,max_overlap_angle:.01}
   const model={...newBoundarySettings('extract-boundary'),feature_id:'boundary',method:{kind:'projection'},evaluation:{...spatial,origin:[0,0,0],rotation:[[1,0,0],[0,1,0],[0,0,1]]},targets:[{group_id:'first',arc},{group_id:'second',arc:{...arc,center:[4,5]}}]}
   const w=mount(BoundarySettingsEditor,{props:{modelValue:model,nodeType:'custom.metrology3d.extract-boundary',inputSources:{cloud:[{nodeId:'cloud',nodeTypeId:'custom.metrology3d.read-cloud',parameters:{},outputPort:'cloud',previewOutput:{...payload,run_id:'run'}}]}},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})],provide:{[parameterCloudPreviewsKey as symbol]:()=>views.value,[parameterPreviewStateKey as symbol]:()=>state.value}}})
-  async function select(text:string,value:string){const input=[...document.querySelectorAll('select')].find(s=>s.parentElement?.textContent?.startsWith(text))!;input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()}
+  async function select(_text:string,value:string){const v=value==='1'?1:value;await chooseSelect(selectWithOption(w,v),v)}
   const center=()=>[...document.querySelectorAll('input')].find(i=>i.getAttribute('aria-label')==='Center 1')!.value
   try{
     await w.get('button').trigger('click');await flushPromises()

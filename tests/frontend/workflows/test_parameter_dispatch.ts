@@ -1,3 +1,5 @@
+import { selectControl, chooseSelect } from './select-control'
+import Select from '@/shared/ui/components/Select.vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive, ref } from 'vue'
@@ -57,19 +59,19 @@ it('dispatches the real ROI union schema to its existing editor and isolates nod
 
 it.each([['read-cloud', 'source', { kind: 'file' }], ['save-cloud', 'target', { kind: 'new', name: 'Scan' }]] as const)('dispatches %s resource union before scalar controls', (kind, name, value) => {
   const { w } = render(kind, name, value)
-  try { expect(w.findComponent(CloudResourceParameter).exists()).toBe(true); expect(w.find('select').exists()).toBe(true) } finally { w.unmount() }
+  try { expect(w.findComponent(CloudResourceParameter).exists()).toBe(true); expect(w.findComponent(Select).exists()).toBe(true) } finally { w.unmount() }
 })
 
 it('does not display an uncommitted file source in a blank node', async () => {
   const { w, node } = render('read-cloud', 'source', undefined)
   try {
-    expect((w.get('select').element as HTMLSelectElement).value).toBe('')
+    expect(String(selectControl(w).props('modelValue'))).toBe('')
     expect(node.node.parameters.source).toBeUndefined()
-    await w.get('select').setValue('file')
+    await chooseSelect(selectControl(w),'file')
     expect(node.node.parameters.source).toEqual({ kind: 'file' })
     node.node.node_id = 'another'; node.node.parameters = {}
     await flushPromises()
-    expect((w.get('select').element as HTMLSelectElement).value).toBe('')
+    expect(String(selectControl(w).props('modelValue'))).toBe('')
     expect(node.node.parameters.source).toBeUndefined()
   } finally { w.unmount() }
 })

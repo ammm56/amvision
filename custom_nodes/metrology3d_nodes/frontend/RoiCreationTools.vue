@@ -1,6 +1,6 @@
 <template><div class="roi-create">
   <template v-if="supported">
-    <label>{{ zh?'创建平面':'Creation plane' }}<select v-model="plane"><option value="xy">XY</option><option value="xz">XZ</option><option value="yz">YZ</option></select></label>
+    <label>{{ zh?'创建平面':'Creation plane' }}<UiSelect v-model="plane" :options="[...[{ value: 'xy', label: 'XY', disabled: false }], ...[{ value: 'xz', label: 'XZ', disabled: false }], ...[{ value: 'yz', label: 'YZ', disabled: false }]]" floating /></label>
     <template v-if="!section">
       <label>{{ zh?'轴向下限':'Axial minimum' }}<input v-model.number="low" type="number" step="any" /></label>
       <label>{{ zh?'轴向上限':'Axial maximum' }}<input v-model.number="high" type="number" step="any" /></label>
@@ -11,6 +11,7 @@
   </template>
 </div></template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,onBeforeUnmount,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Crosshair,Maximize} from '@lucide/vue'

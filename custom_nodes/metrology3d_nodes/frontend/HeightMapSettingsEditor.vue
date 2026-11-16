@@ -4,9 +4,9 @@
     <ConfirmDialog v-if="open" class="geometry-dialog" :title="label('点云转高度图','Cloud to height map')" size="wide" scroll-body :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||issues.length>0" @confirm="apply" @cancel="open=false">
       <MetrologyWorkspace>
         <template #parameters>
-          <label>{{ label('坐标来源','Coordinate source') }}<select aria-label="Coordinate source" :value="frame.kind" @change="changeFrame"><option value="current-frame">{{ label('当前点云坐标','Current cloud frame') }}</option><option value="pose-frame">{{ label('输入本次位姿','Current input pose') }}</option></select></label>
+          <label>{{ label('坐标来源','Coordinate source') }}<UiSelect aria-label="Coordinate source" :model-value="frame.kind" @change="changeFrame" :options="[...[{ value: 'current-frame', label: String(label('当前点云坐标','Current cloud frame')), disabled: false }], ...[{ value: 'pose-frame', label: String(label('输入本次位姿','Current input pose')), disabled: false }]]" floating /></label>
           <GeometryFields v-model="draft" :fields="frameFields" />
-          <label>{{ label('聚合方法','Aggregation') }}<select v-model="draft.aggregation" aria-label="Aggregation"><option disabled value="">{{ label('选择方法','Select method') }}</option><option value="minimum">{{ label('最小值','Minimum') }}</option><option value="maximum">{{ label('最大值','Maximum') }}</option><option value="mean">{{ label('平均值','Mean') }}</option><option value="median">{{ label('中位数','Median') }}</option></select></label>
+          <label>{{ label('聚合方法','Aggregation') }}<UiSelect v-model="draft.aggregation" aria-label="Aggregation" :options="[...[{ value: '', label: String(label('选择方法','Select method')), disabled: true }], ...[{ value: 'minimum', label: String(label('最小值','Minimum')), disabled: false }], ...[{ value: 'maximum', label: String(label('最大值','Maximum')), disabled: false }], ...[{ value: 'mean', label: String(label('平均值','Mean')), disabled: false }], ...[{ value: 'median', label: String(label('中位数','Median')), disabled: false }]]" floating /></label>
           <fieldset><legend>{{ label('固定物理网格','Fixed physical grid') }}</legend><GeometryFields v-model="draft" :fields="gridFields" /></fieldset>
           <p v-if="issues.length" role="alert">{{ label('未完成或无效字段','Incomplete or invalid fields') }}: {{ issues.map(v=>issueLabel[v]??v).join(' · ') }}</p>
         </template>
@@ -16,6 +16,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
@@ -40,7 +41,7 @@ const field=(path:string,cn:string,en:string,type?:Field['type'],options?:string
 const frameFields=computed(()=>[...(frame.value.kind==='current-frame'?[field('frame.frame_id','输入坐标系','Input frame')]:[field('frame.pose_id','位姿 ID','Pose ID'),field('frame.target_frame_id','目标坐标系','Target frame')]),field('length_unit','长度单位','Length unit','select',['m','mm','um'])])
 const gridFields=computed(()=>[field('width','列数','Columns','number'),field('height','行数','Rows','number'),field('grid.origin','首格零高度中心','First cell zero-height center','vector'),field('grid.column_direction','列单位方向','Column unit direction','vector'),field('grid.row_direction','行单位方向','Row unit direction','vector'),field('grid.height_direction','高度单位方向','Height unit direction','vector'),field('grid.column_step','列步距','Column spacing','number'),field('grid.row_step','行步距','Row spacing','number')])
 function show(){draft.value=props.modelValue&&typeof props.modelValue==='object'?copy(object(props.modelValue)):newHeightMap();initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
-function changeFrame(e:Event){draft.value={...draft.value,frame:(e.target as HTMLSelectElement).value==='pose-frame'?{kind:'pose-frame',pose_id:'',target_frame_id:''}:{kind:'current-frame',frame_id:''}}}
+function changeFrame(e:string | number | boolean | null){draft.value={...draft.value,frame:String(e)==='pose-frame'?{kind:'pose-frame',pose_id:'',target_frame_id:''}:{kind:'current-frame',frame_id:''}}}
 function apply(){if(!props.disabled&&!issues.value.length){emit('update:modelValue',copy(draft.value));open.value=false}}
 watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})

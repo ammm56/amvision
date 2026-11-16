@@ -4,8 +4,8 @@
     :confirm-label="zh?'应用':'Apply'" :cancel-label="zh?'取消':'Cancel'" :confirm-disabled="disabled||!!issues.length" @confirm="apply" @cancel="open=false">
     <MetrologyWorkspace>
       <template #parameters>
-        <label>{{ zh?'初始化':'Initialization' }}<select :value="draft.initialization" @change="draft=changeRegistrationMode(draft,($event.target as HTMLSelectElement).value)"><option value="explicit">{{ zh?'显式初值 · 局部配准':'Explicit pose · local registration' }}</option><option value="fpfh">{{ zh?'FPFH 粗定位 · ICP 精化':'FPFH search · ICP refinement' }}</option><option value="datum">{{ zh?'台面约束 · U/V/绕 Z':'Datum constraint · U/V/yaw' }}</option></select></label>
-        <label>{{ zh?'精化方法':'Refinement' }}<select v-model="draft.algorithm"><option value="point-to-point">{{ zh?'点到点':'Point to point' }}</option><option value="point-to-plane">{{ zh?'点到面（参考云法向）':'Point to plane (reference normals)' }}</option></select></label>
+        <label>{{ zh?'初始化':'Initialization' }}<UiSelect :model-value="draft.initialization" @change="draft=changeRegistrationMode(draft,String($event))" :options="[...[{ value: 'explicit', label: String(zh?'显式初值 · 局部配准':'Explicit pose · local registration'), disabled: false }], ...[{ value: 'fpfh', label: String(zh?'FPFH 粗定位 · ICP 精化':'FPFH search · ICP refinement'), disabled: false }], ...[{ value: 'datum', label: String(zh?'台面约束 · U/V/绕 Z':'Datum constraint · U/V/yaw'), disabled: false }]]" floating /></label>
+        <label>{{ zh?'精化方法':'Refinement' }}<UiSelect v-model="draft.algorithm" :options="[...[{ value: 'point-to-point', label: String(zh?'点到点':'Point to point'), disabled: false }], ...[{ value: 'point-to-plane', label: String(zh?'点到面（参考云法向）':'Point to plane (reference normals)'), disabled: false }]]" floating /></label>
         <dl class="sources"><template v-for="port in ['source','reference']" :key="port"><dt>{{ port==='source'?(zh?'移动云':'Moving cloud'):(zh?'参考云':'Reference cloud') }}</dt><dd>{{ (inputSources?.[port]??[]).map(s=>s.nodeId).join(', ')||(zh?'未连接':'Not connected') }}</dd></template></dl>
         <dl v-if="draft.initialization==='datum'" class="sources"><template v-for="port in ['source_datum','reference_datum']" :key="port"><dt>{{ port==='source_datum'?(zh?'移动基准':'Moving datum'):(zh?'参考基准':'Reference datum') }}</dt><dd>{{ (inputSources?.[port]??[]).map(s=>s.nodeId).join(', ')||(zh?'未连接':'Not connected') }}</dd></template></dl>
         <GeometryFields v-model="draft" :fields="identityFields" />
@@ -25,6 +25,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {registrationQualityItems} from './quality-items'
 import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'

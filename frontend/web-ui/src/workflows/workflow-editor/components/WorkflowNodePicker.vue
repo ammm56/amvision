@@ -69,15 +69,7 @@
         <div v-if="barcodeDecodeDefinitions.length > 0" class="workflow-node-picker__barcode-family">
           <strong>{{ readNodeCategoryLabel('barcode.decode') }}</strong>
           <span>Format preset</span>
-          <select v-model="selectedBarcodeNodeTypeId" @keydown.enter.stop>
-            <option
-              v-for="definition in barcodeDecodeDefinitions"
-              :key="definition.node_type_id"
-              :value="definition.node_type_id"
-            >
-              {{ readDefinitionDisplayName(definition) }}
-            </option>
-          </select>
+          <UiSelect v-model="selectedBarcodeNodeTypeId" @keydown.enter.stop :options="[...(barcodeDecodeDefinitions ?? []).flatMap((definition) => [{ value: definition.node_type_id, label: String(readDefinitionDisplayName(definition)), disabled: false }])]" floating />
           <button type="button" @click="selectBarcodeDefinition">
             {{ t('workflowEditor.nodePicker.addNode') }}
           </button>
@@ -103,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import { ChevronRight, Search, X } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'

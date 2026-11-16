@@ -12,26 +12,26 @@
         <section class="file-section">
           <h3>{{ zh?'文件与坐标':'File and coordinates' }}</h3>
           <div class="file-grid">
-            <label>{{ zh?'文件格式与编码':'Format and encoding' }}<select v-model="draft.profile_id"><option value="" disabled>{{ choose }}</option><option v-for="p in profiles" :key="p" :value="p">{{ profileLabel(p) }}</option></select></label>
-            <label>{{ zh?'长度单位':'Length unit' }}<select :value="draft.spatial.length_unit??''" @change="setUnit"><option value="">{{ zh?'未确认':'Unknown' }}</option><option v-for="u in ['mm','m','um']" :key="u" :value="u">{{ u }}</option></select></label>
-            <label>{{ zh?'单位来源':'Unit source' }}<select v-model="draft.spatial.unit_source" :disabled="draft.spatial.length_unit===null"><option v-if="draft.spatial.length_unit===null" value="unknown">{{ zh?'未确认':'Unknown' }}</option><option value="configuration">{{ zh?'工程配置':'Configuration' }}</option><option value="metadata">{{ zh?'文件元数据':'File metadata' }}</option></select></label>
+            <label>{{ zh?'文件格式与编码':'Format and encoding' }}<UiSelect v-model="draft.profile_id" :options="[...[{ value: '', label: String(choose), disabled: true }], ...(profiles ?? []).flatMap((p) => [{ value: p, label: String(profileLabel(p)), disabled: false }])]" floating /></label>
+            <label>{{ zh?'长度单位':'Length unit' }}<UiSelect :model-value="draft.spatial.length_unit??''" @change="setUnit" :options="[...[{ value: '', label: String(zh?'未确认':'Unknown'), disabled: false }], ...(['mm','m','um']).flatMap((u) => [{ value: u, label: String(u), disabled: false }])]" floating /></label>
+            <label>{{ zh?'单位来源':'Unit source' }}<UiSelect v-model="draft.spatial.unit_source" :disabled="draft.spatial.length_unit===null" :options="[...(draft.spatial.length_unit===null ? [{ value: 'unknown', label: String(zh?'未确认':'Unknown'), disabled: false }] : []), ...[{ value: 'configuration', label: String(zh?'工程配置':'Configuration'), disabled: false }], ...[{ value: 'metadata', label: String(zh?'文件元数据':'File metadata'), disabled: false }]]" floating /></label>
             <label>{{ zh?'坐标系标识':'Coordinate frame' }}<input v-model="draft.spatial.frame_id" maxlength="128"></label>
-            <label>{{ zh?'坐标系手性':'Handedness' }}<select :value="draft.spatial.axes.handedness" @change="setHandedness"><option value="unknown">{{ zh?'未确认':'Unknown' }}</option><option value="right">{{ zh?'右手系':'Right-handed' }}</option><option value="left">{{ zh?'左手系':'Left-handed' }}</option></select></label>
-            <label>{{ zh?'轴定义来源':'Axes source' }}<select v-model="draft.spatial.axes.definition_source" :disabled="draft.spatial.axes.handedness==='unknown'"><option v-if="draft.spatial.axes.handedness==='unknown'" value="unknown">{{ zh?'未确认':'Unknown' }}</option><option value="configuration">{{ zh?'工程配置':'Configuration' }}</option><option value="metadata">{{ zh?'文件元数据':'File metadata' }}</option></select></label>
+            <label>{{ zh?'坐标系手性':'Handedness' }}<UiSelect :model-value="draft.spatial.axes.handedness" @change="setHandedness" :options="[...[{ value: 'unknown', label: String(zh?'未确认':'Unknown'), disabled: false }], ...[{ value: 'right', label: String(zh?'右手系':'Right-handed'), disabled: false }], ...[{ value: 'left', label: String(zh?'左手系':'Left-handed'), disabled: false }]]" floating /></label>
+            <label>{{ zh?'轴定义来源':'Axes source' }}<UiSelect v-model="draft.spatial.axes.definition_source" :disabled="draft.spatial.axes.handedness==='unknown'" :options="[...(draft.spatial.axes.handedness==='unknown' ? [{ value: 'unknown', label: String(zh?'未确认':'Unknown'), disabled: false }] : []), ...[{ value: 'configuration', label: String(zh?'工程配置':'Configuration'), disabled: false }], ...[{ value: 'metadata', label: String(zh?'文件元数据':'File metadata'), disabled: false }]]" floating /></label>
             <label v-for="(_,i) in draft.spatial.axes.axis_labels" :key="i">{{ (zh?'轴名称 ':'Axis label ')+(i+1) }}<input v-model="draft.spatial.axes.axis_labels[i]" maxlength="128"></label>
           </div>
         </section>
         <section class="file-section">
           <header><h3>{{ zh?'文件字段对应':'File field mapping' }}</h3><div class="field-actions">
             <button v-if="textLayouts[draft.profile_id]" type="button" @click="layoutConfirm=true">{{ zh?'采用所选文本列布局':'Use selected text layout' }}</button>
-            <label>{{ zh?'添加属性':'Add attribute' }}<select v-model="addKind"><option value="normal">{{ zh?'法向':'Normals' }}</option><option value="color-rgb">RGB</option><option value="validity">{{ zh?'有效标记':'Validity' }}</option><option value="scalar">{{ zh?'强度 / 其他标量':'Intensity / other scalar' }}</option></select></label>
+            <label>{{ zh?'添加属性':'Add attribute' }}<UiSelect v-model="addKind" :options="[...[{ value: 'normal', label: String(zh?'法向':'Normals'), disabled: false }], ...[{ value: 'color-rgb', label: 'RGB', disabled: false }], ...[{ value: 'validity', label: String(zh?'有效标记':'Validity'), disabled: false }], ...[{ value: 'scalar', label: String(zh?'强度 / 其他标量':'Intensity / other scalar'), disabled: false }]]" floating /></label>
             <button type="button" :title="zh?'添加字段':'Add field'" :aria-label="zh?'添加字段':'Add field'" @click="addField"><Plus :size="16" /></button>
           </div></header>
           <div v-for="(field,i) in draft.field_mapping" :key="i" class="mapping-row">
             <div class="mapping-heading"><strong>{{ i+1 }}. {{ kindLabel(field.semantic) }}</strong><button type="button" :disabled="field.semantic==='position'" :title="zh?'删除字段':'Remove field'" :aria-label="(zh?'删除字段 ':'Remove field ')+(i+1)" @click="draft.field_mapping.splice(i,1)"><Trash2 :size="16" /></button></div>
             <div class="mapping-fields">
               <label>{{ zh?'目标属性名':'Target attribute' }}<input v-model="field.target_name" :readonly="field.semantic!=='scalar'" maxlength="128"></label>
-              <label>{{ zh?'数据类型':'Data type' }}<select v-model="field.dtype"><option value="" disabled>{{ choose }}</option><option v-for="d in allowedTypes(field)" :key="d" :value="d">{{ d }}</option></select></label>
+              <label>{{ zh?'数据类型':'Data type' }}<UiSelect v-model="field.dtype" :options="[...[{ value: '', label: String(choose), disabled: true }], ...(allowedTypes(field) ?? []).flatMap((d) => [{ value: d, label: String(d), disabled: false }])]" floating /></label>
               <label>{{ zh?'属性单位':'Attribute unit' }}<input :value="field.unit??''" :readonly="field.semantic!=='scalar'" :placeholder="field.semantic==='scalar'?(zh?'未确认':'Unknown'):'—'" @input="field.unit=($event.target as HTMLInputElement).value||null"></label>
               <div class="source-columns"><label v-for="(_,j) in field.source_names" :key="j">{{ sourceLabel(field,j) }}<input v-model="field.source_names[j]" maxlength="128"></label></div>
             </div>
@@ -46,6 +46,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Plus,Trash2} from '@lucide/vue'
@@ -70,8 +71,8 @@ function profileLabel(p:string){return profileNames[p]?.[zh.value?0:1]??p}
 function kindLabel(k:string){return ({position:zh.value?'位置':'Position',normal:zh.value?'法向':'Normals','color-rgb':'RGB',validity:zh.value?'有效标记':'Validity',scalar:zh.value?'标量':'Scalar'} as Record<string,string>)[k]??k}
 function sourceLabel(f:FileMapping,i:number){const component=f.semantic==='color-rgb'?['R','G','B'][i]:f.components===3?['X','Y','Z'][i]:'';return `${zh.value?'文件字段':'File field'}${component?' '+component:''}`}
 function allowedTypes(f:FileMapping){return ['position','normal'].includes(f.semantic)?['float32','float64']:['color-rgb','validity'].includes(f.semantic)?['uint8']:dtypes}
-function setUnit(e:Event){const value=(e.target as HTMLSelectElement).value;draft.value.spatial.length_unit=value||null;draft.value.spatial.unit_source=value?'configuration':'unknown'}
-function setHandedness(e:Event){const value=(e.target as HTMLSelectElement).value;draft.value.spatial.axes.handedness=value;draft.value.spatial.axes.definition_source=value==='unknown'?'unknown':'configuration'}
+function setUnit(e:string | number | boolean | null){const value=String(e);draft.value.spatial.length_unit=value||null;draft.value.spatial.unit_source=value?'configuration':'unknown'}
+function setHandedness(e:string | number | boolean | null){const value=String(e);draft.value.spatial.axes.handedness=value;draft.value.spatial.axes.definition_source=value==='unknown'?'unknown':'configuration'}
 function addField(){draft.value.field_mapping.push(newFileMapping(addKind.value))}
 function resetLayout(){draft.value.field_mapping=textLayoutMappings(draft.value.profile_id,draft.value.field_mapping);layoutConfirm.value=false}
 function show(){if(props.disabled||asset.value)return;malformed.value=props.modelValue!=null&&!isFileOptionsShape(props.modelValue);draft.value=isFileOptionsShape(props.modelValue)?copyFileOptions(props.modelValue):newFileOptions();layoutConfirm.value=false;open.value=true}

@@ -1,18 +1,19 @@
 <template>
   <section class="preview-source">
     <div v-if="ports.length" class="input-preview">
-      <label>{{ zh?'本节点点云输入':'This node input' }}<select v-model="inputPort"><option v-for="port in ports" :key="port" :value="port">{{ port }}</option></select></label>
+      <label>{{ zh?'本节点点云输入':'This node input' }}<UiSelect v-model="inputPort" :options="[...(ports ?? []).flatMap((port) => [{ value: port, label: String(port), disabled: false }])]" floating /></label>
       <button :disabled="!connected||busy||state().phase==='running'" @click="loadInput"><RefreshCw :size="16" />{{ zh?'查看输入点云':'Preview input cloud' }}</button>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="state().error" role="alert">{{ state().error }}</p>
-    <label>{{ zh?'点云显示':'Point cloud view' }}<select :value="modelValue" @change="emit('update:modelValue',($event.target as HTMLSelectElement).value)"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="view in views" :key="view.id" :value="view.id">{{ view.label }} · {{ space(view) }}</option></select></label>
+    <label>{{ zh?'点云显示':'Point cloud view' }}<UiSelect :model-value="modelValue" @change="emit('update:modelValue',String($event))" :options="[...[{ value: '', label: String(zh?'未选择':'None'), disabled: false }], ...(views ?? []).flatMap((view) => [{ value: view.id, label: String(view.label) + ' · ' + String(space(view)), disabled: false }])]" floating /></label>
     <p v-if="changed" role="status">{{ zh?'参数已修改，结果未更新':'Parameters changed; results not updated' }}</p>
     <p v-if="selected" class="source-identity" :title="state().runId">{{ selected.id }} · {{ space(selected) }}</p>
     <p v-else role="status">{{ message }}</p>
   </section>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
 import {RefreshCw} from '@lucide/vue'
 import {useI18n} from 'vue-i18n'

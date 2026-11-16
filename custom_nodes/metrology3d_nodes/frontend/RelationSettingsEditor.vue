@@ -5,21 +5,21 @@
       <MetrologyWorkspace>
         <template #parameters>
           <div class="relation-settings">
-            <label>{{ label('测量方法','Method') }}<select :value="r.kind" @change="changeMethod(($event.target as HTMLSelectElement).value)"><option v-for="kind in relationKinds" :key="kind" :value="kind">{{ methodLabel(kind) }}</option></select></label>
+            <label>{{ label('测量方法','Method') }}<UiSelect :model-value="r.kind" @change="changeMethod(String($event))" :options="[...(relationKinds ?? []).flatMap((kind) => [{ value: kind, label: String(methodLabel(kind)), disabled: false }])]" floating /></label>
             <GeometryFields v-model="draft" :fields="[{path:'item_id',label:label('量值 ID','Measurement ID')}]" />
-            <label>{{ label('测量空间','Measurement space') }}<select :value="space.kind" @change="changeSpace(($event.target as HTMLSelectElement).value)"><option value="spatial">{{ label('三维空间','3D space') }}</option><option value="projection" :disabled="r.kind==='point-plane'">{{ label('评价面投影','Evaluation plane projection') }}</option></select></label>
+            <label>{{ label('测量空间','Measurement space') }}<UiSelect :model-value="space.kind" @change="changeSpace(String($event))" :options="[...[{ value: 'spatial', label: String(label('三维空间','3D space')), disabled: false }], ...[{ value: 'projection', label: String(label('评价面投影','Evaluation plane projection')), disabled: r.kind==='point-plane' }]]" floating /></label>
             <EvaluationEditor v-if="space.kind==='projection'" :model-value="space.plane" @update:model-value="draft=put(draft,'space.plane',$event)" />
             <GeometryFields v-else v-model="draft" :fields="spaceFields" />
             <fieldset v-for="role in roles" :key="role"><legend>{{ role==='reference'?label('基准 A','Reference A'):label('目标 B','Target B') }}</legend>
-              <label v-if="isPoint(role)">{{ label('点来源','Point source') }}<select :value="object(r[role]).kind" @change="setOperand(role,($event.target as HTMLSelectElement).value)"><option value="coordinate">{{ label('指定坐标','Specified coordinates') }}</option><option value="source-point">{{ label('原始行号','Original row') }}</option><option value="circle-center">{{ label('拟合圆心','Fitted circle center') }}</option></select></label>
+              <label v-if="isPoint(role)">{{ label('点来源','Point source') }}<UiSelect :model-value="object(r[role]).kind" @change="setOperand(role,String($event))" :options="[...[{ value: 'coordinate', label: String(label('指定坐标','Specified coordinates')), disabled: false }], ...[{ value: 'source-point', label: String(label('原始行号','Original row')), disabled: false }], ...[{ value: 'circle-center', label: String(label('拟合圆心','Fitted circle center')), disabled: false }]]" floating /></label>
               <GeometryFields v-if="object(r[role]).kind==='coordinate'" v-model="draft" :fields="[{path:`relation.${role}.position`,type:'vector',label:'XYZ'}]" />
               <GeometryFields v-else-if="object(r[role]).kind==='source-point'" v-model="draft" :fields="[{path:`relation.${role}.source_index`,type:'number',label:label('原始行号','Original row')}]" />
               <label v-else>{{ label('输入特征','Input feature') }}<input :value="object(r[role]).feature_id" :list="`${uid}-${role}`" @input="draft=put(draft,`relation.${role}.feature_id`,($event.target as HTMLInputElement).value)"><datalist :id="`${uid}-${role}`"><option v-for="c in choicesFor(role)" :key="`${c.nodeId}:${c.id}`" :value="c.id">{{ c.nodeId }}</option></datalist></label>
               <button v-if="object(r[role]).kind==='coordinate'" :disabled="!canPick" :aria-pressed="activeRole===role" :title="label('在当前点云选择候选坐标','Choose candidate coordinates in current cloud')" @click="activeRole=activeRole===role?'':role"><MousePointer2 :size="16" /></button>
             </fieldset>
-            <label v-if="r.support_mode!==undefined">{{ label('支持范围','Support range') }}<select :value="r.support_mode" @change="changeSupport(($event.target as HTMLSelectElement).value)"><option value="finite">{{ label('有限实测支持','Finite measured support') }}</option><option value="model">{{ label('无限模型','Infinite model') }}</option></select></label>
-            <label v-if="r.kind==='point-plane'">{{ label('距离符号','Distance sign') }}<select v-model="r.value_mode"><option value="absolute">{{ label('绝对值','Absolute') }}</option><option value="signed">{{ label('沿目标正法向','Along target positive normal') }}</option></select></label>
-            <label v-if="String(r.kind).endsWith('angle')">{{ label('角度定义','Angle definition') }}<select v-model="r.angle_mode"><option value="unoriented">{{ label('无向 0–90°','Unoriented 0–90°') }}</option><option value="oriented">{{ label('有向向量 0–180°','Oriented vectors 0–180°') }}</option><option value="signed" :disabled="space.kind!=='projection'">{{ label('绕评价面 +N，−180–180°','Around evaluation +N, −180–180°') }}</option></select></label>
+            <label v-if="r.support_mode!==undefined">{{ label('支持范围','Support range') }}<UiSelect :model-value="r.support_mode" @change="changeSupport(String($event))" :options="[...[{ value: 'finite', label: String(label('有限实测支持','Finite measured support')), disabled: false }], ...[{ value: 'model', label: String(label('无限模型','Infinite model')), disabled: false }]]" floating /></label>
+            <label v-if="r.kind==='point-plane'">{{ label('距离符号','Distance sign') }}<UiSelect v-model="r.value_mode" :options="[...[{ value: 'absolute', label: String(label('绝对值','Absolute')), disabled: false }], ...[{ value: 'signed', label: String(label('沿目标正法向','Along target positive normal')), disabled: false }]]" floating /></label>
+            <label v-if="String(r.kind).endsWith('angle')">{{ label('角度定义','Angle definition') }}<UiSelect v-model="r.angle_mode" :options="[...[{ value: 'unoriented', label: String(label('无向 0–90°','Unoriented 0–90°')), disabled: false }], ...[{ value: 'oriented', label: String(label('有向向量 0–180°','Oriented vectors 0–180°')), disabled: false }], ...[{ value: 'signed', label: String(label('绕评价面 +N，−180–180°','Around evaluation +N, −180–180°')), disabled: space.kind!=='projection' }]]" floating /></label>
           </div>
         </template>
         <template #view="{presentation}">
@@ -39,6 +39,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {relationQualityItems} from './quality-items'
 import {computed,defineAsyncComponent,inject,ref,useId,watch} from 'vue'
 import {useI18n} from 'vue-i18n'

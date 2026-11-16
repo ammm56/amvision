@@ -1,10 +1,10 @@
 <template>
   <section class="geometry-settings-form">
       <div class="geometry-toolbar">
-        <label v-if="plane">{{ zh?'算法':'Algorithm' }}<select :value="object(draft.algorithm).kind" @change="algorithm(($event.target as HTMLSelectElement).value)"><option value="svd">SVD</option><option value="ransac-svd">RANSAC + SVD</option></select></label>
+        <label v-if="plane">{{ zh?'算法':'Algorithm' }}<UiSelect :model-value="object(draft.algorithm).kind" @change="algorithm(String($event))" :options="[...[{ value: 'svd', label: 'SVD', disabled: false }], ...[{ value: 'ransac-svd', label: 'RANSAC + SVD', disabled: false }]]" floating /></label>
         <template v-else>
-          <label>{{ zh?'原点':'Origin' }}<select :value="object(draft.origin).kind" @change="origin(($event.target as HTMLSelectElement).value)"><option value="anchor-projection">{{ zh?'锚点投影':'Anchor projection' }}</option><option value="three-planes">{{ zh?'三面交点':'Three-plane intersection' }}</option></select></label>
-          <label>{{ zh?'X 轴':'X axis' }}<select :value="object(draft.x_axis).kind" :disabled="object(draft.origin).kind==='three-planes'" @change="axis(($event.target as HTMLSelectElement).value)"><option value="direction">{{ zh?'显式方向':'Explicit direction' }}</option><option value="plane-intersection">{{ zh?'主次面交线':'Datum intersection' }}</option></select></label>
+          <label>{{ zh?'原点':'Origin' }}<UiSelect :model-value="object(draft.origin).kind" @change="origin(String($event))" :options="[...[{ value: 'anchor-projection', label: String(zh?'锚点投影':'Anchor projection'), disabled: false }], ...[{ value: 'three-planes', label: String(zh?'三面交点':'Three-plane intersection'), disabled: false }]]" floating /></label>
+          <label>{{ zh?'X 轴':'X axis' }}<UiSelect :model-value="object(draft.x_axis).kind" :disabled="object(draft.origin).kind==='three-planes'" @change="axis(String($event))" :options="[...[{ value: 'direction', label: String(zh?'显式方向':'Explicit direction'), disabled: false }], ...[{ value: 'plane-intersection', label: String(zh?'主次面交线':'Datum intersection'), disabled: false }]]" floating /></label>
         </template>
       </div>
       <GeometryFields v-model="draft" :fields="fields" :suggestions="suggestions" />
@@ -14,6 +14,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/WorkflowLimitRulesEditor.vue'

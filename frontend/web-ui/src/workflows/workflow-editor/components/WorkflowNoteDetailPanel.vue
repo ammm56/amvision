@@ -28,13 +28,7 @@
     </label>
     <label>
       <span>{{ t('workflowEditor.editor.noteTone') }}</span>
-      <select :value="note.tone" :disabled="note.locked" @change="emit('updateTone', readTone($event))">
-        <option value="neutral">{{ t('workflowEditor.editor.noteToneNeutral') }}</option>
-        <option value="info">{{ t('workflowEditor.editor.noteToneInfo') }}</option>
-        <option value="success">{{ t('workflowEditor.editor.noteToneSuccess') }}</option>
-        <option value="warning">{{ t('workflowEditor.editor.noteToneWarning') }}</option>
-        <option value="danger">{{ t('workflowEditor.editor.noteToneDanger') }}</option>
-      </select>
+      <UiSelect :model-value="note.tone" :disabled="note.locked" @change="emit('updateTone', readTone($event))" :options="[...[{ value: 'neutral', label: String(t('workflowEditor.editor.noteToneNeutral')), disabled: false }], ...[{ value: 'info', label: String(t('workflowEditor.editor.noteToneInfo')), disabled: false }], ...[{ value: 'success', label: String(t('workflowEditor.editor.noteToneSuccess')), disabled: false }], ...[{ value: 'warning', label: String(t('workflowEditor.editor.noteToneWarning')), disabled: false }], ...[{ value: 'danger', label: String(t('workflowEditor.editor.noteToneDanger')), disabled: false }]]" floating />
     </label>
     <div class="workflow-note-detail-panel__actions">
       <button type="button" @click="emit('toggleCollapsed')">
@@ -50,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import { useI18n } from 'vue-i18n'
 
 import type { WorkflowGraphNote } from '../types'
@@ -74,8 +69,8 @@ function readTextArea(event: Event): string {
   return event.target instanceof HTMLTextAreaElement ? event.target.value : ''
 }
 
-function readTone(event: Event): WorkflowGraphNote['tone'] {
-  const value = event.target instanceof HTMLSelectElement ? event.target.value : 'neutral'
+function readTone(selection: string | number | boolean | null): WorkflowGraphNote['tone'] {
+  const value = String(selection)
   return ['neutral', 'info', 'success', 'warning', 'danger'].includes(value)
     ? value as WorkflowGraphNote['tone']
     : 'neutral'

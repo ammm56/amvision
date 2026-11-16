@@ -6,8 +6,8 @@
         <template #parameters>
         <section class="dimension-config">
           <template v-if="arc">
-            <label>{{ label('圆弧量值方法','Arc measurement method') }}<select :value="object(draft.mode).kind" @change="changeArcMode(($event.target as HTMLSelectElement).value)"><option value="continuous-arc">{{ label('连续开弧','Continuous open arc') }}</option><option value="supported-union">{{ label('支持角区并集','Supported angular union') }}</option></select></label>
-            <label v-if="object(draft.mode).kind==='continuous-arc'">{{ label('遍历顺序','Traversal order') }}<select v-model="object(draft.mode).traversal"><option value="source-order">{{ label('实测段顺序','Source order') }}</option><option value="reverse-source-order">{{ label('反向','Reverse source order') }}</option></select></label>
+            <label>{{ label('圆弧量值方法','Arc measurement method') }}<UiSelect :model-value="object(draft.mode).kind" @change="changeArcMode(String($event))" :options="[...[{ value: 'continuous-arc', label: String(label('连续开弧','Continuous open arc')), disabled: false }], ...[{ value: 'supported-union', label: String(label('支持角区并集','Supported angular union')), disabled: false }]]" floating /></label>
+            <label v-if="object(draft.mode).kind==='continuous-arc'">{{ label('遍历顺序','Traversal order') }}<UiSelect v-model="object(draft.mode).traversal" :options="[...[{ value: 'source-order', label: String(label('实测段顺序','Source order')), disabled: false }], ...[{ value: 'reverse-source-order', label: String(label('反向','Reverse source order')), disabled: false }]]" floating /></label>
           </template>
           <template v-if="extents">
             <fieldset class="modes"><legend>{{ label('测量定义','Measurement') }}</legend>
@@ -20,11 +20,7 @@
           </template>
           <template v-if="!extents||object(draft.source).kind==='boundary'">
             <div v-for="slot in featureSlots" :key="slot.path" class="feature-slot">
-              <label>{{ slot.label }}<select :value="get(draft,slot.path)??''" @change="selectFeature(slot.path,($event.target as HTMLSelectElement).value)">
-                <option value="">{{ label('未选择','None') }}</option>
-                <option v-if="get(draft,slot.path)&&!choices.some(c=>c.id===get(draft,slot.path))" :value="String(get(draft,slot.path))">{{ get(draft,slot.path) }} · {{ label('未获取','Unavailable') }}</option>
-                <option v-for="choice in choices" :key="`${choice.nodeId}:${choice.id}`" :value="choice.id">{{ choice.id }} · {{ choice.nodeId }}</option>
-              </select></label>
+              <label>{{ slot.label }}<UiSelect :model-value="get(draft,slot.path)??''" @change="selectFeature(slot.path,String($event))" :options="[...[{ value: '', label: String(label('未选择','None')), disabled: false }], ...(get(draft,slot.path)&&!choices.some(c=>c.id===get(draft,slot.path)) ? [{ value: String(get(draft,slot.path)), label: String(get(draft,slot.path)) + ' · ' + String(label('未获取','Unavailable')), disabled: false }] : []), ...(choices ?? []).flatMap((choice) => [{ value: choice.id, label: String(choice.id) + ' · ' + String(choice.nodeId), disabled: false }])]" floating /></label>
               <button :title="label('从显示选择此目标','Select this target from view')" :aria-pressed="activeSlot===slot.path" @click="activeSlot=activeSlot===slot.path?'':slot.path"><MousePointer2 :size="16" /></button>
             </div>
             <p v-if="!choices.length" role="status">{{ label('当前连线尚无可用特征候选','No feature candidates from current connections') }}</p>
@@ -33,9 +29,9 @@
           <BoundarySelectionEditor v-if="extents&&object(draft.source).kind==='boundary'&&!robust" :model-value="object(draft.source).selection" :segments="segments" :groups="groups" @update:model-value="draft=put(draft,'source.selection',$event)" />
           <BoundarySelectionEditor v-if="arc" :model-value="draft.selection" :segments="segments" :groups="groups" @update:model-value="draft=put(draft,'selection',$event)" />
           <fieldset v-if="robust" class="segments"><legend>{{ label('剖面支持','Profile support') }}</legend><label v-for="side in profileSides" :key="side"><input type="checkbox" checked disabled>{{ side }}</label></fieldset>
-          <template v-if="edge"><label>{{ label('查询坐标','Query coordinates') }}<select :value="object(draft.query_position).kind==='plane-uv'?'plane-uv':'xyz'" @change="changeQuery(($event.target as HTMLSelectElement).value)"><option value="xyz">XYZ</option><option value="plane-uv">{{ label('评价面 U/V','Evaluation U/V') }}</option></select></label><GeometryFields v-model="draft" :fields="edgeFields" /><EvaluationDirectionEditor v-model="draft.direction" :label="label('测量方向','Measurement direction')" /></template>
-          <label v-if="edge">{{ label('距离符号','Distance sign') }}<select v-model="draft.value_mode"><option value="signed">{{ label('有符号','Signed') }}</option><option value="absolute">{{ label('绝对值','Absolute') }}</option></select></label>
-          <label v-if="hole">{{ label('目标定义','Target definition') }}<select v-model="draft.target_kind"><option value="closed-hole">{{ label('闭合圆孔','Closed hole') }}</option><option value="open-arc">{{ label('实测圆弧估计直径','Diameter estimated from measured arcs') }}</option></select></label>
+          <template v-if="edge"><label>{{ label('查询坐标','Query coordinates') }}<UiSelect :model-value="object(draft.query_position).kind==='plane-uv'?'plane-uv':'xyz'" @change="changeQuery(String($event))" :options="[...[{ value: 'xyz', label: 'XYZ', disabled: false }], ...[{ value: 'plane-uv', label: String(label('评价面 U/V','Evaluation U/V')), disabled: false }]]" floating /></label><GeometryFields v-model="draft" :fields="edgeFields" /><EvaluationDirectionEditor v-model="draft.direction" :label="label('测量方向','Measurement direction')" /></template>
+          <label v-if="edge">{{ label('距离符号','Distance sign') }}<UiSelect v-model="draft.value_mode" :options="[...[{ value: 'signed', label: String(label('有符号','Signed')), disabled: false }], ...[{ value: 'absolute', label: String(label('绝对值','Absolute')), disabled: false }]]" floating /></label>
+          <label v-if="hole">{{ label('目标定义','Target definition') }}<UiSelect v-model="draft.target_kind" :options="[...[{ value: 'closed-hole', label: String(label('闭合圆孔','Closed hole')), disabled: false }], ...[{ value: 'open-arc', label: String(label('实测圆弧估计直径','Diameter estimated from measured arcs')), disabled: false }]]" floating /></label>
           <EvaluationDirectionEditor v-if="hole" v-model="draft.display_direction" :label="label('直径辅助方向','Diameter display direction')" />
           <fieldset class="outputs"><legend>{{ label('输出量','Output quantities') }}</legend>
             <label v-for="component in outputComponents" :key="component">
@@ -73,6 +69,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {dimensionQualityItems} from './quality-items'
 import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'

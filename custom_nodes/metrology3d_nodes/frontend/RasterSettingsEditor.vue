@@ -5,13 +5,13 @@
       :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||!rasterValid(draft)" @confirm="apply" @cancel="open=false">
       <MetrologyWorkspace>
         <template #parameters>
-          <label>{{ label('输入来源','Input source') }}<select aria-label="Input source" :value="draft.kind" @change="changeInput"><option value="file">{{ label('文件','File') }}</option><option value="local-array">{{ label('同机标定数组','Same-host calibrated array') }}</option></select></label>
+          <label>{{ label('输入来源','Input source') }}<UiSelect aria-label="Input source" :model-value="draft.kind" @change="changeInput" :options="[...[{ value: 'file', label: String(label('文件','File')), disabled: false }], ...[{ value: 'local-array', label: String(label('同机标定数组','Same-host calibrated array')), disabled: false }]]" floating /></label>
           <dl v-if="draft.kind==='local-array'"><dt>{{ label('标定来源','Calibration source') }}</dt><dd>{{ label('本次载荷','Current payload') }}</dd></dl>
           <template v-else>
             <GeometryFields v-model="draft" :fields="inputFields" />
             <fieldset><legend>{{ label('标定身份与坐标','Calibration and coordinates') }}</legend><GeometryFields v-model="draft" :fields="identityFields" /></fieldset>
-            <label>{{ label('投影模型','Projection model') }}<select aria-label="Projection model" :value="projection.kind" @change="changeProjection"><option value="rectified-pinhole">{{ label('已去畸变针孔深度','Rectified pinhole depth') }}</option><option value="orthographic-height">{{ label('正交高度网格','Orthographic height grid') }}</option></select></label>
-            <label v-if="projection.kind==='rectified-pinhole'">{{ label('深度定义','Depth definition') }}<select v-model="projection.depth_kind"><option value="axial-z">{{ label('轴向 Z','Axial Z') }}</option><option value="ray-range">{{ label('沿射线距离','Ray range') }}</option></select></label>
+            <label>{{ label('投影模型','Projection model') }}<UiSelect aria-label="Projection model" :model-value="projection.kind" @change="changeProjection" :options="[...[{ value: 'rectified-pinhole', label: String(label('已去畸变针孔深度','Rectified pinhole depth')), disabled: false }], ...[{ value: 'orthographic-height', label: String(label('正交高度网格','Orthographic height grid')), disabled: false }]]" floating /></label>
+            <label v-if="projection.kind==='rectified-pinhole'">{{ label('深度定义','Depth definition') }}<UiSelect v-model="projection.depth_kind" :options="[...[{ value: 'axial-z', label: String(label('轴向 Z','Axial Z')), disabled: false }], ...[{ value: 'ray-range', label: String(label('沿射线距离','Ray range')), disabled: false }]]" floating /></label>
             <GeometryFields v-model="draft" :fields="projectionFields" />
             <fieldset><legend>{{ label('尺度与无效值','Scale and invalid values') }}</legend><GeometryFields v-model="draft" :fields="valueFields" />
               <div class="sentinels"><span>{{ label('原始无效值','Raw invalid values') }}</span><button type="button" :title="label('添加无效值','Add invalid value')" :aria-label="label('添加无效值','Add invalid value')" @click="addSentinel"><Plus :size="16" /></button></div>
@@ -29,6 +29,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
@@ -56,8 +57,8 @@ const identityFields=computed(()=>[field('raster.calibration_id','标定 ID','Ca
 const projectionFields=computed(()=>projection.value.kind==='rectified-pinhole'?['fx','fy','cx','cy'].map(n=>field(`raster.projection.${n}`,`${n}（像素）`,`${n} (pixels)`,'number')):[field('raster.projection.origin','零行零列零高原点','Zero-height origin at row/column zero','vector'),field('raster.projection.column_direction','列单位方向','Column unit direction','vector'),field('raster.projection.row_direction','行单位方向','Row unit direction','vector'),field('raster.projection.height_direction','高度单位方向','Height unit direction','vector'),field('raster.projection.column_step','列步距','Column spacing','number'),field('raster.projection.row_step','行步距','Row spacing','number')])
 const valueFields=computed(()=>[field('raster.value_scale','原值乘数','Raw multiplier','number'),field('raster.value_offset','物理偏移','Physical offset','number'),field('raster.validity.minimum','物理下限（空为不限）','Physical minimum (empty: unbounded)','number'),field('raster.validity.maximum','物理上限（空为不限）','Physical maximum (empty: unbounded)','number')])
 function show(){draft.value=props.modelValue&&typeof props.modelValue==='object'?copy(object(props.modelValue)):newRasterInput();initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
-function changeInput(e:Event){draft.value=newRasterInput((e.target as HTMLSelectElement).value)}
-function changeProjection(e:Event){draft.value=put(draft.value,'raster.projection',newProjection((e.target as HTMLSelectElement).value))}
+function changeInput(e:string | number | boolean | null){draft.value=newRasterInput(String(e))}
+function changeProjection(e:string | number | boolean | null){draft.value=put(draft.value,'raster.projection',newProjection(String(e)))}
 function setSentinel(i:number,e:Event){const values=[...sentinels.value],input=e.target as HTMLInputElement;values[i]=input.validity.badInput?NaN:input.value===''?null:Number(input.value);draft.value=put(draft.value,'raster.validity.invalid_raw_values',values)}
 function addSentinel(){draft.value=put(draft.value,'raster.validity.invalid_raw_values',[...sentinels.value,null])}
 function removeSentinel(i:number){draft.value=put(draft.value,'raster.validity.invalid_raw_values',sentinels.value.filter((_,j)=>i!==j))}

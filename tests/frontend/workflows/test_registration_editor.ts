@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -43,7 +44,7 @@ it('requires an explicit search budget and removes mutually exclusive initial po
 it.each(['en-US','zh-CN'])('shows search fields only for feature initialization and preserves cancel: %s',async locale=>{
   const w=mount(RegistrationSettingsEditor,{props:{modelValue:parameters(),nodeType:'custom.metrology3d.register-cloud'},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale})]}})
   try{
-    await w.get('button').trigger('click');const select=document.querySelector('select')!;select.value='fpfh';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await w.get('button').trigger('click');await chooseSelect(selectWithOption(w,'fpfh'),'fpfh')
     expect(document.body.textContent).toContain(locale==='zh-CN'?'搜索批数':'Search trials');expect(button(locale==='zh-CN'?'应用':'Apply').disabled).toBe(true)
     button(locale==='zh-CN'?'取消':'Cancel').click();await flushPromises();expect(w.emitted('update:modelValue')).toBeUndefined()
     await w.setProps({modelValue:coarse()});await w.get('button').trigger('click');expect(button(locale==='zh-CN'?'应用':'Apply').disabled).toBe(false)

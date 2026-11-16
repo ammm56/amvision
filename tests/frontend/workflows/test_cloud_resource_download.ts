@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
@@ -73,7 +74,7 @@ it('keeps the chosen version after an export failure without creating a download
 
 it('keeps the save target name and exact reference when selecting a new resource version', async () => {
   const w = mount(CloudResourceParameter, { props: { modelValue: { kind: 'new', name: 'Saved workpiece' }, schema: { 'x-ui-widget': 'cloud-target' } }, global: global() }); wrappers.push(w)
-  await w.get('select').setValue('new-version'); await flushPromises()
+  await chooseSelect(selectWithOption(w,'new-version'),'new-version'); await flushPromises()
   expect(w.emitted('update:modelValue')).toBeUndefined()
   await w.get('input[type=radio]').setValue(true)
   await w.findAll('button').find(b => b.text() === 'Apply')!.trigger('click')

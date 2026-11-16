@@ -74,7 +74,7 @@ it('uses existing result selection, shows point source, and clears old relation 
     expect(wrapper.text()).toContain('点点距离')
     expect(wrapper.text()).toContain('指定坐标')
     expect(wrapper.text()).toContain('5.0000')
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('button:not(.ui-select__button)').trigger('click')
     expect(wrapper.emitted('select')).toEqual([['relation']])
     await wrapper.setProps({items:[],selected:''})
     expect(wrapper.text()).not.toContain('指定坐标')

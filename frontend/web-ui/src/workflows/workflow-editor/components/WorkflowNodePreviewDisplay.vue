@@ -6,9 +6,7 @@
     @mousedown.stop
     @dblclick.stop="emit('open-display', display)"
   >
-    <select v-if="props.display.variants && props.display.variants.length > 1" v-model="selectedOutput" :aria-label="t('workflowEditor.editor.previewOutputPort')" @click.stop>
-      <option v-for="item in props.display.variants" :key="item.outputName" :value="item.outputName">{{ item.outputName }}</option>
-    </select>
+    <UiSelect v-if="props.display.variants && props.display.variants.length > 1" v-model="selectedOutput" :aria-label="t('workflowEditor.editor.previewOutputPort')" @click.stop :options="[...(props.display.variants ?? []).flatMap((item) => [{ value: item.outputName, label: String(item.outputName), disabled: false }])]" floating />
     <small v-if="display.payload.paged" class="workflow-graph-node-preview__empty">{{ t('workflowEditor.editor.previewValuePaged') }}</small>
     <small v-if="display.stale" class="workflow-graph-node-preview__empty">{{ t('workflowEditor.editor.previousPreviewResult') }}</small>
     <div
@@ -118,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import { useTranslation } from '@/platform/i18n'
 import { computed, ref, watch } from 'vue'
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'

@@ -1,3 +1,4 @@
+import { selectControl, selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -34,7 +35,7 @@ it('switches partition methods explicitly without retained grid fields or an inv
   try{
     expect(w.text()).toContain('In-plane connection distance')
     expect(w.text()).not.toContain('Closing radius')
-    await w.get('select').setValue('grid-connected')
+    await chooseSelect(selectControl(w),'grid-connected')
     const update=w.emitted('update:modelValue')![0]![0] as Record<string,unknown>
     expect(update.selection).not.toHaveProperty('connection_distance')
     expect(update.selection).toMatchObject({kind:'grid-connected',connectivity:null,closing_radius_cells:null})
@@ -116,7 +117,7 @@ it('moves only the explicit seed window in the matching current pose and ignores
   const w=mount(BoundaryEditor,{props:{modelValue:fixture.boundary,nodeType:'custom.metrology3d.extract-boundary'},attachTo:document.body,global:{plugins,provide:{[parameterCloudPreviewsKey as symbol]:()=>[{id:'v',label:'Cloud',projectId:'p',payload}],[parameterPreviewStateKey as symbol]:()=>state.value}}})
   try{
     await w.get('button').trigger('click');await flushPromises()
-    const select=[...document.querySelectorAll('select')].find(s=>[...s.options].some(o=>o.value==='v'))!;select.value='v';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'v'),'v')
     const cloud=w.findComponent({name:'TestCloudViewer'});expect(cloud.props('allowPick')).toBe(true)
     const lo=fixture.boundary.method.envelope.selection.seed_min,hi=fixture.boundary.method.envelope.selection.seed_max
     const targetU=(lo[0]!+hi[0]!)/2+.1,targetV=(lo[1]!+hi[1]!)/2

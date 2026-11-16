@@ -3,7 +3,7 @@
     <fieldset v-for="(row,index) in rows" :key="index">
       <legend>{{ zh?'量项':'Measurement' }} {{ index+1 }}</legend>
       <GeometryFields :model-value="row" :fields="fields" :suggestions="suggestions" @update:model-value="update(index,$event)" />
-      <label>{{ zh?'基准支持':'Datum support' }}<select :value="object(row.reference_policy).kind" @change="reference(index,($event.target as HTMLSelectElement).value)"><option value="measured-support">{{ zh?'基准处需实测支持':'Measured support required' }}</option><option value="plane-extension">{{ zh?'基准平面有限延伸':'Bounded datum plane extension' }}</option></select></label>
+      <label>{{ zh?'基准支持':'Datum support' }}<UiSelect :model-value="object(row.reference_policy).kind" @change="reference(index,String($event))" :options="[...[{ value: 'measured-support', label: String(zh?'基准处需实测支持':'Measured support required'), disabled: false }], ...[{ value: 'plane-extension', label: String(zh?'基准平面有限延伸':'Bounded datum plane extension'), disabled: false }]]" floating /></label>
       <GeometryFields v-if="object(row.reference_policy).kind==='plane-extension'" :model-value="row" :fields="extension" @update:model-value="update(index,$event)" />
       <GeometryFields :model-value="row" :fields="quality" @update:model-value="update(index,$event)" />
       <WorkflowLimitRulesEditor :model-value="object(row.quality_policy).rules" :available-items="measurementQualityItems(false,unit,zh)" quality @update:model-value="update(index,put(row,'quality_policy.rules',$event))" />
@@ -13,6 +13,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Plus,Trash2} from '@lucide/vue'

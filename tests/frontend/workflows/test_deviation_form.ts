@@ -1,3 +1,4 @@
+import { selectControl, chooseSelect } from './select-control'
 import {expect,it} from 'vitest'
 import {mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -22,7 +23,7 @@ it('round-trips explicit settings and does not mutate the live recipe',async()=>
 })
 it('clears extension limit on mode switch and rejects missing explicit limit',async()=>{
   const w=setup()
-  try{await w.get('button').trigger('click');await w.findAll('select').find(s=>s.element.value==='measured-support')!.setValue('plane-extension');expect(w.text()).toContain('max_extension_distance');expect(w.findAll('button').find(b=>b.text()==='Apply')!.attributes('disabled')).toBeDefined();await w.findAll('select').find(s=>s.element.value==='plane-extension')!.setValue('measured-support');await w.findAll('button').find(b=>b.text()==='Apply')!.trigger('click');expect(object(object(w.emitted('update:modelValue')![0]![0]).reference_policy)).toEqual({kind:'measured-support'})}finally{w.unmount()}
+  try{await w.get('button').trigger('click');await chooseSelect(selectControl(w,'measured-support'),'plane-extension');expect(w.text()).toContain('max_extension_distance');expect(w.findAll('button').find(b=>b.text()==='Apply')!.attributes('disabled')).toBeDefined();await chooseSelect(selectControl(w,'plane-extension'),'measured-support');await w.findAll('button').find(b=>b.text()==='Apply')!.trigger('click');expect(object(object(w.emitted('update:modelValue')![0]![0]).reference_policy)).toEqual({kind:'measured-support'})}finally{w.unmount()}
 })
 it('does not apply stale drafts after task input changes and blocks reference errors',async()=>{
   const w=setup()

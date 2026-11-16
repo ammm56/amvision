@@ -2,7 +2,8 @@
   <div
     ref="rootElement"
     class="ui-select"
-    :class="{ 'ui-select--fit-options': fitOptions, 'is-open': open, 'is-disabled': disabled }"
+    :class="[$attrs.class, { 'ui-select--fit-options': fitOptions, 'is-open': open, 'is-disabled': disabled }]"
+    :style="$attrs.style as CSSProperties"
   >
     <span v-if="fitOptions" class="ui-select__sizer" aria-hidden="true">
       <span v-for="option in options" :key="`sizer-${optionKey(option.value)}`" class="ui-select__sizer-option">
@@ -12,6 +13,7 @@
     </span>
     <button
       ref="triggerElement"
+      v-bind="controlAttrs()"
       class="ui-select__button"
       type="button"
       :disabled="disabled"
@@ -40,6 +42,8 @@
         :tabindex="floating ? -1 : undefined"
         role="option"
         :aria-selected="isSelected(option.value)"
+        :disabled="option.disabled"
+        :aria-disabled="option.disabled || undefined"
         @pointerdown.prevent.stop="selectOption(option.value)"
         @click.prevent.stop="selectOption(option.value)"
         @mouseenter="activeIndex = index"
@@ -54,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId, type CSSProperties } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useAttrs, useId, watch, type CSSProperties } from 'vue'
 import { Check, ChevronDown } from '@lucide/vue'
 import { useTranslation } from '@/platform/i18n'
 
@@ -64,11 +68,21 @@ interface SelectOption {
   label: string
   value: SelectValue
   description?: string
+  disabled?: boolean
+}
+
+defineOptions({ inheritAttrs: false })
+const attrs = useAttrs()
+
+function controlAttrs() {
+  // 布局样式保留在容器；表单标识、校验和交互属性交给实际控件。
+  const { class: _class, style: _style, ...control } = attrs
+  return control
 }
 
 const props = withDefaults(
   defineProps<{
-    modelValue: SelectValue
+    modelValue: unknown
     options: SelectOption[]
     placeholder?: string
     disabled?: boolean
@@ -121,6 +135,7 @@ function toggleOpen(): void {
 function close(): void {
   open.value = false
   activeIndex.value = -1
+  document.removeEventListener('pointerdown', handleDocumentPointerDown)
   window.removeEventListener('scroll', handleViewportChange, true)
   window.removeEventListener('resize', close)
 }
@@ -148,8 +163,26 @@ function openMenu(direction: 1 | -1 = 1): void {
     window.addEventListener('resize', close)
   }
   open.value = true
+  document.addEventListener('pointerdown', handleDocumentPointerDown)
   const selectedIndex = props.options.findIndex((option) => isSelected(option.value))
-  activeIndex.value = selectedIndex >= 0 ? selectedIndex : direction > 0 ? 0 : props.options.length - 1
+  activeIndex.value = selectedIndex >= 0 && !props.options[selectedIndex]?.disabled
+    ? selectedIndex : enabledIndex(direction > 0 ? -1 : 0, direction)
+  scrollActiveOption()
+}
+
+function enabledIndex(start: number, direction: 1 | -1): number {
+  for (let step = 1; step <= props.options.length; step++) {
+    const index = (start + direction * step + props.options.length) % props.options.length
+    if (!props.options[index]?.disabled) return index
+  }
+  return -1
+}
+
+function scrollActiveOption(): void {
+  void nextTick(() => {
+    if (open.value && activeIndex.value >= 0)
+      document.getElementById(optionId(activeIndex.value))?.scrollIntoView?.({ block: 'nearest' })
+  })
 }
 
 function moveActiveOption(direction: 1 | -1): void {
@@ -159,10 +192,12 @@ function moveActiveOption(direction: 1 | -1): void {
   }
   const optionCount = props.options.length
   if (optionCount === 0) return
-  activeIndex.value = (activeIndex.value + direction + optionCount) % optionCount
+  activeIndex.value = enabledIndex(activeIndex.value, direction)
+  scrollActiveOption()
 }
 
 function handleTriggerKeydown(event: KeyboardEvent): void {
+  if (props.disabled) return
   if (event.key === 'Escape') {
     if (open.value) { event.preventDefault(); event.stopPropagation() }
     close()
@@ -182,6 +217,7 @@ function handleTriggerKeydown(event: KeyboardEvent): void {
 }
 
 function selectOption(value: SelectValue): void {
+  if (!open.value || props.disabled || !props.options.some(option => Object.is(option.value, value) && !option.disabled)) return
   emit('update:modelValue', value)
   emit('change', value)
   close()
@@ -202,17 +238,18 @@ function handleViewportChange(event: Event): void {
   close()
 }
 
-onMounted(() => {
-  document.addEventListener('pointerdown', handleDocumentPointerDown)
-})
+onBeforeUnmount(close)
 
-onBeforeUnmount(() => {
-  close()
-  document.removeEventListener('pointerdown', handleDocumentPointerDown)
-})
+// 方法或任务切换后不能继续选择已经失效的菜单项。
+watch(() => props.disabled, disabled => { if (disabled) close() })
+watch(() => props.options, () => { if (open.value) close() }, { deep: true })
 </script>
 
 <style scoped>
+.ui-select { min-width: 0; max-width: 100%; }
+.ui-select__button { min-width: 0; width: 100%; }
+.ui-select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select__option:disabled { opacity: .5; cursor: not-allowed; }
 .ui-select__menu--floating { position: fixed; right: auto; box-sizing: border-box; z-index: calc(var(--am-z-modal) + 1); font-family: var(--am-font-sans); font-size: 13px; }
 .ui-select__menu--floating .ui-select__option { position: relative; padding-right: 30px; font: inherit; }
 .ui-select__check { position: absolute; right: 8px; top: 10px; color: var(--am-action-primary); }

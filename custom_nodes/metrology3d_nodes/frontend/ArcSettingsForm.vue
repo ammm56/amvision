@@ -2,11 +2,12 @@
   <fieldset class="arc-fields"><legend>{{ band?label('选点环带','Selection band'):label('目标角域','Target angular domain') }}</legend>
     <GeometryFields :model-value="value" :fields="fields" @update:model-value="emit('update:modelValue',$event)" />
     <label v-for="field in angles" :key="field.key">{{ field.label }} (°)<input type="number" step="any" :value="degrees(value[field.key])" @change="angle(field.key,$event)"></label>
-    <label>{{ label('三维手柄','3D handle') }}<select :value="handle" @change="emit('update:handle',($event.target as HTMLSelectElement).value as ArcHandle)"><option value="none">{{ label('关闭','Off') }}</option><option value="center">{{ label('中心 U/V','Center U/V') }}</option><option v-if="band" value="inner">{{ label('内半径','Inner radius') }}</option><option v-if="band" value="outer">{{ label('外半径','Outer radius') }}</option><option value="start">{{ label('起始角','Start angle') }}</option><option value="end">{{ label('结束角 / 扫角','End / sweep') }}</option></select></label>
+    <label>{{ label('三维手柄','3D handle') }}<UiSelect :model-value="handle" @change="emit('update:handle',String($event) as ArcHandle)" :options="[...[{ value: 'none', label: String(label('关闭','Off')), disabled: false }], ...[{ value: 'center', label: String(label('中心 U/V','Center U/V')), disabled: false }], ...(band ? [{ value: 'inner', label: String(label('内半径','Inner radius')), disabled: false }] : []), ...(band ? [{ value: 'outer', label: String(label('外半径','Outer radius')), disabled: false }] : []), ...[{ value: 'start', label: String(label('起始角','Start angle')), disabled: false }], ...[{ value: 'end', label: String(label('结束角 / 扫角','End / sweep')), disabled: false }]]" floating /></label>
     <p v-if="handle!=='none'&&!available" role="status">{{ label('当前输入与评价面未就绪','Current input and evaluation plane unavailable') }}</p>
   </fieldset>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import GeometryFields from './GeometryFields.vue'

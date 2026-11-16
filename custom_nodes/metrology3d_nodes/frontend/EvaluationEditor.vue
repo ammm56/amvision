@@ -1,12 +1,9 @@
 <template>
-  <label>{{ label('评价面来源','Evaluation source') }}<select :value="kind" :disabled="pose" @change="change(($event.target as HTMLSelectElement).value)">
-    <option v-if="!pose" value="configured">{{ label('显式配置','Configured') }}</option>
-    <option v-if="allowFeature" value="feature">{{ label('继承所选特征','Selected feature') }}</option>
-    <option v-if="pose" value="pose">{{ label('本次位姿与等高值','Current pose and contour height') }}</option>
-  </select></label>
+  <label>{{ label('评价面来源','Evaluation source') }}<UiSelect :model-value="kind" :disabled="pose" @change="change(String($event))" :options="[...(!pose ? [{ value: 'configured', label: String(label('显式配置','Configured')), disabled: false }] : []), ...(allowFeature ? [{ value: 'feature', label: String(label('继承所选特征','Selected feature')), disabled: false }] : []), ...(pose ? [{ value: 'pose', label: String(label('本次位姿与等高值','Current pose and contour height')), disabled: false }] : [])]" floating /></label>
   <GeometryFields :model-value="{evaluation:object(modelValue)}" :fields="fields" :suggestions="suggestions" @update:model-value="$emit('update:modelValue',$event.evaluation)" />
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import GeometryFields from './GeometryFields.vue'

@@ -1,4 +1,6 @@
+import { selectControl, chooseSelect } from './select-control'
 import {afterEach,expect,it} from 'vitest'
+import Select from '@/shared/ui/components/Select.vue'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
 import RoiEditor from '../../../custom_nodes/metrology3d_nodes/frontend/RoiEditor.vue'
@@ -32,29 +34,28 @@ afterEach(()=>{wrappers.splice(0).forEach(w=>w.unmount());document.body.innerHTM
 it('opens the public ROI source selector and cancels input mode without changing the recipe',async()=>{
   const value=source(),w=mount(RoiEditor,{props:{modelValue:value},attachTo:document.body,global:{plugins:[plugin()]}});wrappers.push(w)
   await w.get('button').trigger('click');await flushPromises()
-  const select=[...document.querySelectorAll('select')].find(s=>s.textContent?.includes('输入端口'))!
-  expect(select).toBeDefined();select.value='input';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  const select=selectControl(w,'parameters')
+  await chooseSelect(select,'input')
   expect(w.emitted('update:modelValue')).toBeUndefined();expect(value).toEqual(source())
-  select.value='parameters';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await chooseSelect(select,'parameters')
   expect(document.querySelector<HTMLInputElement>('input[aria-label="中心 XYZ 1"]')?.value).toBe('1')
-  select.value='input';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await chooseSelect(select,'input')
   ;[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()==='取消')!.click();await flushPromises()
   expect(document.querySelector('[role=dialog]')).toBeNull()
   await w.get('button').trigger('click');await flushPromises()
-  expect([...document.querySelectorAll('select')].find(s=>s.textContent?.includes('输入端口'))!.value).toBe('parameters')
+  expect(selectControl(w,'parameters').props('modelValue')).toBe('parameters')
 })
 it('keeps explicit embedded ROI restrictions and discards drafts when the cloud connection changes',async()=>{
   const w=mount(RoiEditor,{props:{modelValue:source(),allowInput:false,inputSources:{cloud:[{nodeId:'a',nodeTypeId:'custom.metrology3d.read-cloud',parameters:{},outputPort:'cloud'}]}},attachTo:document.body,global:{plugins:[plugin()]}});wrappers.push(w)
   await w.get('button').trigger('click');await flushPromises()
-  expect([...document.querySelectorAll('select')].some(s=>s.textContent?.includes('输入端口'))).toBe(false)
+  expect(w.findAllComponents(Select).some(s=>s.props('options').some(o=>o.value==='input'))).toBe(false)
   await w.setProps({inputSources:{cloud:[{nodeId:'b',nodeTypeId:'custom.metrology3d.read-cloud',parameters:{},outputPort:'cloud'}]}})
   expect(document.querySelector('[role=dialog]')).toBeNull();expect(w.emitted('update:modelValue')).toBeUndefined()
 })
 it('applies port mode without carrying the inactive parameter ROI',async()=>{
   const value=source(),w=mount(RoiEditor,{props:{modelValue:value},attachTo:document.body,global:{plugins:[plugin()]}});wrappers.push(w)
   await w.get('button').trigger('click');await flushPromises()
-  const select=[...document.querySelectorAll('select')].find(s=>s.textContent?.includes('输入端口'))!
-  select.value='input';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await chooseSelect(selectControl(w,'parameters'),'input')
   ;[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()==='应用')!.click();await flushPromises()
   expect(w.emitted('update:modelValue')?.[0]?.[0]).toEqual({kind:'input',bounds:[]});expect(value).toEqual(source())
 })
@@ -69,8 +70,9 @@ it('keeps an ROI draft during Preview refresh but closes it when upstream parame
 })
 it('shows translated enum labels and explicit unknown values without replacing saved values',async()=>{
   const w=mount(GeometryFields,{props:{modelValue:{method:{side:'invalid'}},fields:[{path:'method.side',label:'输出实测侧',type:'select',options:['high','low']}]},global:{plugins:[plugin()]}});wrappers.push(w)
-  expect(w.text()).toContain('高侧实测边');expect(w.text()).toContain('无效选项: invalid');expect(w.get('select').attributes('aria-invalid')).toBe('true')
-  expect(w.emitted('update:modelValue')).toBeUndefined();await w.get('select').setValue('low')
+  const select=selectControl(w)
+  expect(select.props('options').map(o=>o.label)).toContain('高侧实测边');expect(w.text()).toContain('无效选项: invalid');expect(w.get('button').attributes('aria-invalid')).toBe('true')
+  expect(w.emitted('update:modelValue')).toBeUndefined();await chooseSelect(select,'low')
   expect(w.emitted('update:modelValue')?.[0]?.[0]).toEqual({method:{side:'low'}})
   await w.setProps({modelValue:{roi:'high'},fields:[{path:'roi',label:'边界',type:'select',options:['high']}]})
   expect(w.text()).not.toContain('高侧实测边');expect(w.text()).toContain('high')
@@ -100,7 +102,7 @@ it('does not guess the plane residual unit and closes quality drafts on paramete
   const rule=normalizeLimitRule({item_id:'rms',unit:'um',upper:10,required:true,enabled:true})
   const w=mount(WorkflowLimitRulesEditor,{props:{modelValue:[rule],quality:true,availableItems:items},attachTo:document.body,global:{plugins:[plugin()]}});wrappers.push(w)
   await w.get('button').trigger('click');await flushPromises()
-  expect(document.querySelector<HTMLSelectElement>('select[aria-label="单位 1"]')?.value).toBe('um')
+  expect(selectControl(w,'um').props('modelValue')).toBe('um')
   await w.setProps({modelValue:[{...rule,upper:20}]});await flushPromises()
   expect(document.querySelector('[role=dialog]')).toBeNull();expect(w.emitted('update:modelValue')).toBeUndefined()
 })
@@ -110,8 +112,8 @@ it('rejects a dimensionless plane residual until an explicit length unit is sele
   await w.get('button').trigger('click');await flushPromises()
   const apply=()=>[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()==='应用')!
   expect(apply().disabled).toBe(true);expect(document.body.textContent).toContain('单位与检查项不一致')
-  const unit=document.querySelector<HTMLSelectElement>('select[aria-label="单位 1"]')!
-  expect(unit.value).toBe('1');unit.value='mm';unit.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  const unit=selectControl(w,'1')
+  await chooseSelect(unit,'mm')
   expect(apply().disabled).toBe(false);apply().click();await flushPromises()
   expect(w.emitted('update:modelValue')?.[0]?.[0]).toEqual([{...rule,unit:'mm'}])
 })

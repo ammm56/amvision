@@ -3,9 +3,7 @@
     <div class="workflow-graph-inspector-card__header"><strong>{{ t('workflowEditor.editor.previewNodeOutputs') }}</strong></div>
     <label class="workflow-graph-preview-field">
       <span>{{ t('workflowEditor.editor.previewOutputPort') }}</span>
-      <select v-model="selectedPort" @change="resetPage">
-        <option v-for="port in ports" :key="String(port.output_port)" :value="String(port.output_port)">{{ port.output_port }}</option>
-      </select>
+      <UiSelect v-model="selectedPort" @change="resetPage" :options="[...(ports ?? []).flatMap((port) => [{ value: String(port.output_port), label: String(port.output_port), disabled: false }])]" floating />
     </label>
     <p v-if="descriptor?.kind === 'unavailable'" role="status">{{ descriptor.error }}</p>
     <template v-else>
@@ -28,6 +26,7 @@
 </template>
 
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useTranslation } from '@/platform/i18n'
 import Button from '@/shared/ui/components/Button.vue'

@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -29,7 +30,7 @@ it('applies fixed file calibration; switches atomically and discards cancelled o
     await w.get('button').trigger('click');await flushPromises();expect(button('Apply').disabled).toBe(false)
     button('Apply').click();await flushPromises();expect(w.emitted('update:modelValue')![0]![0]).toEqual(valid())
     await w.get('button').trigger('click');await flushPromises()
-    const source=document.querySelector<HTMLSelectElement>('[aria-label="Input source"]')!;source.value='local-array';source.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'local-array'),'local-array')
     expect(document.querySelector('[aria-label="Projection model"]')).toBeNull()
     button('Apply').click();await flushPromises();expect(w.emitted('update:modelValue')![1]![0]).toEqual({kind:'local-array'})
     await w.get('button').trigger('click');await flushPromises();button('Cancel').click();await flushPromises();expect(w.emitted('update:modelValue')).toHaveLength(2)

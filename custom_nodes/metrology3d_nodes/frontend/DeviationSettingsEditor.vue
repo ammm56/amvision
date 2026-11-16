@@ -4,7 +4,7 @@
     <MetrologyWorkspace>
       <template #parameters><div class="deviation-form">
         <GeometryFields v-model="draft" :fields="identity" :suggestions="suggestions" />
-        <label>{{ label('基准支持','Datum support') }}<select :value="object(draft.reference_policy).kind" @change="changeReference(($event.target as HTMLSelectElement).value)"><option value="measured-support">{{ label('实测支持','Measured support') }}</option><option value="plane-extension">{{ label('有限延伸','Bounded extension') }}</option></select></label>
+        <label>{{ label('基准支持','Datum support') }}<UiSelect :model-value="object(draft.reference_policy).kind" @change="changeReference(String($event))" :options="[...[{ value: 'measured-support', label: String(label('实测支持','Measured support')), disabled: false }], ...[{ value: 'plane-extension', label: String(label('有限延伸','Bounded extension')), disabled: false }]]" floating /></label>
         <GeometryFields v-if="object(draft.reference_policy).kind==='plane-extension'" v-model="draft" :fields="extension" />
         <fieldset><legend>{{ label('输出量值 ID','Output measurement IDs') }}</legend><label v-for="(output,index) in outputs" :key="String(output.component)">{{ deviationLabel(String(output.component),zh) }}<input :value="output.item_id" @input="setOutput(index,($event.target as HTMLInputElement).value)"></label></fieldset>
       </div></template>
@@ -15,6 +15,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {deviationQualityItems} from './quality-items'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'

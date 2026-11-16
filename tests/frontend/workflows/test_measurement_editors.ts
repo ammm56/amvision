@@ -1,3 +1,5 @@
+import { selectWithOption, chooseSelect } from './select-control'
+import Select from '@/shared/ui/components/Select.vue'
 import {afterEach,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -13,7 +15,7 @@ const plugin=()=>createI18n({legacy:false,locale:'en-US'})
 function settings(){return {item_id:'step',frame_id:'fixture',length_unit:'mm',mode:{...newMeasurementMode(),reference_feature_id:'a',target_feature_id:'b',query:{kind:'configured',query_position:[0,0,0],direction:[0,0,1]},support_radius:2,quality_policy:{policy_id:'test',policy_version:1,rules:measurementMetrics(false,'mm').map(m=>normalizeLimitRule({...m,...(m.item_id.endsWith('_count')?{lower:3}:m.item_id.endsWith('_covered')?{lower:1}:m.item_id.endsWith('_cosine')?{lower:.1}:{upper:2})}))}}}}
 afterEach(()=>{document.body.innerHTML='';vi.clearAllMocks()})
 function button(text:string){return [...document.querySelectorAll('button')].find(b=>b.textContent?.trim()===text)!}
-function select(value:string){const element=[...document.querySelectorAll('select')].find(s=>[...s.options].some(o=>o.value===value))!;element.value=value;element.dispatchEvent(new Event('change',{bubbles:true}))}
+async function select(w:ReturnType<typeof mount>,value:string){await chooseSelect(selectWithOption(w,value),value)}
 it('keeps production thresholds empty and requires complete mutually exclusive settings',()=>{
   expect(measurementIssues(true,newMeasurement(true))).not.toEqual([])
   expect(measurementIssues(false,newMeasurement(false))).not.toEqual([])
@@ -29,15 +31,15 @@ it('applies only an atomic draft and discards hidden fields when changing measur
   const input=document.querySelector<HTMLInputElement>('[aria-label="Query position XYZ 1"]')!;input.value='9';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises()
   expect(w.emitted('update:modelValue')).toBeUndefined();button('Cancel').click();await flushPromises()
   await w.get('button').trigger('click');await flushPromises();expect(document.querySelector<HTMLInputElement>('[aria-label="Query position XYZ 1"]')!.value).toBe('0')
-  select('roi-statistic');await flushPromises();expect(document.querySelector('[aria-label="Reference plane ID"]')).toBeNull();expect(button('Apply').disabled).toBe(true)
-  select('quantile');await flushPromises();expect(document.querySelector<HTMLInputElement>('[aria-label="Quantile probability"]')!.value).toBe('')
+  await select(w,'roi-statistic');await flushPromises();expect(document.querySelector('[aria-label="Reference plane ID"]')).toBeNull();expect(button('Apply').disabled).toBe(true)
+  await select(w,'quantile');await flushPromises();expect(document.querySelector<HTMLInputElement>('[aria-label="Quantile probability"]')!.value).toBe('')
   await w.setProps({modelValue:settings()});expect(document.querySelector('[role=dialog]')).toBeNull();w.unmount()
 })
 it('requires matching current preview, ignores late picks and invalidates on run changes',async()=>{
   const state=ref({runId:'one',succeeded:true}),payload={observation_id:'obs',state:'ready',spatial:{frame_id:'fixture',length_unit:'mm'}}
   const views=ref([{id:'v',label:'Cloud',projectId:'p',payload}])
   const w=mount(MeasurementSettingsEditor,{props:{modelValue:settings(),nodeType:'custom.metrology3d.measure-step'},attachTo:document.body,global:{plugins:[plugin()],provide:{[parameterCloudPreviewsKey as symbol]:()=>views.value,[parameterPreviewStateKey as symbol]:()=>state.value}}})
-  await w.get('button').trigger('click');select('v');await flushPromises()
+  await w.get('button').trigger('click');await select(w,'v');await flushPromises()
   const cloud=w.findComponent({name:'TestCloudViewer'});expect(cloud.props('allowPick')).toBe(true)
   cloud.vm.$emit('candidate',{payload:cloud.props('payload'),xyz:[3,4,5]});await flushPromises()
   expect(document.querySelector<HTMLInputElement>('[aria-label="Query position XYZ 1"]')!.value).toBe('3')
@@ -49,7 +51,7 @@ it('requires matching current preview, ignores late picks and invalidates on run
 })
 it('requires an explicit extension bound and discards it when returning to measured support',async()=>{
   const w=mount(MeasurementSettingsEditor,{props:{modelValue:settings(),nodeType:'custom.metrology3d.measure-step'},attachTo:document.body,global:{plugins:[plugin()]}})
-  await w.get('button').trigger('click');select('plane-extension');await flushPromises()
+  await w.get('button').trigger('click');await select(w,'plane-extension');await flushPromises()
   const input=document.querySelector<HTMLInputElement>('[aria-label="Maximum datum extension (mm)"]')!
   expect(input.value).toBe('');expect(button('Apply').disabled).toBe(true)
   input.value='10';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises()
@@ -57,12 +59,12 @@ it('requires an explicit extension bound and discards it when returning to measu
   button('Apply').click();await flushPromises()
   const result=w.emitted('update:modelValue')![0]![0] as ReturnType<typeof settings>
   expect((result.mode as Record<string,unknown>).reference_policy).toEqual({kind:'plane-extension',max_extension_distance:10})
-  await w.setProps({modelValue:result});await w.get('button').trigger('click');select('measured-support');await flushPromises()
+  await w.setProps({modelValue:result});await w.get('button').trigger('click');await select(w,'measured-support');await flushPromises()
   expect(document.querySelector('[aria-label="Maximum datum extension (mm)"]')).toBeNull()
   button('Apply').click();await flushPromises()
   expect(((w.emitted('update:modelValue')![1]![0] as ReturnType<typeof settings>).mode as Record<string,unknown>).reference_policy).toEqual({kind:'measured-support'})
-  await w.get('button').trigger('click');select('roi-statistic');await flushPromises()
-  expect([...document.querySelectorAll('option')].some(o=>o.value==='plane-extension')).toBe(false)
+  await w.get('button').trigger('click');await select(w,'roi-statistic');await flushPromises()
+  expect(w.findAllComponents(Select).some(c=>c.props('options').some(o=>o.value==='plane-extension'))).toBe(false)
   w.unmount()
 })
 
@@ -78,10 +80,10 @@ it('requires the connected pose identity and discards configured geometry on sou
   await w.get('button').trigger('click');await flushPromises()
   expect(document.querySelector('[aria-label="Query position XYZ 1"]')).toBeNull()
   expect(document.querySelector<HTMLInputElement>('[aria-label="U / V (mm) 1"]')!.value).toBe('1')
-  select('configured');await flushPromises()
+  await select(w,'configured');await flushPromises()
   expect(document.querySelector<HTMLInputElement>('[aria-label="Query position XYZ 1"]')!.value).toBe('')
   expect(document.querySelector('[aria-label="Pose ID"]')).toBeNull();expect(button('Apply').disabled).toBe(true)
-  select('pose-uv');await flushPromises()
+  await select(w,'pose-uv');await flushPromises()
   expect(document.querySelector<HTMLInputElement>('[aria-label="U / V (mm) 1"]')!.value).toBe('')
   button('Cancel').click();await flushPromises();expect(w.emitted('update:modelValue')).toBeUndefined();w.unmount()
 })
@@ -91,7 +93,7 @@ it('projects candidate source XYZ into the selected current datum and rejects la
   Object.assign(value.mode,{query:{kind:'pose-uv',pose_id:'datum',target_frame_id:'part',uv:[0,0]}})
   const payload={observation_id:'obs',state:'ready',spatial:{frame_id:'fixture',length_unit:'mm'},geometry:{frame:{pose_id:'datum',target_frame_id:'part',state:'found',transform:{matrix:[[0,1,0,-2],[0,0,1,-3],[1,0,0,-1],[0,0,0,1]]}}}}
   const w=mount(MeasurementSettingsEditor,{props:{modelValue:value,nodeType:'custom.metrology3d.measure-step'},attachTo:document.body,global:{plugins:[plugin()],provide:{[parameterCloudPreviewsKey as symbol]:()=>[{id:'v',label:'Cloud',projectId:'p',payload}],[parameterPreviewStateKey as symbol]:()=>state.value}}})
-  await w.get('button').trigger('click');select('v');await flushPromises()
+  await w.get('button').trigger('click');await select(w,'v');await flushPromises()
   const cloud=w.findComponent({name:'TestCloudViewer'});expect(cloud.props('allowPick')).toBe(true)
   cloud.vm.$emit('candidate',{payload:cloud.props('payload'),xyz:[1,7,11]});await flushPromises()
   expect(document.querySelector<HTMLInputElement>('[aria-label="U / V (mm) 1"]')!.value).toBe('5')
