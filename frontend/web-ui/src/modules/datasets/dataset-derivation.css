@@ -1,0 +1,78 @@
+.dataset-operation--derive { gap: 14px; font-size: 16px; }
+.dataset-operation--derive .dataset-title { font-size: 24px; }
+.dataset-operation--derive :is(.dataset-table th, .dataset-table td, .ui-select__button, .field input, .field textarea) { font-size: 16px; }
+.dataset-operation--derive .ui-button { font-size: 14px; }
+.dataset-operation--derive > .dataset-heading { flex-wrap: wrap; gap: 24px; }
+.dataset-operation--derive > .dataset-heading > .dataset-actions { flex: 0 0 auto; }
+.dataset-steps.derivation-steps { align-items: center; flex: 1; max-width: 660px; margin: 0 auto 0 14%; padding: 0; gap: 16px; border: 0; background: transparent; flex-wrap: nowrap; }
+.derivation-steps li { gap: 12px; min-width: 0; white-space: nowrap; font-size: 16px; }
+.derivation-steps li:first-child { flex: 1; }
+.derivation-steps li:last-child { flex: 0 0 auto; }
+.derivation-steps li:first-child::after { content: ''; flex: 1; height: 1px; background: var(--am-border); min-width: 40px; }
+.derivation-steps li.is-complete::after { background: var(--am-brand-primary); }
+.derivation-steps li > span { width: 34px; height: 34px; font-size: 18px; flex-shrink: 0; }
+.dataset-operation--derive .dataset-config, .dataset-operation--derive > .derivation-source, .dataset-operation--derive .derivation-report { padding: 18px 20px; }
+.dataset-operation--derive .dataset-config-fields { gap: 0; }
+.dataset-operation--derive h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.derivation-source { display: grid; gap: 12px; }
+.derivation-form-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); column-gap: 24px; align-items: start; }
+.derivation-source .derivation-form-row { align-items: center; }
+.derivation-source-value { display: flex; align-items: center; gap: 16px; min-height: 38px; padding: 6px 14px; background: var(--am-page); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); overflow-wrap: anywhere; }
+.derivation-source-value > span { flex-shrink: 0; }
+.dataset-config-fields > section + section, .dataset-config-fields > .derivation-notes { border-top: 1px solid var(--am-border); padding-top: 18px; margin-top: 18px; }
+.derivation-mapping { display: grid; gap: 12px; }
+.derivation-mapping p { font-size: 14px; line-height: 1.6; }
+.derivation-mapping th:first-child { width: 30%; }
+.derivation-mapping thead th { background: var(--am-page); }
+.derivation-target { display: flex; gap: 8px; align-items: center; max-width: 540px; }
+.derivation-target > .ui-select, .derivation-target > .field { flex: 1; min-width: 0; }
+.derivation-target > .ui-button { padding: 6px; min-height: 32px; }
+.derivation-mapping .dataset-table td { padding-top: 6px; padding-bottom: 6px; }
+.derivation-partition-fields { display: grid; gap: 16px; min-width: 0; }
+.derivation-partition-fields .dataset-actions { gap: 28px; }
+.derivation-partition-fields .dataset-checkbox { font-size: 14px; }
+.derivation-ratios { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+.derivation-ratio { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.derivation-ratio > span:first-child { min-width: 34px; }
+.derivation-ratio > span { font-size: 14px; }
+.field.derivation-ratio input { width: 80px; min-width: 0; flex: 0 0 80px; text-align: right; }
+.derivation-ratio > span:last-child { color: var(--am-text-muted); }
+.derivation-total { display: flex; gap: 20px; padding-left: 24px; border-left: 1px solid var(--am-border); white-space: nowrap; color: var(--am-text-muted); }
+.derivation-total strong { color: var(--am-text); }
+.derivation-total.invalid strong, .derivation-delta--negative { color: var(--am-danger-text); }
+.derivation-options { display: flex; align-items: center; }
+.field.derivation-seed input { width: 110px; min-width: 0; }
+.derivation-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 20px; }
+.derivation-option.derivation-seed { grid-template-columns: auto 110px; }
+.derivation-option > span { font-size: 14px; white-space: nowrap; }
+.derivation-existing { display: flex; gap: 40px; }
+.derivation-existing strong { margin-left: 12px; color: var(--am-text); font-weight: 500; }
+.derivation-range { display: grid; grid-template-columns: 1fr 1fr; background: var(--am-page); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); padding: 12px 20px; gap: 24px; }
+.derivation-range > div { display: flex; gap: 24px; align-items: center; min-width: 0; }
+.derivation-range > div + div { border-left: 1px solid var(--am-border-strong); padding-left: 28px; }
+.derivation-range > div > div { display: grid; gap: 4px; }
+.derivation-range span { font-size: 13px; color: var(--am-text-muted); }
+.derivation-range strong { font-size: 18px; font-weight: 600; }
+.derivation-notes > span { font-size: 18px; font-weight: 600; color: var(--am-text); }
+.dataset-operation--derive .dataset-form-actions { border: 0; padding-top: 14px; margin: 0; justify-content: flex-end; }
+.dataset-operation--derive .dataset-form-actions > .ui-button, .dataset-operation--derive .dataset-review-actions > .ui-button { min-width: 104px; }
+.dataset-operation--derive .dataset-review-actions { justify-content: flex-end; padding-top: 0; }
+.dataset-operation--derive .derivation-report { gap: 8px; }
+.derivation-delta--positive { color: var(--am-brand-primary); }
+@media (max-width: 1200px) {
+  .dataset-steps.derivation-steps { margin: 0 0 0 auto; max-width: 540px; }
+  .derivation-form-row { grid-template-columns: 120px minmax(0, 1fr); gap: 18px; }
+  .derivation-ratios { gap: 16px; }
+  .derivation-ratio { gap: 8px; }
+  .derivation-total { padding-left: 14px; gap: 10px; }
+}
+@media (max-width: 760px) {
+  .dataset-steps.derivation-steps { flex-basis: 100%; max-width: none; }
+  .derivation-form-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .derivation-total { justify-content: flex-end; border: 0; }
+  .derivation-range { padding: 12px; gap: 12px; }
+  .derivation-range > div { gap: 12px; }
+  .derivation-range > div + div { padding-left: 12px; }
+}
+
+[data-theme='dark'] .dataset-operation--derive :is(.derivation-source-value, .derivation-range, .derivation-mapping th) { background: var(--am-surface-muted); }

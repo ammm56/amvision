@@ -161,3 +161,15 @@
 - **类别与划分**：类别表按包含该类的样本和标注对象分别统计，多类别样本不可跨类别相加。工作区响应新增 `split_object_counts`，以各划分实际标注数为准。未配置的划分与数量为零分别显示。
 - **质量检查**：`GET /api/v1/datasets/{dataset_id}/versions/{version_id}/jobs?operation=quality&limit=1` 查询最近一次质量操作。详情含检查时的 `content_revision`。未执行、运行中、失败、报告过期、截断及语义未检查均不能等同于通过。该页仅查看已有报告，主动重新检查沿用原工作区操作。
 - **版本与来源**：`GET /api/v1/datasets/catalog/versions?project_id=…&include_references=true` 可按页返回训练、评估任务的引用数。具有 `datasets:read` 和 `tasks:read` 时，可通过 `GET /api/v1/datasets/{dataset_id}/versions/{version_id}/task-references` 按 `offset/limit` 查询引用明细（`items/has_more`）。历史导入记录不存在时仍可查看版本，且不提供失效的导入链接。以上均为只读增量接口，不需数据库迁移。
+
+
+### 创建新版本配置与检查（2026-11-16）
+
+- 配置页按设计保留顶部两步进度、只读版本来源、类别映射、横向 train/val/test 比例、种子与分组字段、来源范围和版本说明；检查页拆为来源卡片与报告卡片，报告包含四项摘要、样本/对象的分组表头对照及真实检查结果。复用 Vue 3、Select、Button、ResourceTable、离线 Noto Sans SC 与现有主题变量。
+- v1 工作区操作接口 `POST /api/v1/datasets/{dataset_id}/versions/{version_id}/jobs` 的 `config` 增加可选 `category_mapping`，键为来源类别 ID、值为同一来源的目标类别 ID；`null` 明确排除该类别标注但保留样本。省略字段保持原行为，`category_names` 继续表示改名且不隐式合并。显式映射支持 detection/classification/segmentation/obb；其他任务仍只支持改名，避免未经实现的 schema 转换。目标必须保持自身映射，循环、链式映射、未知类别及全部排除会被拒绝。
+- `derive-check` 报告增量返回 `source_object_count`、`source_category_count`、`source_split_object_counts`、`split_object_counts`、`group_integrity`、`cross_split_duplicate_count`、`duplicate_check`、`unreadable_count` 和 `can_create`。重复候选按真实文件摘要检查跨划分的完全重复内容，不表示近似重复检测；未配置分组和历史缺失结果均不显示为通过。无法读取文件时禁止创建。
+- 映射后的类别 ID 与标注统一落到新版本，原版本和引用保持不变；预检查不分配版本身份，正式创建仍校验预检查签名和来源 revision。新增配置保存在现有任务 JSON 中，不涉及数据库结构或迁移，旧客户端省略新字段仍可执行，旧预检查配置不匹配时需要重新检查。Worker 源码更新后通过现有 supervisor 入口重启，前端保持本地离线分发。
+
+### 创建新版本默认按样本划分（2026-11-16）
+
+创建新版本的浏览器表单移除分组字段、自定义字段和相关校验，重新划分固定提交空 group_key，按单个样本分配。随机种子与划分比例保持可配置。检查页移除分组完整性卡片，跨划分重复候选使用单列布局。后端 DatasetDerivation.group_key 及分组算法保留，API 调用方仍可使用；历史分组预检查不能直接用于页面的按样本创建，须返回配置重新检查。接口和持久化结构无变化。

@@ -20,6 +20,7 @@ from backend.service.application.datasets.imports.formats.sample_media import co
 from backend.service.application.datasets.workspace_analysis import (
     compare_versions,
     derivation_plan,
+    derivation_checks,
     image_path,
     quality_report,
     stable_sample_id,
@@ -323,6 +324,8 @@ class DatasetWorkspaceJobs:
                     planned, summary = derivation_plan(
                         source, request.config, selected_ids
                     )
+                    if request.operation == "derive-check":
+                        summary.update(derivation_checks(self.storage, planned, tick))
                 result.update(summary)
                 result["signature"] = self.signature(task.task_spec)
                 if request.operation in {"derive", "revise", "return-apply"}:

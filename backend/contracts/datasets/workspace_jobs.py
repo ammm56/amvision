@@ -15,6 +15,8 @@ class DatasetDerivation(BaseModel):
     selection: DatasetSampleSelection | None = None
     exclude_selection: DatasetSampleSelection | None = None
     category_names: dict[int, str] = Field(default_factory=dict, max_length=1000)
+    # 显式映射到来源类别 ID；null 仅排除该类别标注，保留样本。
+    category_mapping: dict[int, int | None] = Field(default_factory=dict, max_length=1000)
     description: str = Field(default="", max_length=500)
     split_ratios: tuple[int, int, int] | None = None
     seed: int = Field(default=42, ge=0, le=2147483647)

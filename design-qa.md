@@ -474,3 +474,60 @@ final result: passed（导入向导上述状态）
 ## 导入与导出字体、日期和图标复核（2026-11-10）
 
 工作站使用本地分发的 Noto Sans SC 可变字体，普通表格正文 14 px、辅助信息 13 px。实心状态图标仅内部符号使用白色描边。文件树的省略号按目录展开，键盘可以操作。亮暗两套 22 组[原图和实测对照](docs/design/frontend/verification/dataset-transfer-records/导入导出设计实测对照.html)已更新。[现有 1,224 张样本的导入详情，1024 × 768 暗色](docs/design/frontend/verification/dataset-transfer-records/实测-导入详情-1024-dark.png)显示同一次执行的四个时间、对应状态以及无白色外圈的结果图标。
+
+
+## 创建新版本：配置与检查页面（2026-11-16）
+
+final result: passed（本轮配置、预检查和创建流程范围）
+
+依据“创建新版本-配置／检查”的亮暗四张原图及配套中文约束，重建横向两步标题、版本来源、类别映射、划分比例、随机种子与分组、数据范围、版本说明、检查摘要、样本／对象双组对比表及右侧底部操作。复用工作站按钮、下拉框、表格、图标、离线 Noto Sans SC 和主题变量，未引入新 UI 框架。
+
+### 视觉核对
+
+| 范围 | 核对结果与证据 |
+| --- | --- |
+| 配置页亮色／暗色 | 来源、映射、横向比例、范围、说明及操作顺序一致；已修正重复内边距、字号和暗色面板背景。[亮色对照](docs/design/frontend/verification/derive-20261116/compare-config-light.jpg)、[暗色对照](docs/design/frontend/verification/derive-20261116/compare-config-dark.jpg) |
+| 检查页亮色／暗色 | 独立来源卡、预检查状态、四项摘要、双组划分表及两项检查卡已核对；修正变化值颜色覆盖和底部操作位置。[亮色对照](docs/design/frontend/verification/derive-20261116/compare-review-light.jpg)、[暗色对照](docs/design/frontend/verification/derive-20261116/compare-review-dark.jpg) |
+| 1024 × 768 | 两种主题均检查，保留正常字号及滚动；无横向溢出，键盘可到达底部操作。[配置](docs/design/frontend/verification/derive-20261116/config-light-1024.jpg)、[检查操作区](docs/design/frontend/verification/derive-20261116/review-light-1024-actions.jpg) |
+
+原图中的示例数据由真实开发数据替换。导航沿用当前工作站尺寸；空操作列及手工字符计数按中文设计修订省略。类别未变显示实际差值 0；减少值使用带符号的负值和主题危险色。未配置分组时显示中性“未检查”，不冒充设计示例中的成功状态。映射排除只删除对应标注，保留样本。上述为有意的数据／公共组件差异，不宣称逐像素相同。
+
+### 行为与真实数据
+
+- 609 张条码／二维码样本、982 个对象：80/10/10 预检查得到 train 487、val 61、test 61，对象分别 782、84、116。
+- 合并类别后为 1 类、982 个对象；排除二维码标注后保留 609 张样本、419 个对象。预检查不改变来源版本。
+- 比例合计错误阻止继续；不存在的 capture_group 值返回失败并可返回配置。跨划分重复检查实际读取文件计算 SHA256；无法读取的文件阻止创建。
+- 真实创建 v2：dataset-version-1114e51e4788。浏览器进入 v2 后核对 609 张、982 对象、2 类和 487/61/61；再核对 v1 仍为 520/未配置/89，源数据未改变。
+- 51 项数据集前端测试、11 项后端计划／任务集成测试、ruff 和最终生产构建通过。浏览器最后仅保留开发编辑中产生的旧 HMR 日志，最终页面及构建正常。Vite 仍有既存的大分块体积提示。
+
+截图保存在已忽略的 verification 目录，本地保留、不纳入 Git。测试结论覆盖上述类型、状态与数据，不扩展为全部任务类型或全部数据集页面验收。本轮无尚未修复的 P0/P1/P2 问题。后端、Worker 和推理守护进程按用户要求保持运行。
+
+### 创建新版本输入与步骤条修正（2026-11-16）
+
+final result: passed（本次输入宽度及步骤状态范围）
+
+按现有导入组件修正重新划分：复用 field--compact，比例输入固定 80 × 28 px，随机种子固定 110 × 28 px，不再随整行拉伸；保留标签、百分号及组间间距。步骤条复用 dataset-steps 的 is-active / is-complete 状态和主题颜色，完成步骤显示 Check 图标及绿色连接线，待开始使用中性背景与文字，去掉灰底白字的独立实现。此处按最新用户要求使用已有组件状态，优先于原图中的灰色完成序号。
+
+浏览器核对亮暗配置、检查状态及 1024 × 768，无横向溢出；实测比例宽度均为 80 px，种子为 110 px。最终 TypeScript 检查通过。本轮无后端行为变化，没有额外创建版本。
+
+[配置实测](docs/design/frontend/verification/derive-20261116/compact-controls/config-light.jpg) · [暗色检查步骤](docs/design/frontend/verification/derive-20261116/compact-controls/review-dark.jpg)。
+
+### 创建新版本分组字段修正（2026-11-16）
+
+final result: passed（分组字段布局与输入交互）
+
+对照配置原图中的字段／控件／辅助文本关系，修正分组区：标签与随机种子同行，统一 28 px 控件高度；自定义输入及说明与下拉框左边界对齐，不再跨到标签下方。1024 px 亮暗实测无横向溢出，种子和下拉框的顶部坐标一致。
+
+自定义字段为空或包含不允许的字符时显示明确提示并阻止继续，不再以不分组提交。切换 capture_group、不分组、自定义字段及保留原划分后返回，保留自定义草稿；历史任务恢复时同步恢复自定义模式。分组结果仍由实际预检查确认，不在配置页声称元数据字段存在。浏览器验证空值、空格、有效字段、选项往返和划分方式往返，TypeScript 与 diff 检查通过。没有提交新的检查或创建任务。
+
+证据：[亮色自定义布局](docs/design/frontend/verification/derive-20261116/group-field/custom-light.jpg)、[暗色自定义布局](docs/design/frontend/verification/derive-20261116/group-field/custom-dark.jpg)、[空值阻止继续](docs/design/frontend/verification/derive-20261116/group-field/empty-custom-light.jpg)。
+
+### 创建新版本移除分组配置（2026-11-16）
+
+final result: passed（本次页面范围）
+
+按最新确认移除创建页分组配置、草稿及空值校验，重新划分提交空 group_key。检查页同步删除分组完整性卡片，保留跨划分重复候选，改为单列，不保留空的半栏。后台分组接口与算法不变。历史分组预检查需要重新检查，避免混用不同划分方式的凭据。
+
+真实 609 样本预检查 task-7008faef2a705bfdab90e66ae385cfaa 成功：样本划分 487/61/61；本轮未创建新版本。6 项前端回归覆盖默认空分组提交、历史凭据阻止复用、检查报告数据。亮暗配置页／检查页、1024×768 均核对，横向无溢出，滚动后底部操作可达。
+
+截图：[配置亮色](docs/design/frontend/verification/derive-20261116/sample-split/config-light.jpg)、[配置暗色短屏](docs/design/frontend/verification/derive-20261116/sample-split/config-dark-1024.jpg)、[检查亮色](docs/design/frontend/verification/derive-20261116/sample-split/review-light.jpg)、[检查暗色短屏](docs/design/frontend/verification/derive-20261116/sample-split/review-dark-1024-actions.jpg)。本次产品范围调整覆盖原设计中的分组项，其他布局沿用已核对方案。

@@ -1,5 +1,5 @@
 <template>
-  <section class="dataset-workspace dataset-operation">
+  <section class="dataset-workspace dataset-operation" :class="{ 'dataset-operation--derive': operation === 'derive' }">
     <div class="dataset-heading">
       <div class="dataset-actions">
         <Button @click="back"
@@ -7,24 +7,16 @@
         >
         <h1 class="dataset-title">{{ title }}</h1>
       </div>
-      <span v-if="workspace">{{ workspace.dataset.display_name }}</span>
+      <ol v-if="operation === 'derive'" class="dataset-steps derivation-steps" :aria-label="label('操作步骤', 'Steps')">
+        <li :class="{ 'is-active': !job, 'is-complete': !!job }" :aria-current="!job ? 'step' : undefined"><span><Check v-if="job" :size="18" /><template v-else>1</template></span>{{ label('配置变更', 'Configure changes') }}</li>
+        <li :class="{ 'is-active': !!job }" :aria-current="job ? 'step' : undefined"><span>2</span>{{ label('检查并创建', 'Review and create') }}</li>
+      </ol>
+      <span v-else-if="workspace">{{ workspace.dataset.display_name }}</span>
     </div>
     <InlineError v-if="error" :message="error" />
     <Button v-if="error && !loading && (!workspace || (initializationFailed && !staleSelection) || (pollFailed && !job))" @click="initialize">{{
       text('retry')
     }}</Button>
-    <ol
-      v-if="operation === 'derive'"
-      class="dataset-steps"
-      :aria-label="label('操作步骤', 'Steps')"
-    >
-      <li :class="{ 'is-active': !job, 'is-complete': !!job }">
-        <span>1</span>{{ label('配置变更', 'Configure changes') }}
-      </li>
-      <li :class="{ 'is-active': !!job }">
-        <span>2</span>{{ label('检查并创建', 'Review and create') }}
-      </li>
-    </ol>
     <p v-if="loading">{{ text('loading') }}</p>
     <template v-if="workspace && !loading && (!initializationFailed || staleSelection)">
       <form
@@ -33,86 +25,47 @@
         @submit.prevent="submit('derive-check')"
       >
         <fieldset class="dataset-config-fields" :disabled="busy || unknown">
-          <h2>{{ label('来源与范围', 'Source and range') }}</h2>
-          <dl class="dataset-details">
-            <dt>{{ text('version') }}</dt>
-            <dd :title="version">
-              {{ workspace ? `v${workspace.version_number}` : '—' }}
-            </dd>
-            <dt>{{ text('samples') }}</dt>
-            <dd>{{ selectionCount ?? workspace.sample_count }}</dd>
-          </dl>
-          <h2>{{ label('类别名称', 'Class names') }}</h2>
-          <ResourceTable class="dataset-table" :label="text('classes')"
-            ><thead>
-              <tr>
-                <th>{{ label('来源名称', 'Source name') }}</th>
-                <th>{{ label('新类别名称', 'New class name') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in names" :key="row.id">
-                <td>{{ row.source }}</td>
-                <td class="field">
-                  <input
-                    v-model="row.name"
-                    maxlength="255"
-                    :aria-label="`${label('新类别名称', 'New class name')} ${row.source}`"
-                  />
-                </td>
-              </tr></tbody
-          ></ResourceTable>
-          <h2>{{ text('splits') }}</h2>
-          <div class="dataset-actions">
-            <label class="dataset-checkbox"
-              ><input
-                v-model="repartition"
-                type="radio"
-                :value="false"
-                name="partition"
-              />{{ label('保留原划分', 'Keep existing splits') }}</label
-            >
-            <label class="dataset-checkbox"
-              ><input
-                v-model="repartition"
-                type="radio"
-                :value="true"
-                name="partition"
-              />{{ label('重新划分', 'Repartition') }}</label
-            >
-          </div>
-          <div v-if="repartition" class="dataset-split-config">
-            <label
-              v-for="(split, i) in ['train', 'val', 'test']"
-              :key="split"
-              class="field"
-              >{{ split }} %<input
-                v-model.number="ratios[i]"
-                type="number"
-                min="0"
-                max="100"
-                step="1" /></label
-            ><label class="field"
-              >{{ label('随机种子', 'Seed')
-              }}<input
-                v-model.number="seed"
-                type="number"
-                min="0"
-                max="2147483647"
-                step="1" /></label
-            ><label class="field"
-              >{{ label('分组字段（可选）', 'Grouping field (optional)')
-              }}<input v-model="groupKey" maxlength="100"
-            /></label>
-          </div>
-          <p v-if="repartition" class="dataset-muted">
-            {{ label('比例合计', 'Total') }}
-            {{ ratios.reduce((sum, value) => sum + Number(value || 0), 0) }}%
-          </p>
-          <label class="field"
-            >{{ label('版本说明（可选）', 'Version notes (optional)')
-            }}<textarea v-model="description" rows="3" maxlength="500" />
-          </label>
+          <section class="derivation-source">
+            <h2>{{ label('版本来源', 'Version source') }}</h2>
+            <div class="derivation-form-row"><span class="dataset-muted">{{ label('来源数据集', 'Source dataset') }}</span><div class="derivation-source-value">{{ workspace.dataset.display_name }} <span>v{{ workspace.version_number }}</span></div></div>
+          </section>
+          <section class="derivation-mapping">
+            <h2>{{ label('类别映射', 'Class mapping') }}</h2>
+            <p class="dataset-muted">{{ label('可将多个源类别合并为同一目标类别，或排除不需要的类别标注。变更后请在下一步检查数量。', 'Merge source classes or exclude class annotations. Review the resulting counts in the next step.') }}</p>
+            <ResourceTable class="dataset-table" :label="label('类别映射', 'Class mapping')">
+              <thead><tr><th>{{ label('源类别', 'Source class') }}（v{{ workspace.version_number }}）</th><th>{{ label('目标类别', 'Target class') }}</th></tr></thead>
+              <tbody><tr v-for="row in names" :key="row.id"><td :title="row.source">{{ row.source }}</td><td>
+                <div class="derivation-target">
+                  <SelectField v-if="!row.editing" v-model="row.target" :options="mappingOptions(row.id)" :aria-label="`${label('目标类别', 'Target class')} ${row.source}`" floating />
+                  <label v-else class="field"><input v-model="row.name" maxlength="255" :aria-label="`${label('新类别名称', 'New class name')} ${row.source}`" /></label>
+                  <Button v-if="row.target === row.id" :aria-label="`${label('重命名', 'Rename')} ${row.source}`" :title="label('重命名', 'Rename')" @click="row.editing = !row.editing"><Pencil :size="14" /></Button>
+                  <Button v-if="row.target !== row.id || row.name !== row.source" :aria-label="`${label('重置映射', 'Reset mapping')} ${row.source}`" @click="row.target = row.id; row.name = row.source; row.editing = false"><RotateCcw :size="14" /></Button>
+                </div>
+              </td></tr></tbody>
+            </ResourceTable>
+          </section>
+          <section class="derivation-form-row derivation-partition">
+            <h2>{{ text('splits') }}</h2>
+            <div class="derivation-partition-fields">
+              <div class="dataset-actions">
+                <label class="dataset-checkbox"><input v-model="repartition" type="radio" :value="false" name="partition" />{{ label('保留原划分', 'Keep existing splits') }}</label>
+                <label class="dataset-checkbox"><input v-model="repartition" type="radio" :value="true" name="partition" />{{ label('重新划分', 'Repartition') }}</label>
+              </div>
+              <div v-if="repartition" class="derivation-ratios">
+                <label v-for="(split, i) in ['train', 'val', 'test']" :key="split" class="field field--compact derivation-ratio"><span>{{ split }}</span><input v-model.number="ratios[i]" :aria-label="`${split} %`" type="number" min="0" max="100" step="1" /><span>%</span></label>
+                <div class="derivation-total" :class="{ invalid: ratioTotal !== 100 }">{{ label('总计', 'Total') }} <strong>{{ ratioTotal }}%</strong></div>
+              </div>
+              <div v-if="repartition" class="derivation-options">
+                <label class="field field--compact derivation-option derivation-seed"><span>{{ label('随机种子', 'Seed') }}</span><input v-model.number="seed" type="number" min="0" max="2147483647" step="1" /></label>
+              </div>
+              <div v-else class="derivation-existing dataset-muted"><span v-for="split in ['train', 'val', 'test']" :key="split">{{ split }} <strong>{{ workspace.split_counts?.[split]?.toLocaleString() ?? label('未配置', 'Not configured') }}</strong></span></div>
+            </div>
+          </section>
+          <section class="derivation-form-row">
+            <h2>{{ label('数据范围', 'Data range') }}</h2>
+            <div class="derivation-range"><div><ImageIcon :size="26" /><div><span>{{ label('图像数量', 'Images') }}</span><strong>{{ (selectionCount ?? workspace.sample_count).toLocaleString() }} {{ label('张', 'images') }}（{{ selection ? label('所选', 'Selected') : label('全部', 'All') }}）</strong></div></div><div><Database :size="26" /><div><span>{{ label('对象数量（来源）', 'Objects (source)') }}</span><strong>{{ workspace.object_count?.toLocaleString() ?? '—' }} {{ label('个', 'objects') }}</strong></div></div></div>
+          </section>
+          <label class="field derivation-form-row derivation-notes"><span>{{ label('版本说明', 'Version notes') }}</span><textarea v-model="description" rows="3" maxlength="500" /></label>
           <div class="dataset-actions dataset-form-actions">
             <Button :disabled="busy" @click="back">{{ text('cancel') }}</Button>
             <Button
@@ -175,7 +128,10 @@
           >{{ label('开始检查', 'Run checks') }}</Button
         >
       </section>
-      <section v-if="job" class="resource-section">
+      <section v-if="job && operation === 'derive'" class="resource-section derivation-source">
+        <h2>{{ label('版本来源', 'Version source') }}</h2><div class="derivation-form-row"><span class="dataset-muted">{{ label('来源数据集', 'Source dataset') }}</span><div class="derivation-source-value">{{ workspace.dataset.display_name }} <span>v{{ workspace.version_number }}</span></div></div>
+      </section>
+      <section v-if="job" class="resource-section derivation-report">
         <DatasetDerivationReview
           v-if="job.operation === 'derive-check' && job.state === 'succeeded'"
           :job="job"
@@ -205,7 +161,7 @@
           ><template
             v-if="job.operation === 'derive-check' && job.state === 'succeeded'"
             ><Button @click="editConfig">{{
-              label('返回修改', 'Edit configuration')
+              label('上一步', 'Previous')
             }}</Button
             ><Button
               variant="primary"
@@ -258,7 +214,7 @@ import {
   useRouter,
 } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft } from '@lucide/vue'
+import { ArrowLeft, Check, Database, Image as ImageIcon, Pencil, RotateCcw } from '@lucide/vue'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -284,6 +240,7 @@ import {
 } from '../services/dataset-workspace.service'
 import type { DatasetSampleSelection } from '../services/dataset.service'
 import '../dataset-workspace.css'
+import '../dataset-derivation.css'
 const route = useRoute(),
   router = useRouter(),
   session = useSessionStore(),
@@ -330,16 +287,24 @@ const workspace = ref<DatasetWorkspace | null>(null),
   loading = ref(true),
   unknown = ref(false),
   error = ref('')
-const names = ref<{ id: number; source: string; name: string }[]>([]),
+const names = ref<{ id: number; source: string; name: string; target: number | null; editing?: boolean }[]>([]),
   repartition = ref(false),
   ratios = ref([80, 20, 0]),
   seed = ref(42),
-  groupKey = ref(''),
   description = ref(''),
   staleSelection = ref(false),
   pollFailed = ref(false),
   selection = ref<DatasetSampleSelection>(),
   selectionCount = ref<number>()
+const ratioTotal = computed(() => ratios.value.reduce((sum, value) => sum + Number(value || 0), 0))
+function mappingOptions(id: number) {
+  const supportsMapping = ['detection', 'classification', 'segmentation', 'obb'].includes(workspace.value?.task_type || '')
+  const referenced = names.value.some(row => row.id !== id && row.target === id)
+  return [
+    ...names.value.map(row => ({ value: row.id, label: row.name, disabled: row.id !== id && (!supportsMapping || referenced || row.target !== row.id) })),
+    ...(supportsMapping ? [{ value: null, label: label('排除此类别标注（保留样本）', 'Exclude annotations (keep samples)'), disabled: referenced }] : []),
+  ]
+}
 const compareVersion = ref(String(route.query.compare || '')),
   versions = ref<DatasetVersion[]>([]),
   versionOffset = ref(0),
@@ -359,9 +324,10 @@ const config = computed(() => ({
   category_names: Object.fromEntries(
     names.value.map((row) => [row.id, row.name.trim()]),
   ),
+  category_mapping: Object.fromEntries(names.value.filter(row => row.target !== row.id).map(row => [row.id, row.target])),
   split_ratios: repartition.value ? ratios.value : null,
   seed: seed.value,
-  group_key: repartition.value ? groupKey.value.trim() : '',
+  group_key: '',
   description: description.value.trim(),
 }))
 let active = true,
@@ -412,6 +378,10 @@ async function submit(kind: DatasetJob['operation']) {
   if (busy.value || unknown.value || !canWrite.value || staleSelection.value)
     return
   error.value = ''
+  if (kind === 'derive-check' && names.value.length && names.value.every(row => row.target === null)) {
+    error.value = label('至少保留一个目标类别。', 'Keep at least one target class.')
+    return
+  }
   if (
     kind === 'derive-check' &&
     (names.value.some((row) => !row.name.trim()) ||
@@ -617,6 +587,7 @@ async function initialize() {
       id: c.category_id,
       source: c.name,
       name: c.name,
+      target: c.category_id,
     }))
     const state = history.state.datasetSelection
     // 历史任务使用当时的配置与统计，不用当前数据重新解释旧选择。
@@ -668,14 +639,15 @@ function restoreConfig() {
   names.value = names.value.map((row) => ({
     ...row,
     name: saved.category_names?.[row.id] ?? row.source,
+    target: saved.category_mapping && Object.hasOwn(saved.category_mapping, row.id) ? saved.category_mapping[row.id] : row.id,
   }))
   repartition.value = !!saved.split_ratios
   ratios.value = saved.split_ratios ?? [80, 20, 0]
   seed.value = saved.seed ?? 42
-  groupKey.value = saved.group_key ?? ''
   description.value = saved.description ?? ''
-  configSnapshot = JSON.stringify(config.value)
-  formSnapshot = configSnapshot
+  // 历史分组预检查必须返回配置重新检查，不能复用为按样本划分的创建凭据。
+  configSnapshot = JSON.stringify({ ...config.value, group_key: saved.group_key ?? '' })
+  formSnapshot = JSON.stringify(config.value)
   selectionCount.value = job.value?.result?.sample_count
 }
 onBeforeUnmount(() => {
@@ -714,6 +686,7 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 16px;
 }
+.dataset-operation--derive .dataset-config-fields { gap: 0; }
 .dataset-config-fields > .dataset-details {
   margin: 0;
   grid-template-columns: auto 1fr auto 1fr;

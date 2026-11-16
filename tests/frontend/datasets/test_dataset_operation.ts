@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   cancelDatasetJob: vi.fn(),
   listDatasetVersionPage: vi.fn(),
 }))
+const routeState = vi.hoisted(() => ({ query: { task: 'done' } as Record<string, string> }))
 vi.mock(
   '../../../frontend/web-ui/src/modules/datasets/services/dataset-workspace.service',
   () => api,
@@ -22,7 +23,7 @@ vi.mock('../../../frontend/web-ui/src/app/stores/session.store', () => ({
 vi.mock('vue-router', () => ({
   useRoute: () => ({
     params: { datasetId: 'd', versionId: 'v', operation: 'derive' },
-    query: { task: 'done' },
+    query: routeState.query,
   }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   onBeforeRouteLeave: vi.fn(),
@@ -30,7 +31,37 @@ vi.mock('vue-router', () => ({
 }))
 afterEach(() => {
   vi.resetAllMocks()
+  routeState.query = { task: 'done' }
   history.replaceState({}, '')
+})
+
+it('重新划分始终按样本提交，不显示或携带分组字段', async () => {
+  history.replaceState({}, '')
+  routeState.query = {}
+  api.getDatasetWorkspace.mockResolvedValue({ dataset: { display_name: '测试' }, metadata: {}, categories: [], version_number: 1, sample_count: 8 })
+  api.submitDatasetJob.mockResolvedValue({ task_id: 'new-check' })
+  api.getDatasetJob.mockResolvedValue({ task_id: 'new-check', operation: 'derive-check', state: 'succeeded', result: {} })
+  const wrapper = shallowMount(DatasetOperationPage, { global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })] } })
+  await flushPromises()
+  await wrapper.findAll('input[name="partition"]')[1].setValue(true)
+  expect(wrapper.text()).not.toContain('分组字段')
+  await wrapper.find('form').trigger('submit')
+  await flushPromises()
+  expect(api.submitDatasetJob).toHaveBeenCalledWith('d', 'v', expect.objectContaining({ operation: 'derive-check', config: expect.objectContaining({ group_key: '', split_ratios: [80, 20, 0] }) }))
+  wrapper.unmount()
+})
+
+it('历史分组预检查不能直接作为按样本创建的凭据', async () => {
+  api.getDatasetWorkspace.mockResolvedValue({ dataset: { display_name: '测试' }, metadata: {}, categories: [], version_number: 1, sample_count: 8 })
+  api.getDatasetJob.mockResolvedValue({ task_id: 'done', operation: 'derive-check', state: 'succeeded', config: { group_key: 'capture_group', split_ratios: [80, 20, 0] }, result: {} })
+  const wrapper = shallowMount(DatasetOperationPage, { global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })] } })
+  await flushPromises()
+  const create = wrapper.findAllComponents({ name: 'Button' }).find(button => button.props('variant') === 'primary')!
+  create.vm.$emit('click')
+  await flushPromises()
+  expect(api.submitDatasetJob).not.toHaveBeenCalled()
+  expect(wrapper.findComponent({ name: 'InlineError' }).props('message')).toBe('配置已修改，请重新检查。')
+  wrapper.unmount()
 })
 
 it('源版本已更新且旧样本已删除，仍可查看已完成任务的原始结果', async () => {

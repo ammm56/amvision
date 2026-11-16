@@ -148,7 +148,7 @@ def quality_report(storage, version, tick):
 def derivation_plan(
     version: DatasetVersion, config: DatasetDerivation, selected_ids: set[str] | None
 ):
-    """明确保留全部样本标注；类别重名阻止，不静默合并。"""
+    """按显式类别映射和样本范围生成计划；同名不隐式合并。"""
     samples = tuple(
         s
         for s in version.samples
@@ -167,6 +167,24 @@ def derivation_plan(
     )
     if len({c.name.casefold() for c in categories}) != len(categories):
         raise InvalidRequestError("类别名称重复；请使用不同名称，不能隐式合并类别")
+    category_ids = {c.category_id for c in categories}
+    mapping = {key: config.category_mapping.get(key, key) for key in category_ids}
+    if any(key != target for key, target in mapping.items()) and version.task_type not in {
+        "detection", "classification", "segmentation", "obb"
+    }:
+        raise InvalidRequestError("此任务类型暂不支持类别合并或排除，仅支持类别改名")
+    if set(config.category_mapping) - category_ids or any(
+        target is not None and target not in category_ids for target in mapping.values()
+    ):
+        raise InvalidRequestError("类别映射包含不存在的类别")
+    # 目标必须是保留类别，避免链式映射、循环或映射到被排除的类别。
+    if any(target is not None and mapping[target] != target for target in mapping.values()):
+        raise InvalidRequestError("目标类别必须保持自身映射，不能映射到已合并或排除的类别")
+    categories = tuple(c for c in categories if mapping[c.category_id] == c.category_id)
+    if category_ids and not categories:
+        raise InvalidRequestError("至少保留一个目标类别")
+    if any(a.category_id not in category_ids for s in samples for a in s.annotations):
+        raise InvalidRequestError("样本标注引用了不存在的类别，请先修正来源版本")
     groups = defaultdict(list)
     for sample in samples:
         group = (
@@ -193,30 +211,79 @@ def derivation_plan(
                 assignments[sample.sample_id] = ("train", "val", "test")[candidate]
             used[candidate] += len(groups[key])
     planned = tuple(
-        replace(s, split=assignments.get(s.sample_id, s.split)) for s in samples
+        replace(
+            s,
+            split=assignments.get(s.sample_id, s.split),
+            annotations=tuple(
+                replace(a, category_id=mapping[a.category_id])
+                for a in s.annotations if mapping.get(a.category_id) is not None
+            ),
+        ) for s in samples
     )
     summary = {
         "source_count": len(version.samples),
         "sample_count": len(samples),
-        "object_count": sum(len(s.annotations) for s in samples),
+        "object_count": sum(len(s.annotations) for s in planned),
+        "source_object_count": sum(len(s.annotations) for s in version.samples),
+        "source_category_count": len(version.categories),
         "category_count": len(categories),
         "excluded_count": len(version.samples) - len(samples),
         "source_split_counts": dict(Counter(s.split for s in version.samples)),
         "split_counts": dict(Counter(s.split for s in planned)),
+        "source_split_object_counts": {
+            split: sum(len(s.annotations) for s in version.samples if s.split == split)
+            for split in {s.split for s in version.samples}
+        },
+        "split_object_counts": {
+            split: sum(len(s.annotations) for s in planned if s.split == split)
+            for split in {s.split for s in planned}
+        },
         "category_changes": [
-            {"category_id": before.category_id, "before": before.name, "after": after.name}
-            for before, after in zip(version.categories, categories)
-            if before.name != after.name
+            {"category_id": before.category_id, "before": before.name,
+             "after": next((c.name for c in categories if c.category_id == mapping[before.category_id]), None)}
+            for before in version.categories
+            if mapping[before.category_id] != before.category_id
+            or config.category_names.get(before.category_id, before.name).strip() != before.name
         ],
         "description": config.description.strip(),
         "group_count": len(groups),
         "group_key": config.group_key,
+        "group_integrity": "passed" if config.group_key else "not_configured",
         "categories": [
             {"category_id": c.category_id, "name": c.name} for c in categories
         ],
         "split_changed": sum(a.split != b.split for a, b in zip(samples, planned)),
     }
     return replace(version, categories=categories, samples=planned), summary
+
+
+def derivation_checks(storage, version, tick):
+    """按原始文件摘要统计跨划分重复样本；读取失败不能冒称检查通过。"""
+    digests = defaultdict(list)
+    unreadable = 0
+    for index, sample in enumerate(version.samples):
+        tick(index, len(version.samples))
+        try:
+            path = image_path(storage, version, sample)
+            media = sample.metadata.get("sample_media", {})
+            if media.get("kind") in {"point-cloud", "rgbd"}:
+                from .imports.formats.sample_media import asset_path
+                kind = "cloud" if media["kind"] == "point-cloud" else "depth"
+                digest = file_digest(asset_path(path, kind), tick)
+                if kind == "depth":
+                    digest += file_digest(path, tick)
+            else:
+                digest = file_digest(path, tick)
+            digests[digest].append(sample.split)
+        except (OSError, ValueError):
+            unreadable += 1
+    candidates = sum(len(splits) for splits in digests.values() if len(set(splits)) > 1)
+    return {
+        "cross_split_duplicate_count": candidates,
+        "duplicate_check": "incomplete" if unreadable else "passed",
+        "unreadable_count": unreadable,
+        "can_create": unreadable == 0,
+    }
 
 
 def stable_sample_id(sample):

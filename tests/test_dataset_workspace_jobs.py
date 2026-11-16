@@ -74,12 +74,16 @@ def test_quality_derivation_compare_and_cancel(tmp_path, monkeypatch):
             quality = submit("quality")
             assert quality["result"]["sample_count"] == original["total"]
             assert "unchecked" in quality["result"]
-            config = {"category_names": {"0": "new-name"}, "split_ratios": [100, 0, 0], "description": "手动确认的训练版本"}
+            config = {"category_names": {"0": "new-name"}, "category_mapping": {"0": 0}, "split_ratios": [100, 0, 0], "description": "手动确认的训练版本"}
             checked = submit("derive-check", config=config)
             assert checked["result"]["object_count"] == sum(len(s["annotations"]) for s in original["items"])
             assert checked["result"]["category_count"] > 0
             assert sum(checked["result"]["source_split_counts"].values()) == original["total"]
             assert checked["result"]["category_changes"][0]["after"] == "new-name"
+            assert sum(checked["result"]["split_object_counts"].values()) == checked["result"]["object_count"]
+            assert checked["result"]["group_integrity"] == "not_configured"
+            assert checked["result"]["duplicate_check"] == "passed"
+            assert checked["result"]["cross_split_duplicate_count"] == 0
             derived = submit(
                 "derive", config=config, checked_task_id=checked["task_id"]
             )
