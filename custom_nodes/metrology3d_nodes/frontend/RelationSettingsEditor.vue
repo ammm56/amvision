@@ -30,7 +30,7 @@
           <details><summary>{{ label('数值条件与几何质量','Numerical conditions and geometry quality') }}</summary>
             <GeometryFields v-model="draft" :fields="conditionFields" />
             <GeometryFields v-model="draft" :fields="[{path:'quality_policy.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:'quality_policy.policy_version',type:'number',label:label('策略版本','Policy version')}]" />
-            <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
+            <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality :available-items="relationQualityItems(draft,locale.startsWith('zh'))" @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
           </details>
         </template>
         <template #issues><p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="status">{{ referenceIssues.join(' · ') }}</p></template>
@@ -39,6 +39,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import {relationQualityItems} from './quality-items'
 import {computed,defineAsyncComponent,inject,ref,useId,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {MousePointer2} from '@lucide/vue'

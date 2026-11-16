@@ -29,7 +29,7 @@
       <template #advanced>
       <details v-if="!multiple" class="measurement-quality"><summary>{{ zh?'测量质量':'Measurement quality' }}</summary>
         <GeometryFields :model-value="settings" :fields="qualityFields" @update:model-value="setSettings" />
-        <WorkflowLimitRulesEditor :model-value="object(settings.quality_policy).rules" quality @update:model-value="setSettings(put(settings,'quality_policy.rules',$event))" />
+        <WorkflowLimitRulesEditor :model-value="object(settings.quality_policy).rules" :available-items="measurementQualityItems(statistic,String(draft.length_unit??''),zh)" quality @update:model-value="setSettings(put(settings,'quality_policy.rules',$event))" />
       </details>
       </template>
       <template #issues>
@@ -40,6 +40,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
@@ -53,6 +54,7 @@ import ReferenceMeasurementRows from './ReferenceMeasurementRows.vue'
 import {object,copy,put,vector,type Form,type Field} from './form'
 import {newMeasurement,newMeasurementMode,newMeasurementQuery,newReferenceMeasurement,measurementIssues,quantileMethods} from './measurement-form'
 import {candidateUV} from './pose-pick'
+import {measurementQualityItems} from './quality-items'
 defineOptions({inheritAttrs:false})
 const props=defineProps<{modelValue:unknown;nodeType:string;disabled?:boolean;inputSources?:ParameterEditorSources;draftIssues?:(value:unknown)=>string[]}>()
 const emit=defineEmits<{'update:modelValue':[value:Form]}>()
@@ -99,7 +101,7 @@ function pick(value:{payload:Record<string,unknown>;xyz:number[]}){
   candidate.value=[...value.xyz]
 }
 function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.disabled,()=>props.nodeType,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value='';candidate.value=null})
+watch([()=>props.modelValue,()=>props.disabled,()=>props.nodeType,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value='';candidate.value=null})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value='';candidate.value=null})
 watch(()=>[previewId.value,draft.value.frame_id,draft.value.length_unit],()=>{candidate.value=null})
 watch(()=>[props.inputSources,query.value.kind,query.value.pose_id,query.value.target_frame_id],()=>{candidate.value=null},{deep:true})

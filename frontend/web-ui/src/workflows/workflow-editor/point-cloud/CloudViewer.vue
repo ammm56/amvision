@@ -7,7 +7,7 @@
       <label v-if="focusOptions.length">{{ zh?'定位对象':'Focus object' }}<select v-model="focusTarget"><option v-for="target in focusOptions" :key="target.id" :value="target.id">{{ target.label }}</option></select></label><button v-if="focusOptions.length" :title="zh?'聚焦所选对象':'Focus selected object'" :aria-label="zh?'聚焦所选对象':'Focus selected object'" :disabled="!scene" @click="scene?.focus(focusTarget)"><Focus :size="18" /></button>
       <button v-if="presentation==='full'&&(body.geometry||body.height_map||body.edge_diagnostics||curves.length||measurements.length||debugItems.length||debugError)" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
       <div class="cloud-modes" role="group" :aria-label="zh?'视角操作':'View navigation'"><button :title="zh?'旋转视角':'Rotate view'" :aria-label="zh?'旋转视角':'Rotate view'" :aria-pressed="!pan" :disabled="!scene" @click="pan=false; scene?.pan(false)"><Orbit :size="18" /></button><button :title="t('pan')" :aria-label="t('pan')" :aria-pressed="pan" :disabled="!scene" @click="pan=true; scene?.pan(true)"><Hand :size="18" /></button></div>
-      <button v-if="allowPick" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
+      <button v-if="allowPick&&pickActive===undefined" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
       <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
       <label>{{ t('axis') }}<select :value="axis" :disabled="!scene" @change="selectView"><option value="free" disabled>{{ zh?'自由视图':'Free view' }}</option><option value="iso">3D</option><option value="z">{{ zh?'顶视 +Z':'Top +Z' }}</option><option value="-z">{{ zh?'底视 -Z':'Bottom -Z' }}</option><option value="y">{{ zh?'前视 -Y':'Front -Y' }}</option><option value="-y">{{ zh?'后视 +Y':'Back +Y' }}</option><option value="x">{{ zh?'右视 +X':'Right +X' }}</option><option value="-x">{{ zh?'左视 -X':'Left -X' }}</option></select></label>
       <label>{{ t('size') }}<input v-model.number="size" :disabled="!scene" type="range" min="1" max="8" step="1" @input="scene?.pointSize(size)"></label>
@@ -100,7 +100,7 @@ import RoiVisibilityButton from './RoiVisibilityButton.vue'
 import {navigateTab} from './tab-navigation'
 import {coordinateRange,displayNumber,type CloudColorMode,type CoordinateRange, type scaleBar} from './view-presentation'
 
-const props = withDefaults(defineProps<{ payload: Record<string, unknown>; comparePayload?:Record<string,unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full'})
+const props = withDefaults(defineProps<{ payload: Record<string, unknown>; comparePayload?:Record<string,unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; pickActive?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full',pickActive:undefined})
 const viewerId=useId(),viewportVisible=computed(()=>props.presentation==='full'||props.presentation==='view')
 const emit=defineEmits<{'roi-change':[value:RoiValue];candidate:[value:{payload:Record<string,unknown>;xyz:number[]}];'feature-selection':[value:{payload:Record<string,unknown>;featureId:string;segmentId:string}];'arc-change':[value:{payload:Record<string,unknown>;key:string;values:ArcValues}]}>()
 const { t,te,locale } = useI18n({ useScope: 'local', messages: {
@@ -193,7 +193,7 @@ const activeCurve=computed(()=>curves.value.find(c=>c.feature_id===selectedCurve
 const curveScale=computed(()=>activeCurve.value?curveColorScale(activeCurve.value,curveColorMode.value):null)
 const focusTarget=ref<GeometryFocus>('measurement')
 const focusOptions=computed<{id:GeometryFocus;label:string}[]>(()=>[...(activeDebug.value?[{id:'debug' as const,label:zh.value?'提取调试':'Extraction debug'}]:[]),...(props.editArc?[{id:'arc' as const,label:zh.value?'当前角域':'Current angular region'}]:[]),...(props.selectedRoiId&&selectedRoiVisible.value?[{id:'roi' as const,label:`ROI · ${props.selectedRoiId}`}]:[]),...(selectedMeasurement.value?[{id:'measurement' as const,label:selectedMeasurement.value}]:[]),...(selectedCurve.value?[{id:'feature' as const,label:`${selectedCurve.value} ${selectedSegment.value}`}]:[]),...(selectedPlane.value?[{id:'plane' as const,label:selectedPlane.value}]:[])])
-const scalableRoi=computed(()=>props.editRois?.some(r=>r.roi_id===props.selectedRoiId&&['box','cylinder'].includes(String(r.kind))))
+const scalableRoi=computed(()=>props.editRois?.some(r=>r.roi_id===props.selectedRoiId&&['box','cylinder','section-band'].includes(String(r.kind))))
 watch(scalableRoi,canScale=>{if(!canScale&&editMode.value==='scale')editMode.value='translate'})
 watch(focusOptions,targets=>{if(!targets.some(t=>t.id===focusTarget.value))focusTarget.value=targets[0]?.id??'measurement'})
 watch(evidenceTabs,tabs=>{if(!tabs.some(tab=>tab.id===detailTab.value))detailTab.value=tabs[0]?.id??''})
@@ -249,6 +249,7 @@ async function load() {
       axis.value = view
     },viewportVisible.value,{range:appliedRange.value,coordinateColor:colorMode.value==='coordinate-z',scaleChanged:scale=>{if(token===generation&&!signal.aborted&&props.payload===payload)viewScale.value=scale}})
     scenePayload=payload
+    picking.value=!!props.allowPick&&props.pickActive===true
     comparisonPolicy=policy
     const rendererForComparison=scene.value
     comparisonController=createComparisonController(value=>{
@@ -293,6 +294,7 @@ watch(()=>[props.roiScope,props.editRois,props.selectedRoiId,props.editArc,editM
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
 watch(()=>[showAssetDetails.value,viewportVisible.value,colorMode.value],syncDetails,{flush:'sync'})
 watch(()=>props.allowPick,()=>{picking.value=false})
+watch(()=>props.pickActive,value=>{if(value!==undefined)picking.value=value&&!!props.allowPick})
 watch(hiddenRois,hidden=>{if(scenePayload===props.payload)scene.value?.roiVisibility(hidden)})
 watch(viewportVisible,visible=>{if(!visible)scene.value?.activity(false)},{flush:'sync'})
 watch(()=>props.presentation,async()=>{

@@ -25,7 +25,7 @@ from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
 )
 from custom_nodes.metrology3d_nodes.shared.normalize_units import normalize_units
 from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
-from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
 
 
 def denoise(request):

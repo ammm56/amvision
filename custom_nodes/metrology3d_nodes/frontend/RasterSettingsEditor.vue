@@ -29,6 +29,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Plus,Trash2} from '@lucide/vue'
@@ -61,7 +62,7 @@ function setSentinel(i:number,e:Event){const values=[...sentinels.value],input=e
 function addSentinel(){draft.value=put(draft.value,'raster.validity.invalid_raw_values',[...sentinels.value,null])}
 function removeSentinel(i:number){draft.value=put(draft.value,'raster.validity.invalid_raw_values',sentinels.value.filter((_,j)=>i!==j))}
 function apply(){if(!props.disabled&&rasterValid(draft.value)){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

@@ -8,7 +8,7 @@ from custom_nodes.metrology3d_nodes.shared.measure_step import measure_step
 from custom_nodes.metrology3d_nodes.shared.measurement_preview import (
     attach_measurements,
 )
-from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
 from tests.test_metrology3d_height_step import two_planes
 from tests.test_metrology3d_measurement_contracts import step_parameters
 from tests.test_metrology3d_plane import plane_parameters

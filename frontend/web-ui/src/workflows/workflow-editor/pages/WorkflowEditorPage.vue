@@ -355,7 +355,7 @@
 import { arrayStepUpdates } from '@/shared/ui/image-viewer/arrayInteraction'
 import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
 import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
-import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterCloudPreviewsKey, parameterNumericItemsKey, parameterDraftIssuesKey, type ParameterEditorSources } from '../parameters/editor-context'
+import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterCloudPreviewsKey, parameterNumericItemsKey, parameterDraftIssuesKey, parameterInputPreviewKey,parameterNodePreviewKey,parameterBatchUpdateKey,type ParameterEditorSources } from '../parameters/editor-context'
 import { trustedNumericItemProviders, trustedRecipeValidators } from '../parameters/trusted-recipe-providers'
 import { recipeIssues } from '../parameters/recipe-validation'
 import { useRoute, useRouter } from 'vue-router'
@@ -525,7 +525,7 @@ provide(parameterDraftIssuesKey,(nodeId,parameter,value)=>{
   const nodes=graphNodes.value.map(({node})=>node.node_id===nodeId?{...node,parameters:{...node.parameters,[parameter]:value}}:node)
   return recipeIssues(nodes,graphEdges.value,trustedNumericItemProviders,trustedRecipeValidators,locale.value==='zh-CN').map(issue=>`${issue.nodeId} / ${issue.message}`)
 })
-provide(parameterPreviewStateKey, () => ({runId:lastPreviewRun.value?.preview_run_id ?? '', succeeded:!previewing.value && lastPreviewRun.value?.state === 'succeeded',phase:previewing.value?'running':!lastPreviewRun.value?'idle':previewResultsExpired.value?'stale':lastPreviewRun.value.state==='succeeded'?'ready':'failed'}))
+provide(parameterPreviewStateKey, () => ({runId:lastPreviewRun.value?.preview_run_id ?? '', succeeded:!previewing.value && !previewResultsExpired.value && lastPreviewRun.value?.state === 'succeeded',error:errorMessage.value,phase:previewing.value?'running':!lastPreviewRun.value?'idle':previewResultsExpired.value?'stale':lastPreviewRun.value.state==='succeeded'?'ready':'failed'}))
 provide(parameterEditorSourcesKey, (nodeId) => {
   const sources: ParameterEditorSources = {}
   for (const edge of graphEdges.value) {
@@ -741,8 +741,21 @@ provide(parameterCloudPreviewsKey, () => {
     const display = getPreviewNodeDisplay(node.node_id)
     return (display?.variants ?? (display ? [display] : [])).filter(d =>
       !d.stale && d.previewRunId === lastPreviewRun.value?.preview_run_id && d.cloudProjectId && d.payload.type === 'point-cloud-preview' && d.payload.state === 'ready',
-    ).map(d => ({id:`${d.nodeId}:${d.outputName}`,label:d.title,projectId:d.cloudProjectId!,payload:d.payload}))
+    ).map(d => {
+      const input=d.outputName.endsWith('.input-preview')
+      const edge=node.node_type_id==='custom.metrology3d.cloud-preview'||(node.node_type_id==='custom.metrology3d.fit-plane'&&d.outputName==='features.editor-preview')?graphEdges.value.find(edge=>edge.target_node_id===node.node_id&&edge.target_port==='cloud'):undefined
+      return {id:`${d.nodeId}:${d.outputName}`,label:d.title,projectId:d.cloudProjectId!,payload:d.payload,
+        sourceNodeId:input?d.nodeId:edge?.source_node_id,sourcePort:input?d.outputName.slice(0,-14):edge?.source_port}
+    })
   })
+})
+provide(parameterInputPreviewKey,async(nodeId,inputPort)=>{await runPreview({targetNodeId:nodeId,inputPort})})
+provide(parameterNodePreviewKey,async(nodeId)=>{await runPreview({targetNodeId:nodeId})})
+provide(parameterBatchUpdateKey,(nodeId,expected,updates)=>{
+  const target=graphNodes.value.find(node=>node.node.node_id===nodeId)
+  if(!target||JSON.stringify(target.node.parameters)!==JSON.stringify(expected))return false
+  updateNodeParametersByName(target,updates)
+  return true
 })
 const {
   previewInputState,

@@ -24,6 +24,7 @@ export interface WorkflowRuntimeListQuery {
 export type WorkflowPreviewExecutionScope =
   | { kind: 'application' }
   | { kind: 'node'; targetNodeId: string }
+  | { kind: 'node-input'; targetNodeId: string; inputPort: string }
 
 interface WorkflowAppRuntimeCreateBaseInput {
   projectId: string

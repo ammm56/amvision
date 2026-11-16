@@ -7,7 +7,7 @@ from backend.service.application.errors import InvalidRequestError
 from custom_nodes.metrology3d_nodes.shared.boundary_runtime import extract_boundary
 from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
 from custom_nodes.metrology3d_nodes.shared.geometry_preview import attach_geometry
-from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
 from tests.test_metrology3d_preprocess import make_cloud
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_preview import preview_policy

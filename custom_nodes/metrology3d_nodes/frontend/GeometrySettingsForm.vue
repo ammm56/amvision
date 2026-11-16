@@ -9,7 +9,7 @@
       </div>
       <GeometryFields v-model="draft" :fields="fields" :suggestions="suggestions" />
       <GeometryFields v-model="draft" :fields="[{path:'quality_policy.policy_id',label:zh?'质量策略 ID':'Quality policy ID'},{path:'quality_policy.policy_version',label:zh?'质量策略版本':'Quality policy version',type:'number'}]" />
-      <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
+      <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" :available-items="geometryQualityItems(plane,object(draft.origin).kind==='three-planes',zh)" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
 
   </section>
 </template>
@@ -20,6 +20,7 @@ import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/Wor
 import type {ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
 import {normalizeLimitRule} from '@/workflows/workflow-editor/parameters/limit-rules'
 import GeometryFields from './GeometryFields.vue'
+import {geometryQualityItems} from './quality-items'
 import {object,put,type Form,type Field} from './form'
 const props=defineProps<{modelValue:Form;plane:boolean;inputSources?:ParameterEditorSources}>()
 const emit=defineEmits<{'update:modelValue':[value:Form]}>()

@@ -13,7 +13,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
 from custom_nodes.metrology3d_nodes.shared.cloud_assets import read_asset, save_cloud
-from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
 from tests.point_cloud_support import policy, create_resource_service
 from tests.test_point_cloud_runtime import own, root_cloud, method
 from tests.test_point_cloud_assets import POLICY

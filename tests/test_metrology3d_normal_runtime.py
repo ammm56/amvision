@@ -226,7 +226,7 @@ def test_normal_state_corruption_rejected(bad):
 
 def test_normal_preview_and_detail_keep_status(tmp_path):
     """预览和已保存叶块都携带逐点状态，计算失败不删除位置。"""
-    from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+    from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
     from backend.service.application.workflows.point_cloud.detail_index import (
         prepare_index,
     )

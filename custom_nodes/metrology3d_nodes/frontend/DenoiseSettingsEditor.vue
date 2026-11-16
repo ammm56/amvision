@@ -23,6 +23,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed, defineAsyncComponent, inject, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -51,7 +52,7 @@ const fields=computed<Field[]>(()=>draft.value.kind==='statistical' ? [
 function show(){draft.value=props.modelValue && typeof props.modelValue==='object' ? copy(props.modelValue) as DenoiseDraft : newDenoise('statistical');initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
 function changeMethod(event:Event){draft.value=newDenoise((event.target as HTMLSelectElement).value)}
 function apply(){if(!props.disabled && denoiseValid(draft.value)){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

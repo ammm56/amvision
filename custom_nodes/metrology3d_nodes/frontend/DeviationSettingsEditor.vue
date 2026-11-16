@@ -9,12 +9,13 @@
         <fieldset><legend>{{ label('输出量值 ID','Output measurement IDs') }}</legend><label v-for="(output,index) in outputs" :key="String(output.component)">{{ deviationLabel(String(output.component),zh) }}<input :value="output.item_id" @input="setOutput(index,($event.target as HTMLInputElement).value)"></label></fieldset>
       </div></template>
       <template #view="{presentation}"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" /></template>
-      <template #advanced><details><summary>{{ label('支持质量','Support quality') }}</summary><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details></template>
+      <template #advanced><details><summary>{{ label('支持质量','Support quality') }}</summary><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality :available-items="deviationQualityItems(draft,zh)" @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details></template>
       <template #issues><p v-if="issues.length||references.length" role="alert">{{ [...issues,...references].join(' · ') }}</p></template>
     </MetrologyWorkspace>
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import {deviationQualityItems} from './quality-items'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'

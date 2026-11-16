@@ -61,7 +61,7 @@
           <GeometryFields v-if="extents&&object(draft.mode).kind==='minimum-area-rectangle'" v-model="draft" :fields="rectangleFields" />
           <GeometryFields v-if="edge" v-model="draft" :fields="conditionFields" />
           <GeometryFields v-model="draft" :fields="qualityFields" />
-          <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
+          <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality :available-items="dimensionQualityItems(kind,draft,locale==='zh-CN')" @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
         </details>
         </template>
         <template #issues>
@@ -73,6 +73,8 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import {dimensionQualityItems} from './quality-items'
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {ArrowLeftRight,MousePointer2} from '@lucide/vue'
@@ -155,7 +157,7 @@ function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){
 }
 // 应用只提交当前合法草稿；缺接线及其他节点错误仍由整图预检阻止执行。
 function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false;resetView()}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;resetView()})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;resetView()})
 watch(()=>[state().runId,state().succeeded],resetView)
 watch(()=>[previewId.value,JSON.stringify(draft.value.evaluation)],()=>{candidate.value=null;activeSlot.value=''})
 </script>

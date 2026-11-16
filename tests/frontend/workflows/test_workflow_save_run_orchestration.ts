@@ -68,4 +68,26 @@ describe('save and preview orchestration', () => {
     await request
     expect(options.runWorkflowPreview).not.toHaveBeenCalled()
   })
+  it('previews the connected input without applying drafts or validating unrelated downstream nodes', async () => {
+    const { options } = setup()
+    const binding = { direction: 'input', template_port_id: 'file' }
+    const template = { nodes: [{ node_id: 'read' }, { node_id: 'fit' }, { node_id: 'other' }], edges: [{ source_node_id: 'read', source_port: 'cloud', target_node_id: 'fit', target_port: 'cloud' }], template_inputs: [{ input_id: 'file', target_node_id: 'read' }, { input_id: 'other', target_node_id: 'other' }] }
+    const preflight = vi.fn()
+    const actions = useWorkflowSaveRunOrchestration({ ...options, buildCurrentTemplate: () => template as never, buildCurrentApplication: () => ({ bindings: [binding, { direction: 'input', template_port_id: 'other' }] }) as never, runWorkflowPreflight: preflight })
+    options.commitParameterDrafts.mockReturnValue(false)
+    await actions.runPreview({ targetNodeId: 'fit', inputPort: 'cloud' })
+    expect(options.commitParameterDrafts).not.toHaveBeenCalled()
+    expect(preflight).not.toHaveBeenCalled()
+    expect(options.buildPreviewInputBindings).toHaveBeenCalledWith([binding])
+    expect(options.runWorkflowPreview).toHaveBeenCalledWith(expect.objectContaining({ executionScope: { kind: 'node-input', targetNodeId: 'fit', inputPort: 'cloud' }, template }))
+    expect(options.saveWorkflowDocument).not.toHaveBeenCalled()
+  })
+  it('rejects ambiguous input connections before preparing files', async () => {
+    const { options } = setup()
+    const edge = { source_node_id: 'read', target_node_id: 'fit', target_port: 'cloud' }
+    const actions = useWorkflowSaveRunOrchestration({ ...options, buildCurrentTemplate: () => ({ edges: [edge, edge] }) as never })
+    await actions.runPreview({ targetNodeId: 'fit', inputPort: 'cloud' })
+    expect(options.setActionError).toHaveBeenCalled()
+    expect(options.buildPreviewInputBindings).not.toHaveBeenCalled()
+  })
 })

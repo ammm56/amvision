@@ -12,10 +12,13 @@ from backend.service.application.workflows.point_cloud.execution_policy import (
     CloudPreviewPolicy,
 )
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from backend.service.application.workflows.point_cloud.preview import (
+    build_cloud_preview,
+)
 from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
 from custom_nodes.metrology3d_nodes.shared.normalize_units import normalize_units
 from tests.test_metrology3d_preprocess import make_cloud
+from tests.point_cloud_support import policy as io_policy
 
 
 def preview_policy(**overrides):
@@ -275,7 +278,7 @@ def test_restored_subset_preserves_original_rows_and_count(tmp_path):
 
 def test_display_allocation_failure_and_empty_body_limit(monkeypatch):
     """显示分配失败不能影响计算云；空正文也受已配置的字节预算约束。"""
-    from custom_nodes.metrology3d_nodes.shared import preview
+    from backend.service.application.workflows.point_cloud import preview
 
     scope, runtime, cloud = make_cloud()
     try:
@@ -296,6 +299,53 @@ def test_display_allocation_failure_and_empty_body_limit(monkeypatch):
             assert len(view.chunk(0, 2)["positions"]) == 2
     finally:
         assert not scope.close()
+
+
+def test_editor_overview_plans_display_capacity_without_reducing_measurement_cloud():
+    """自动概览预留扫描块；显式节点点数仍按原策略拒绝，原云保持完整。"""
+    scope, runtime, cloud = make_cloud(
+        coordinates=np.arange(300, dtype="f4").reshape(100, 3),
+        runtime_policy=io_policy(
+            max_working_bytes=20000, max_decoded_bytes=10000, max_live_array_bytes=20000
+        ),
+    )
+    try:
+        limits = preview_policy(
+            max_points=100,
+            max_data_bytes=2000,
+            max_body_bytes=10000,
+            max_working_bytes=10000,
+        )
+        explicit = build_cloud_preview(
+            runtime,
+            cloud,
+            dict(point_limit=100, color=dict(mode="solid")),
+            policy=limits,
+            cancel=lambda: None,
+        )
+        assert explicit["state"] == "unavailable"
+        body = build_cloud_preview(
+            runtime,
+            cloud,
+            dict(point_limit=100, color=dict(mode="solid")),
+            policy=limits,
+            cancel=lambda: None,
+            fit_budget=True,
+        )
+        assert body["state"] == "ready" and 0 < body["display_point_count"] < 100
+        assert body["point_count"] == 100 and body["source_point_count"] == 100
+        assert body["data"]["content_length"] <= limits.max_data_bytes
+        with runtime.borrow(cloud) as view:
+            assert (
+                sum(len(view.chunk(i, i + 2)["positions"]) for i in range(0, 100, 2))
+                == 100
+            )
+    finally:
+        assert not scope.close()
+
+
+def test_empty_body_still_obeys_explicit_byte_limit():
+    """空云正文也受显示预算约束。"""
     scope, runtime, cloud = make_cloud(coordinates=np.full((2, 3), np.nan, dtype="f4"))
     try:
         body = build_cloud_preview(

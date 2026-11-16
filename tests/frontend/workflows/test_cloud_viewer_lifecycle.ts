@@ -18,6 +18,23 @@ vi.mock('@/workflows/workflow-editor/point-cloud/asset-details', () => ({readDet
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())
 function viewer() { return mount(CloudViewer, {props:{payload,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}}) }
+it('honors controlled picking after asynchronous loading and rejects callbacks from replaced clouds',async()=>{
+  mocks.capabilities.mockResolvedValue({renderer:{}})
+  mocks.decode.mockImplementation(async()=>({dispose:vi.fn(),point:()=>({xyz:[1,2,3],sourceIndex:'9'})}))
+  mocks.create.mockImplementation(()=>({dispose:vi.fn(),geometry:vi.fn()}))
+  const candidate=vi.fn()
+  const w=mount(CloudViewer,{props:{payload,projectId:'p',allowPick:true,pickActive:true,onCandidate:candidate},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises()
+    const first=mocks.create.mock.calls[0]![3]
+    first(0);expect(w.emitted('candidate')).toHaveLength(1)
+    await w.setProps({pickActive:false});first(0);expect(w.emitted('candidate')).toHaveLength(1)
+    await w.setProps({payload:{...payload,observation_id:'other'},pickActive:true});await flushPromises()
+    first(0);expect(w.emitted('candidate')).toHaveLength(1)
+    const current=mocks.create.mock.calls[1]![3];current(0);expect(w.emitted('candidate')).toHaveLength(2)
+    w.unmount();current(0);expect(candidate).toHaveBeenCalledTimes(2)
+  }finally{if(w.exists())w.unmount()}
+})
 it('routes measured record focus through geometry and rejects stale display callbacks',async()=>{
   mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockImplementation(async()=>({dispose:vi.fn()}))
   const renderer={dispose:vi.fn(),geometry:vi.fn(),focus:vi.fn(),focusVoxel:vi.fn()};mocks.create.mockReturnValue(renderer)

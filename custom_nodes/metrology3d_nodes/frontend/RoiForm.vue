@@ -17,14 +17,15 @@ import {computed,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {Plus,Trash2} from '@lucide/vue'
 import GeometryFields from './GeometryFields.vue'
-import {object,newRoi,roiIssues,type Form,type Field} from './form'
+import {object,copy,newRoi,roiIssues,type Form,type Field} from './form'
 import {roiDependencies,roiDependencyClosure,renameRoiReference} from '@/workflows/workflow-editor/point-cloud/roi-graph'
 import {useRoiVisibility} from '@/workflows/workflow-editor/point-cloud/roi-visibility'
 import RoiVisibilityButton from '@/workflows/workflow-editor/point-cloud/RoiVisibilityButton.vue'
-const props=defineProps<{modelValue:Form;allowInput?:boolean;canView?:boolean;visibilityScope?:string}>()
+const props=withDefaults(defineProps<{modelValue:Form;allowInput?:boolean;canView?:boolean;visibilityScope?:string}>(),{allowInput:true})
 const emit=defineEmits<{'update:modelValue':[value:Form];view:[value:{rois:Form[];selectedId:string}];visibility:[hidden:ReadonlySet<string>]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
 const currentDraft=ref(props.modelValue)
+const parameterRoi=ref<Form|null>(props.modelValue.kind==='parameters'?copy(object(props.modelValue.roi)):null)
 const draft=computed({get:()=>currentDraft.value,set:(value:Form)=>{currentDraft.value=value;emit('update:modelValue',value)}})
 watch(()=>props.modelValue,value=>{currentDraft.value=value})
 const selected=ref(props.modelValue.kind==='parameters'?'target':'0')
@@ -59,13 +60,17 @@ function setCurrent(value:Form){
   draft.value=next
 }
 function toggleMember(id:string,checked:boolean){if(current.value)setCurrent({...current.value,geometry:{roi_ids:checked?[...members.value,id]:members.value.filter(v=>v!==id)}})}
-function changeSource(kind:string){draft.value=kind==='input'?{kind,bounds:bounds.value}:{kind,roi:newRoi(),bounds:bounds.value};selected.value=kind==='input'?'0':'target'}
+function changeSource(kind:string){
+  if(draft.value.kind==='parameters')parameterRoi.value=copy(object(draft.value.roi))
+  draft.value=kind==='input'?{kind,bounds:bounds.value}:{kind,roi:parameterRoi.value?copy(parameterRoi.value):newRoi(),bounds:bounds.value}
+  selected.value=kind==='input'?'0':'target'
+}
 function changeKind(kind:string){const old=current.value;if(!old)return;setCurrent({...newRoi(kind),roi_id:old.roi_id,frame_id:old.frame_id,length_unit:old.length_unit})}
 function add(){const space=current.value??rois.value[0];draft.value={...draft.value,bounds:[...bounds.value,{...newRoi(),...(space?{frame_id:space.frame_id,length_unit:space.length_unit}:{})}]};selected.value=String(bounds.value.length-1)}
 function remove(){if(referencedBy.value.length||selected.value==='target')return;draft.value={...draft.value,bounds:bounds.value.filter((_,i)=>i!==Number(selected.value))};selected.value=draft.value.kind==='parameters'?'target':'0'}
 
 watch(()=>[validRois.value,current.value?.roi_id],()=>emit('view',{rois:validRois.value,selectedId:String(current.value?.roi_id??'')}),{immediate:true,deep:true})
-defineExpose({setCurrent})
+defineExpose({setCurrent,current})
 </script>
 <style src="./editor.css" scoped></style>
 <style scoped>.roi-config{display:grid;gap:12px;min-width:0}.roi-members{min-width:0;border:1px solid var(--am-border);padding:10px;display:grid;gap:8px}.roi-member{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:8px;align-items:center}.roi-members label{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere;min-width:0}</style>

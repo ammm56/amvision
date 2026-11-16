@@ -6,7 +6,7 @@
       <label>{{ zh?'基准支持':'Datum support' }}<select :value="object(row.reference_policy).kind" @change="reference(index,($event.target as HTMLSelectElement).value)"><option value="measured-support">{{ zh?'基准处需实测支持':'Measured support required' }}</option><option value="plane-extension">{{ zh?'基准平面有限延伸':'Bounded datum plane extension' }}</option></select></label>
       <GeometryFields v-if="object(row.reference_policy).kind==='plane-extension'" :model-value="row" :fields="extension" @update:model-value="update(index,$event)" />
       <GeometryFields :model-value="row" :fields="quality" @update:model-value="update(index,$event)" />
-      <WorkflowLimitRulesEditor :model-value="object(row.quality_policy).rules" quality @update:model-value="update(index,put(row,'quality_policy.rules',$event))" />
+      <WorkflowLimitRulesEditor :model-value="object(row.quality_policy).rules" :available-items="measurementQualityItems(false,unit,zh)" quality @update:model-value="update(index,put(row,'quality_policy.rules',$event))" />
       <button type="button" :title="zh?'删除量项':'Remove measurement'" :aria-label="zh?'删除量项':'Remove measurement'" @click="remove(index)"><Trash2 :size="16" /></button>
     </fieldset>
     <button type="button" :title="zh?'添加量项':'Add measurement'" :aria-label="zh?'添加量项':'Add measurement'" @click="emit('update:modelValue',[...rows,newReferenceMeasurement()])"><Plus :size="16" /></button>
@@ -20,6 +20,7 @@ import GeometryFields from './GeometryFields.vue'
 import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/WorkflowLimitRulesEditor.vue'
 import {object,put,type Form,type Field} from './form'
 import {newReferenceMeasurement} from './measurement-form'
+import {measurementQualityItems} from './quality-items'
 const props=defineProps<{modelValue:unknown;unit:string;suggestions:Record<string,string[]>}>()
 const emit=defineEmits<{'update:modelValue':[value:Form[]]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')

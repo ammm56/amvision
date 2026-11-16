@@ -70,8 +70,11 @@ export function useWorkflowEditorActions() {
     errorMessage.value = null
     statusMessage.value = null
     try {
-      await validateWorkflowTemplate(input.template)
-      await validateWorkflowApplication(input.projectId, input.application, input.template)
+      // 输入查看由后端校验真实上游闭包；未填写的当前节点不能阻止取参。
+      if(input.executionScope?.kind!=='node-input'){
+        await validateWorkflowTemplate(input.template)
+        await validateWorkflowApplication(input.projectId, input.application, input.template)
+      }
       if (!previewSession.isCurrent(generation)) return null
       const previewRun = await previewSession.execute(input, generation)
       statusMessage.value = null

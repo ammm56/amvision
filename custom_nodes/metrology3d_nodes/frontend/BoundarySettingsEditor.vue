@@ -20,7 +20,7 @@
             <GeometryFields :model-value="target" :fields="targetFields" @update:model-value="setTarget" />
             <label v-if="!('group_id' in target)"><input type="checkbox" :checked="target.closed===true" @change="setTarget({...target,closed:($event.target as HTMLInputElement).checked,role:'unknown'})">{{ label('要求完整闭环','Require complete closed loop') }}</label>
             <ArcSettingsForm v-if="'group_id' in target" :model-value="target.arc" band :unit="String(object(draft.evaluation).length_unit??'')" v-model:handle="arcHandle" :available="!!arcEdit" @update:model-value="setTarget({...target,arc:$event})" />
-            <details v-if="'group_id' in target"><summary>{{ label('每个片段的质量条件','Individual fragment quality') }}</summary><GeometryFields :model-value="object(target.fragment_quality_policy)" :fields="fragmentQualityFields" @update:model-value="setTarget({...target,fragment_quality_policy:$event})" /><WorkflowLimitRulesEditor :model-value="object(target.fragment_quality_policy).rules" quality @update:model-value="setTarget(put(target,'fragment_quality_policy.rules',$event))" /></details>
+            <details v-if="'group_id' in target"><summary>{{ label('每个片段的质量条件','Individual fragment quality') }}</summary><GeometryFields :model-value="object(target.fragment_quality_policy)" :fields="fragmentQualityFields" @update:model-value="setTarget({...target,fragment_quality_policy:$event})" /><WorkflowLimitRulesEditor :model-value="object(target.fragment_quality_policy).rules" quality :available-items="boundaryQualityItems(kind,draft,zh,true)" @update:model-value="setTarget(put(target,'fragment_quality_policy.rules',$event))" /></details>
           </template>
         </template>
         <template v-else>
@@ -39,13 +39,15 @@
       <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" :selected-roi-id="arcEdit?undefined:roiView.selectedId" :edit-arc="arcEdit??undefined" @arc-change="changeArc" @roi-change="changeRoi" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
       </template>
       <template #advanced>
-      <details v-if="!sampling" class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope&&!edge" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="quality.rules" quality @update:model-value="draft=put(draft,qualityPath+'.rules',$event)" /></details>
+      <details v-if="!sampling" class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope&&!edge" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="quality.rules" quality :available-items="boundaryQualityItems(kind,draft,zh)" @update:model-value="draft=put(draft,qualityPath+'.rules',$event)" /></details>
       </template>
       <template #issues><p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="status">{{ referenceIssues.join(' · ') }}</p></template>
     </MetrologyWorkspace>
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import {boundaryQualityItems} from './quality-items'
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,shallowRef,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
@@ -161,7 +163,7 @@ watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 watch(()=>[targetIndex.value,previewId.value,open.value],()=>{arcHandle.value='none'})
 watch(()=>[open.value,previewId.value,JSON.stringify(draft.value.evaluation),object(draft.value.method).kind],()=>{candidate.value=null})
 watch(()=>object(draft.value.selection).feature_id,(next,previous)=>{if(open.value&&next!==previous){const s=object(draft.value.selection),key=Array.isArray(s.group_ids)&&s.group_ids.length?'group_ids':'segment_ids',allowed=key==='group_ids'?availableGroups.value:availableSegments.value,selected=Array.isArray(s[key])?s[key]:[],filtered=selected.filter((id:string)=>allowed.includes(id));if(allowed.length&&filtered.length!==selected.length)draft.value=put(draft.value,'selection',{...s,[key]:filtered})}})
-watch(()=>JSON.stringify(props.inputSources),()=>{open.value=false;previewId.value=''})
+watch(()=>parameterSourceSignature(props.inputSources),()=>{open.value=false;previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>
 <style scoped>

@@ -16,6 +16,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -41,7 +42,7 @@ const gridFields=computed(()=>[field('width','列数','Columns','number'),field(
 function show(){draft.value=props.modelValue&&typeof props.modelValue==='object'?copy(object(props.modelValue)):newHeightMap();initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
 function changeFrame(e:Event){draft.value={...draft.value,frame:(e.target as HTMLSelectElement).value==='pose-frame'?{kind:'pose-frame',pose_id:'',target_frame_id:''}:{kind:'current-frame',frame_id:''}}}
 function apply(){if(!props.disabled&&!issues.value.length){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

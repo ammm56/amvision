@@ -9,10 +9,45 @@ from backend.service.application.errors import InvalidRequestError
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
 )
-from custom_nodes.metrology3d_nodes.shared.preview import unavailable_body
+from backend.service.application.workflows.point_cloud.preview import unavailable_body
 from custom_nodes.metrology3d_nodes.shared.geometry_samples import plane_samples
 from custom_nodes.metrology3d_nodes.shared.boundary_preview import curve_display
 from custom_nodes.metrology3d_nodes.shared.pose_source import require_pose
+
+
+def capture_plane_editor_preview(request, env, cloud, features):
+    """当前拟面节点的完整输入概览与同次拟面证据；生产执行不调用此路径。"""
+    from backend.service.application.workflows.preview.display import PreviewDisplayCapture
+    from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
+
+    capture = request.execution_metadata.get("_runtime_preview_capture")
+    if not isinstance(capture, PreviewDisplayCapture):
+        return
+    policy = env.policy.preview
+    values = {"features": [features.model_dump(mode="json")]}
+    # 给每点分类、有限浮点残差和特征元数据预留空间，不能先填满点数据预算。
+    fixed = len(canonical_cloud_json(values)) + 4096
+    width = sum(np.dtype(f.dtype).itemsize * f.components for f in cloud.fields) + 8
+    count = min(
+        policy.max_points,
+        max(0, (policy.max_body_bytes - fixed) // (4 * ((width + 2) // 3) + 32)),
+        min(policy.max_working_bytes, env.runtime.policy.max_working_bytes)
+        // (width * 8 + 160),
+    )
+    if count < 1:
+        body = unavailable_body(cloud, "preview_size_limit")
+    else:
+        base_policy = policy.model_copy(update={
+            "max_body_bytes": policy.max_body_bytes - fixed - count * 32,
+        })
+        body = build_cloud_preview(
+            env.runtime, cloud, {"point_limit": count, "color": {"mode": "solid"}},
+            policy=base_policy, cancel=env.cancel, fit_budget=True,
+        )
+        body = attach_geometry(
+            env.runtime, cloud, body, values, policy=policy, cancel=env.cancel,
+        )
+    capture.node_display(request, "features.editor-preview", body)
 
 
 def attach_geometry(runtime, cloud, body, values, *, policy, cancel):

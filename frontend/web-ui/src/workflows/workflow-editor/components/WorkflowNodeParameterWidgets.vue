@@ -151,8 +151,8 @@
 </template>
 
 <script setup lang="ts">
-import { inject } from 'vue'
-import { parameterEditorSourcesKey, parameterDraftIssuesKey } from '../parameters/editor-context'
+import { inject,provide } from 'vue'
+import { parameterEditorSourcesKey, parameterDraftIssuesKey,parameterNodeContextKey } from '../parameters/editor-context'
 import { ListFilter } from '@lucide/vue'
 import WorkflowDisplayAppearance from './WorkflowDisplayAppearance.vue'
 import { useI18n } from 'vue-i18n'
@@ -217,6 +217,7 @@ const props = defineProps<{
   readInputSourceLabel: (nodeId: string, portName: string) => string
 }>()
 
+provide(parameterNodeContextKey,()=>({nodeId:props.node.node.node_id,cloudPorts:props.node.inputs.filter(port=>port.payload_type_id==='point-cloud-ref.v1').map(port=>port.name),sources:editorSources?.(props.node.node.node_id)??{}}))
 const emit = defineEmits<{
   'update-enum': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, value: SelectValue]
   'update-checkbox': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]

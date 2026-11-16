@@ -25,6 +25,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -49,7 +50,7 @@ const mismatch=computed(()=>{if(inverse.value)return false;const a=current(props
 const valid=computed(()=>typeof draft.value.pose_id==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(draft.value.pose_id)&&Object.keys(draft.value).length===1&&!mismatch.value)
 function show(){draft.value=copy(object(props.modelValue));initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
 function apply(){if(!props.disabled&&valid.value){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

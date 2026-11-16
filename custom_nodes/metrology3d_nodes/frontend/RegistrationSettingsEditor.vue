@@ -15,7 +15,7 @@
         <fieldset><legend>{{ zh?'候选姿态等价范围':'Equivalent candidate poses' }}</legend><GeometryFields v-model="draft" :fields="equivalenceFields" /></fieldset></template>
         <fieldset><legend>{{ zh?'对应与停止':'Correspondence and stopping' }}</legend><GeometryFields v-model="draft" :fields="solverFields" /></fieldset>
         <GeometryFields v-model="draft" :fields="qualityFields" />
-        <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
+        <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality :available-items="registrationQualityItems(draft,zh)" @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
       </template>
       <template #view="{presentation}"><section class="registration-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" />
         <CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" />
@@ -25,6 +25,8 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import {registrationQualityItems} from './quality-items'
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -53,7 +55,7 @@ const solverFields=computed(()=>[field('max_correspondence_distance','最大对�
 const qualityFields=computed(()=>[field('quality_policy.policy_id','质量策略 ID','Quality policy ID'),field('quality_policy.policy_version','质量策略版本','Quality policy version','number')])
 function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newRegistration();initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
 function apply(){if(!props.disabled&&!issues.value.length){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

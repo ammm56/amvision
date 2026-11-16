@@ -37,5 +37,23 @@ onMounted(()=>{
 onBeforeUnmount(()=>{closed=true;observer?.disconnect();cancelAnimationFrame(frame);frame=0;window.removeEventListener('resize',scheduleMeasure)})
 </script>
 <style scoped>
-.metrology-workspace{min-width:0;display:grid;gap:10px}.workspace-content{display:grid;grid-template-columns:minmax(280px,370px) minmax(0,1fr);gap:12px;align-items:start;min-width:0}.workspace-parameters,.workspace-view{display:grid;gap:12px;min-width:0;min-height:0}.workspace-parameters{max-height:60dvh;overflow:auto;padding-right:4px}.workspace-view{position:sticky;top:0}.workspace-view :deep(.cloud-viewer){height:min(60dvh,660px)}.workspace-issues:empty{display:none}.workspace-issues{min-width:0;overflow-wrap:anywhere}.workspace-tabs{display:flex;border-bottom:1px solid var(--am-border);gap:4px}.workspace-tabs button{flex:1;min-width:0;font:inherit;font-size:13px;padding:8px 12px;border:0;background:transparent;color:var(--am-text);cursor:pointer}.workspace-tabs button[aria-selected=true]{box-shadow:inset 0 -2px var(--am-brand-primary);font-weight:600}.workspace-tabs button:focus-visible{outline:2px solid var(--am-brand-primary);outline-offset:-2px}.compact .workspace-content{grid-template-columns:minmax(0,1fr)}.compact .workspace-parameters{max-height:55dvh}.compact .workspace-view{position:static}.compact .workspace-view :deep(.cloud-viewer){height:55dvh;min-height:260px}
+.metrology-workspace{min-width:0;display:grid;gap:10px}
+.workspace-content{display:grid;grid-template-columns:minmax(280px,370px) minmax(0,1fr);gap:12px;align-items:start;min-width:0}
+.workspace-parameters,.workspace-view{gap:12px;min-width:0;min-height:0}
+.workspace-parameters{display:grid;max-height:60dvh;overflow:auto;padding-right:4px}
+.workspace-view{position:sticky;top:0;display:flex;flex-direction:column;container-type:inline-size;height:min(70dvh,760px);max-height:calc(100dvh - 180px)}
+.workspace-view>:not(.cloud-viewer){flex:0 0 auto}
+.workspace-view :deep(.cloud-viewer){flex:1 1 0;height:auto;min-height:0;grid-template-rows:auto minmax(100px,1fr) auto}
+.workspace-view :deep(.cloud-viewer.show-details:not(.evidence-only)){grid-template-rows:auto minmax(100px,1fr) auto auto minmax(80px,.65fr)}
+.workspace-view :deep(.cloud-viewer.evidence-only){grid-template-rows:auto auto minmax(0,1fr)}
+.workspace-issues:empty{display:none}
+.workspace-issues{min-width:0;overflow-wrap:anywhere}
+.workspace-tabs{display:flex;border-bottom:1px solid var(--am-border);gap:4px}
+.workspace-tabs button{flex:1;min-width:0;font:inherit;font-size:13px;padding:8px 12px;border:0;background:transparent;color:var(--am-text);cursor:pointer}
+.workspace-tabs button[aria-selected=true]{box-shadow:inset 0 -2px var(--am-brand-primary);font-weight:600}
+.workspace-tabs button:focus-visible{outline:2px solid var(--am-brand-primary);outline-offset:-2px}
+.compact .workspace-content{grid-template-columns:minmax(0,1fr)}
+.compact .workspace-parameters{max-height:55dvh}
+.compact .workspace-view{position:static;height:auto;max-height:none}
+.compact .workspace-view :deep(.cloud-viewer){flex:0 0 auto;height:55dvh;min-height:260px}
 </style>

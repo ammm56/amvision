@@ -28,6 +28,7 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -57,7 +58,7 @@ function changeNeighborhood(e:Event){draft.value={...draft.value,neighborhood:ne
 function changeSupport(e:Event){const kind=(e.target as HTMLSelectElement).value;draft.value={...draft.value,neighborhood:{...neighborhood.value,support:{kind,...(kind==='bounded'?{max_distance:null}:{})}}}}
 function changeOrientation(e:Event){draft.value={...draft.value,orientation:newOrientation((e.target as HTMLSelectElement).value)}}
 function apply(){if(!props.disabled&&normalsValid(draft.value)){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

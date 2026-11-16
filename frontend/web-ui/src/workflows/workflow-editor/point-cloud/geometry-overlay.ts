@@ -289,7 +289,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       const target=targets.get(next.selectedId??'')
       const original=rois.find(r=>r.roi_id===next.selectedId)
       if(next.arc&&next.arcChanged)buildArc(next.arc)
-      else if(target&&next.changed&&!(next.mode==='scale'&&original?.kind==='section-band')){gizmo=new TransformControls(camera,canvas);gizmo.setMode(next.mode??'translate');if(next.mode==='scale'){gizmo.setSpace('local');if(original?.kind==='cylinder')gizmo.showZ=false}gizmo.attach(target);const helper=gizmo.getHelper();root.add(helper);account(helper)
+      else if(target&&next.changed){gizmo=new TransformControls(camera,canvas);gizmo.setMode(next.mode??'translate');if(next.mode==='scale'){gizmo.setSpace('local');if(original?.kind==='cylinder')gizmo.showZ=false;if(original?.kind==='section-band'){gizmo.showX=false;gizmo.showZ=false}}gizmo.attach(target);const helper=gizmo.getHelper();root.add(helper);account(helper)
         const control=gizmo,id=next.selectedId!,scope=next.roiScope,payload=next.payload
         let start:RoiValue|undefined,cancelling=false
         const live=()=>!closed&&interactive&&gizmo===control&&input?.payload===payload&&input?.roiScope===scope&&input?.selectedId===id
@@ -319,9 +319,12 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
             if(![s.x,s.y,s.z].every(v=>Number.isFinite(v)&&v>0)){s.set(1,1,1);schedule();return}
             if(roi.kind==='box')g.size=vec(base.size).multiply(s).toArray()
             else if(roi.kind==='cylinder'){s.z=s.x;g.radius=positive(base.radius)*s.x;g.length=positive(base.length)*s.y}
+            else if(roi.kind==='section-band'){const thickness=positive(base.thickness)*s.y;s.x=1;s.z=1;if(!Number.isFinite(thickness)||thickness<=0){s.set(1,1,1);schedule();return}g.thickness=thickness}
             if((Array.isArray(g.size)&&g.size.some(v=>!Number.isFinite(v)||v<=0))||roi.kind==='cylinder'&&(!Number.isFinite(g.radius)||!Number.isFinite(g.length))){s.set(1,1,1);schedule();return}
           }
-          if(roi.kind==='section-band'){g.origin=position;g.normal=new Vector3(0,1,0).applyQuaternion(q).toArray()}else {g.center=position;if(roi.kind==='cylinder')g.axis=new Vector3(0,1,0).applyQuaternion(q).toArray();else {const m=new Matrix4().makeRotationFromQuaternion(q).elements;g.rotation=[[m[0],m[4],m[8]],[m[1],m[5],m[9]],[m[2],m[6],m[10]]]}}
+          if(next.mode!=='scale'){
+            if(roi.kind==='section-band'){g.origin=position;g.normal=new Vector3(0,1,0).applyQuaternion(q).toArray()}else {g.center=position;if(roi.kind==='cylinder')g.axis=new Vector3(0,1,0).applyQuaternion(q).toArray();else {const m=new Matrix4().makeRotationFromQuaternion(q).elements;g.rotation=[[m[0],m[4],m[8]],[m[1],m[5],m[9]],[m[2],m[6],m[10]]]}}
+          }
           const changed={...roi,geometry:g};for(const update of updates.get(String(roi.roi_id))??[])update(changed);input?.changed?.(changed);schedule()
         })
       }
