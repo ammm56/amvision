@@ -15,10 +15,11 @@
       /><span>{{ datasetDate(job.finished_at || job.created_at) }}</span>
     </div>
     <InlineError v-if="job.error_message" :message="job.error_message" />
-    <progress
+    <TaskProgress
       v-if="['queued', 'running'].includes(job.state)"
-      :value="job.progress.percent"
-      max="100"
+      :percent="job.progress?.percent"
+      indeterminate
+      :label="job.state === 'queued' ? label('等待执行', 'Waiting to start') : label('正在处理数据', 'Processing data')"
       :aria-label="label('执行进度', 'Progress')"
     />
     <template v-if="job.state === 'succeeded' && job.result">
@@ -134,6 +135,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
 import { datasetDate, useDatasetText } from '../dataset-workspace'
 import type { DatasetJob } from '../services/dataset-workspace.service'
 const props = defineProps<{ job: DatasetJob; sourceName?: string; sourceNumber?: number }>()
@@ -221,10 +223,8 @@ const fieldName = (key: string) =>
   display: grid;
   gap: 16px;
 }
-.dataset-job-result progress {
-  width: 100%;
-  accent-color: var(--am-brand-primary);
-}
+.dataset-job-result > .dataset-heading { margin: 0; }
+.dataset-job-result > .dataset-heading > span { color: var(--am-text-muted); font-size: 13px; }
 
 .dataset-result-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .dataset-result-title > svg { color: var(--am-brand-primary); flex-shrink: 0; }

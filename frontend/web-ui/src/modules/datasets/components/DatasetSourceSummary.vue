@@ -1,17 +1,17 @@
 <template>
   <details open class="source-panel">
-    <summary>{{ label('来源摘要', 'Source summary') }}</summary>
+    <summary>{{ label('来源摘要', 'Source summary') }}<ChevronDown :size="18" aria-hidden="true" /></summary>
     <div class="source-grid">
       <div class="source-file">
-        <FileArchive :size="27" />
+        <FileArchive :size="32" />
         <div>
-          <strong>{{ filename || sourceKind }}</strong>
-          <small v-if="format !== '—'">{{ format }}</small>
+          <div class="source-file-heading"><strong>{{ filename || sourceKind }}</strong>
+          <small v-if="format !== '—'">{{ format }}</small></div>
           <dl>
             <dt>{{ label('来源方式', 'Source') }}</dt>
             <dd>{{ sourceKind }}</dd>
-            <dt>{{ label('创建时间', 'Created') }}</dt>
-            <dd>{{ datasetDate(workspace.created_at) }}</dd>
+            <dt>{{ source ? label('导入时间', 'Imported') : label('创建时间', 'Created') }}</dt>
+            <dd>{{ datasetDate(source?.created_at || workspace.created_at) }}</dd>
             <template v-if="workspace.metadata.parent_version_id"
               ><dt>{{ label('来源版本', 'Parent version') }}</dt>
               <dd>
@@ -61,7 +61,7 @@
     <p>
       <Info :size="15" />{{
         label(
-          '训练和评估引用固定版本，不随新版本切换。',
+          '外部引用固定版本，不随最新版本切换。',
           'Training and evaluation stay linked to their original version.',
         )
       }}
@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FileArchive, Info, List } from '@lucide/vue'
+import { FileArchive, Info, List, ChevronDown } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '@/shared/api/error'
 import {
@@ -110,7 +110,7 @@ const sourceKind = computed(() =>
   props.workspace.metadata.parent_version_id
     ? label('从版本创建', 'Created from version')
     : props.workspace.metadata.source_import_id
-      ? label('ZIP 导入', 'ZIP import')
+      ? [format.value !== '—' ? format.value : '', label('ZIP 导入', 'ZIP import')].filter(Boolean).join(' ')
       : '—',
 )
 const filename = computed(() =>
@@ -162,21 +162,31 @@ watch(
 </script>
 <style scoped>
 .source-panel {
-  padding: 18px 20px;
+  padding: 20px;
   background: var(--am-surface);
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
   min-width: 0;
 }
 .source-panel summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
+  list-style: none;
 }
+.source-panel summary::-webkit-details-marker { display: none; }
+.source-panel summary svg { transition: transform var(--am-motion-fast) var(--am-ease-standard); }
+.source-panel[open] summary svg { transform: rotate(180deg); }
+.source-file-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .source-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: 20px;
-  margin: 18px 0;
+  margin: 24px 0;
+  min-height: 150px;
 }
 .source-file {
   display: flex;
@@ -233,5 +243,10 @@ watch(
   gap: 8px;
   font-size: 13px;
   margin: 16px 0 0;
+}
+.source-panel p svg { flex: none; }
+@media (max-width: 1100px) {
+  .source-panel { padding: 16px; }
+  .source-grid { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; }
 }
 </style>

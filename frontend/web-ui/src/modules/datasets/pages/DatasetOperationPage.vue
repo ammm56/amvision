@@ -1,5 +1,5 @@
 <template>
-  <section class="dataset-workspace dataset-operation" :class="{ 'dataset-operation--derive': operation === 'derive' }">
+  <section class="dataset-workspace dataset-operation" :class="{ 'dataset-operation--derive': operation === 'derive', 'dataset-operation--compare': operation === 'compare' }">
     <div class="dataset-heading">
       <div class="dataset-actions">
         <Button @click="back"
@@ -78,35 +78,32 @@
           </div>
         </fieldset>
       </form>
-      <section
-        v-if="operation === 'compare' && !job && !route.query.task"
-        class="resource-section dataset-config"
+      <DatasetComparison
+        v-if="operation === 'compare'"
+        :source="workspace" :target-id="compareVersion" :versions="versions"
+        :job="job" :busy="busy || unknown" :can-write="canWrite"
+        :initial-filter="String(route.query.diff || 'all')" :initial-offset="Number(route.query.diffOffset || 0)"
+        @view-state="router.replace({ query: { ...route.query, diff: $event.filter === 'all' ? undefined : $event.filter, diffOffset: $event.offset || undefined } })"
+        @target="selectCompareTarget" @source="selectCompareSource"
+        @compare="submit('compare')" @version="viewVersion" @sample="viewSample"
       >
-        <h2>{{ label('选择比较版本', 'Choose a comparison version') }}</h2>
-        <label class="field"
-          ><input
-            v-model="versionQuery"
-            :aria-label="label('搜索版本', 'Search versions')"
-            @input="searchVersions" /></label
-        ><SelectField
-          v-model="compareVersion"
-          :options="versionOptions"
-        /><PaginationControls
-          v-if="versionTotal > 20"
-          :offset="versionOffset"
-          :limit="20"
-          :item-count="versions.length"
-          :total-count="versionTotal"
-          @previous="pageVersions(-20)"
-          @next="pageVersions(20)"
-        /><Button
-          variant="primary"
-          :loading="busy"
-          :disabled="!canWrite || !compareVersion || unknown"
-          @click="submit('compare')"
-          >{{ label('开始比较', 'Compare') }}</Button
-        >
-      </section>
+        <template #versions>
+          <div v-if="versionTotal > 20 || versionQuery || versionOffset > 0" class="dataset-actions">
+            <label class="field"><input v-model="versionQuery" :aria-label="label('搜索版本', 'Search versions')" @input="searchVersions" /></label>
+            <PaginationControls :offset="versionOffset" :limit="20" :item-count="versions.length" :total-count="versionTotal" @previous="pageVersions(-20)" @next="pageVersions(20)" />
+          </div>
+        </template>
+        <template #status>
+          <section v-if="job && job.state !== 'succeeded'" class="resource-section dataset-compare-status">
+            <DatasetJobResult :job="job" />
+            <div class="dataset-actions">
+              <Button v-if="pollFailed" :loading="busy" @click="loadJob(job.task_id)">{{ text('refresh') }}</Button>
+              <Button v-if="canWrite && ['queued', 'running'].includes(job.state)" :loading="busy" @click="cancel">{{ label('取消操作', 'Cancel operation') }}</Button>
+              <Button v-if="['failed', 'cancelled', 'timed_out'].includes(job.state)" @click="editConfig">{{ label('返回配置', 'Return to configuration') }}</Button>
+            </div>
+          </section>
+        </template>
+      </DatasetComparison>
       <section
         v-if="operation === 'quality' && !job && !route.query.task"
         class="resource-section dataset-config"
@@ -131,7 +128,7 @@
       <section v-if="job && operation === 'derive'" class="resource-section derivation-source">
         <h2>{{ label('版本来源', 'Version source') }}</h2><div class="derivation-form-row"><span class="dataset-muted">{{ label('来源数据集', 'Source dataset') }}</span><div class="derivation-source-value">{{ workspace.dataset.display_name }} <span>v{{ workspace.version_number }}</span></div></div>
       </section>
-      <section v-if="job" class="resource-section derivation-report">
+      <section v-if="job && operation !== 'compare'" class="resource-section derivation-report">
         <DatasetDerivationReview
           v-if="job.operation === 'derive-check' && job.state === 'succeeded'"
           :job="job"
@@ -224,6 +221,7 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { ApiError } from '@/shared/api/error'
 import { useSessionStore } from '@/app/stores/session.store'
 import DatasetJobResult from '../components/DatasetJobResult.vue'
+import DatasetComparison from '../components/DatasetComparison.vue'
 import DatasetDerivationReview from '../components/DatasetDerivationReview.vue'
 import { datasetError, useDatasetText } from '../dataset-workspace'
 import {
@@ -310,15 +308,15 @@ const compareVersion = ref(String(route.query.compare || '')),
   versionOffset = ref(0),
   versionTotal = ref(0),
   versionQuery = ref('')
-const versionOptions = computed(() => [
-  { value: '', label: label('选择版本', 'Select version') },
-  ...versions.value
-    .filter((v) => v.dataset_version_id !== version)
-    .map((v) => ({
-      value: v.dataset_version_id,
-      label: `v${v.version_number} · ${v.sample_count} ${text('samples')}`,
-    })),
-])
+function selectCompareSource(id: string) {
+  router.push({ path: `/datasets/${encodeURIComponent(dataset)}/versions/${encodeURIComponent(id)}/tools/compare`, query: { compare: id === compareVersion.value ? version : compareVersion.value } })
+}
+function selectCompareTarget(id: string) {
+  if (busy.value || unknown.value || ['queued', 'running'].includes(job.value?.state || '')) return
+  compareVersion.value = id
+  job.value = null
+  router.replace({ query: { compare: id || undefined } })
+}
 const config = computed(() => ({
   selection: selection.value ?? null,
   category_names: Object.fromEntries(
@@ -344,14 +342,16 @@ function back() {
   })
 }
 function viewVersion(id: string) {
-  router.push(
-    `/datasets/${encodeURIComponent(dataset)}/versions/${encodeURIComponent(id)}`,
-  )
+  router.push({
+    path: `/datasets/${encodeURIComponent(dataset)}/versions/${encodeURIComponent(id)}`,
+    state: { datasetReturnTo: route.fullPath },
+  })
 }
 function viewSample(id: string, target?: string) {
   router.push({
     path: `/datasets/${encodeURIComponent(dataset)}/versions/${encodeURIComponent(target || version)}`,
     query: { sample: id },
+    state: { datasetReturnTo: route.fullPath },
   })
 }
 async function loadJob(id: string) {
@@ -424,7 +424,7 @@ async function submit(kind: DatasetJob['operation']) {
     if (!active) return
     configSnapshot = JSON.stringify(config.value)
     await router.replace({
-      query: { ...route.query, request: undefined, task: response.task_id },
+      query: { ...route.query, compare: kind === 'compare' ? compareVersion.value : undefined, request: undefined, task: response.task_id },
     })
     await loadJob(response.task_id)
   } catch (e) {
@@ -633,6 +633,8 @@ onMounted(() => {
   void initialize()
 })
 function restoreConfig() {
+  if (job.value?.operation === 'compare' && job.value.result?.compare_version_id)
+    compareVersion.value = job.value.result.compare_version_id
   const saved = job.value?.config
   if (!saved) return
   selection.value = saved.selection ?? undefined
@@ -662,6 +664,10 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 16px;
 }
+.dataset-compare-status { display: grid; gap: 20px; }
+.dataset-operation--compare > .dataset-heading { justify-content: flex-start; gap: 20px; }
+.dataset-operation--compare > .dataset-heading > .dataset-actions { flex: initial; }
+.dataset-operation--compare > .dataset-heading > span { color: var(--am-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dataset-review-actions {
   justify-content: space-between;
 }

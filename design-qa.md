@@ -531,3 +531,71 @@ final result: passed（本次页面范围）
 真实 609 样本预检查 task-7008faef2a705bfdab90e66ae385cfaa 成功：样本划分 487/61/61；本轮未创建新版本。6 项前端回归覆盖默认空分组提交、历史凭据阻止复用、检查报告数据。亮暗配置页／检查页、1024×768 均核对，横向无溢出，滚动后底部操作可达。
 
 截图：[配置亮色](docs/design/frontend/verification/derive-20261116/sample-split/config-light.jpg)、[配置暗色短屏](docs/design/frontend/verification/derive-20261116/sample-split/config-dark-1024.jpg)、[检查亮色](docs/design/frontend/verification/derive-20261116/sample-split/review-light.jpg)、[检查暗色短屏](docs/design/frontend/verification/derive-20261116/sample-split/review-dark-1024-actions.jpg)。本次产品范围调整覆盖原设计中的分组项，其他布局沿用已核对方案。
+
+### 类别与划分、质量检查、版本与来源复核（2026-11-16）
+
+final result: passed（本轮三个页签的布局、现有能力与交互范围）
+
+逐张查看六张源图及对应中文规格，先保存当前开发页面，再修复并重新截图。字体沿用本地 Noto Sans SC，表格、按钮、行菜单及抽屉复用现有 Vue 组件。截图中的侧栏保留用户的折叠状态，名称、计数和日期使用真实数据，不写入设计样例数值。
+
+| 页面 | 设计参考 | 最终亮色 | 最终暗色 |
+| --- | --- | --- | --- |
+| 类别与划分 | generated/数据集/类别与划分-亮色.png、类别与划分-暗色.png | [亮色](docs/design/frontend/verification/dataset-tabs-20261116/categories-light.jpg) | [暗色](docs/design/frontend/verification/dataset-tabs-20261116/categories-dark.jpg) |
+| 质量检查 | generated/数据集/质量检查-亮色.png、质量检查-暗色.png | [亮色](docs/design/frontend/verification/dataset-tabs-20261116/quality-light.jpg) | [暗色](docs/design/frontend/verification/dataset-tabs-20261116/quality-dark.jpg) |
+| 版本与来源 | generated/数据集/版本与来源-亮色.png、版本与来源-暗色.png | [亮色](docs/design/frontend/verification/dataset-tabs-20261116/lineage-light.jpg) | [暗色](docs/design/frontend/verification/dataset-tabs-20261116/lineage-dark.jpg) |
+
+修复及复核结果：
+
+- 类别表原先受通用资源面板的负边距影响而贴边；现在恢复内部留白、表头底色、分隔线和合计行。未配置划分的对象数量显示“—”，实际 0 保留为 0。条码数据验证 barcode 419 图像/419 对象、qrcode 190 图像/563 对象，合计仅计算 982 对象。查看 qrcode 后样本页筛选正确，总数 190。
+- 质量页按显示检查项统计已检查、待复核和未检查，不再只显示样本数及问题数。状态、带图标的操作、表头和中性说明区统一；类别通过时可查看分布，重复项可查看候选，报告过期时抽屉也明确提示。请求失败可重试，明细截断时不将已保留明细数冒充完整受影响样本数。
+- 版本表补全当前版本比较入口及各行更多操作，圆形选择按钮支持键盘并保留页签切换。真实 v1/v2 切换后统计及来源同步更新；v1 行创建导出准确预选 v1；当前版本比较进入选择界面且没有默认比较自身。来源摘要改为右侧折叠箭头，ZIP 名称与格式保持间隔，导入信息和版本创建信息分别使用真实时间。源记录缺失时无失效链接，存在时跳转到对应导入详情。
+
+真实后台验证：
+
+- 条码 v2（dataset-version-1114e51e4788）：质量任务 task-a2a6945b5d0954469139f45d9c223592，609 样本、0 问题，显示已检查 4 项、待复核 0 项、未检查 1 项。检查前的未检查状态、完成状态和人工说明抽屉均核对。
+- PCB v3（dataset-version-2a8a323504c4）：质量任务 task-596a82df1409536d98bdfcef9d6e604a，2,636 样本、1,318 条完全重复提示。显示已检查 4 项、待复核 1 项、未检查 1 项；报告只保留 200 条明细，抽屉完整问题数仍为 1,318，候选图片可打开。[亮色待复核](docs/design/frontend/verification/dataset-tabs-20261116/quality-warning-light.jpg)、[暗色待复核](docs/design/frontend/verification/dataset-tabs-20261116/quality-warning-dark.jpg)、[候选预览](docs/design/frontend/verification/dataset-tabs-20261116/quality-candidate-light.jpg)。两次检查均未修改样本或创建新版本。
+- PCB v1 来源链接指向追加导入记录 dataset-import-d9046b0337c5，提交时间 2026-11-10 20:35，与详情一致；版本初建时间仍为 17:03，二者不混用。[真实导入来源](docs/design/frontend/verification/dataset-tabs-20261116/source-import-dark.jpg)。
+
+1024×768 六张配对截图全部实际检查：
+[类别亮](docs/design/frontend/verification/dataset-tabs-20261116/categories-light-1024.jpg) / [类别暗](docs/design/frontend/verification/dataset-tabs-20261116/categories-dark-1024.jpg)，
+[质量亮](docs/design/frontend/verification/dataset-tabs-20261116/quality-light-1024.jpg) / [质量暗](docs/design/frontend/verification/dataset-tabs-20261116/quality-dark-1024.jpg)，
+[来源亮](docs/design/frontend/verification/dataset-tabs-20261116/lineage-light-1024.jpg) / [来源暗](docs/design/frontend/verification/dataset-tabs-20261116/lineage-dark-1024.jpg)。无页面横向溢出，短屏允许正常纵向滚动，操作未被裁切；暗色图标无白色外圈。最终恢复亮色与默认视口，浏览器当前页无控制台错误。
+
+最终验证：22 个数据集测试文件、56 项测试通过；TypeScript 和生产构建通过。Vite 仅有既存大分块提示。测试覆盖计数语义、未配置划分、正确类别 ID、行版本操作、保留页签、部分检查、过期及截断报告、读取失败重试、查看分布事件。截图保存在已忽略的 verification 目录；本轮未在根目录 .tmp 新增临时产物。后端、Worker 和推理守护进程保持运行。
+
+能力边界：本轮不增加新的质量算法。现有完全重复与类别引用检查不能宣称已实现设计样例中的近似重复检测或人工语义判断；页面保留真实能力名称及未检查说明，不虚构结果。历史数据缺少导入者或原导入记录时不补造这些字段。本轮 UI 范围没有遗留的阻断问题，此结论不表示整个平台或尚未实现的算法已验收。
+
+## 2026-11-16 版本比较与任务进度核对
+
+final result: passed（版本比较前端范围）
+
+参考：`generated/数据集/版本比较-亮色.png`、`版本比较-暗色.png` 及同名规格。按左右版本选择、并列版本统计、差异类型按钮组、四行分页表、类别对比和划分对比逐区核对。保留项目现有导航尺寸、字体和公共组件；真实样本、版本号、时间及数量不替换为设计图的工业零件示例。记录缺少创建者时不伪造。
+
+第一轮发现与修复：
+- P1：比较仍使用通用任务报告，185 条差异一次性铺满页面，缺少版本摘要和两个统计对照。新增专用比较视图，使用共用 Select、SegmentedButtonGroup、ResourceTable、PaginationControls、Button。
+- P1：原生 progress 产生深色轨道，未知进度无明确表现。复用 TaskProgress，使用既有亮暗进度色板、7px 圆角轨道；未知百分比使用无百分比的等待动画，尊重减少动效设置。创建版本等共用结果页同步修正。
+- P1：差异的查看入口需要按所属版本定位。移除样本打开左版本，其余打开右版本；请求只补充当前页四条样本详情，失败显示不可用并可重试。
+- P2：第一次渲染的分页区多套一层边框，下方统计表行高偏大，暗色表头偏亮。第二轮移除分页外框、调整统计表行距及主题表头颜色，再次截图核对。
+- P2：未配置 val 到已配置 val 的正向变化未使用增加颜色；已修正并补充断言。未配置值仍显示破折号，不伪造为 0。
+
+实际浏览器验证：
+- 原任务 `task-3893a568b7405171967b8392784530ae` 已完成：v2 → v1，609 张、982 个对象，185 张修改、0 新增、0 移除。
+- 新运行 v1 → v2 比较，最终任务 `task-db397a3f47a254c185feeed6a7083452`：185 张修改；train 520 → 487（-33）、val 未配置 → 61（+61）、test 89 → 61（-28）。类别 barcode 419、qrcode 563 对象保持一致。反向任务 `task-1f3afcefd46054aeb00bf1d245e3f0d0` 的增减方向正确反转。
+- 全部/修改筛选、下一页、空的新增筛选均核对。四条每页，共 47 页；筛选切换重置页码。
+- 查看第一条 barcode107.jpg，实际进入右侧 v2，显示 val、1600×1200、1 对象，与表格一致。浏览器返回后可恢复比较任务。
+- 1672×941 亮暗截图与源图放在同一比较输入中核对；数据不同，未声称样例内容逐像素相等。1024×768 亮暗短屏无页面横向溢出，底部对照表正常纵向滚动。运行状态保留两边版本摘要，不只剩一条进度条。
+- 本轮没有操作后端、Worker 或推理守护进程；后端由用户管理。本次不需要重启后端。
+
+截图：`docs/design/frontend/verification/compare-20261116/`（忽略目录）。`result-light.jpg` / `result-dark.jpg`、`result-light-1024.jpg` / `result-dark-1024.jpg`、`running-light.jpg`、`progress-dark-1024.jpg`、`empty-light.jpg`、`sample-target-light.jpg`。最终恢复亮色、收起导航和默认视口。
+
+验证：数据集 23 个文件 60 项测试通过；共用任务反馈组件 5 项测试通过；后续颜色修正的比较组件 4 项复测通过。TypeScript 与生产构建通过；既有大分块提示仍在。浏览器控制台无错误。未新增根目录 `.tmp` 产物。
+
+边界：现有接口最多保留前 200 条差异明细，页面明确说明筛选分页只覆盖保留明细，而上方计数覆盖全部差异；本轮未改变后端 API 或比较算法。读取失败、竞态丢弃、报告截断及未知进度以组件测试验证，没有人为破坏真实版本来构造错误。历史任务明细与当前样本读取并非同一快照，检测到来源 revision 变化时提示重新比较。
+
+### 样本与版本返回路径补充验证（2026-11-16）
+
+- 修复页面内“返回”只关闭跨页预览的问题；来源通过历史状态保存，刷新后仍可返回原任务。比较页“查看版本”应用同一返回约定。版本内预览关闭仍停留当前版本。
+- 真实任务 `task-db397a3f47a254c185feeed6a7083452` 选择“修改”、第 2 页，打开右版本的 `barcode196.jpg`（test、1 对象）。页面返回后仍为同一任务、修改筛选和第 2 页；刷新样本页后返回同样通过。查看 v2 → 版本内预览 → 关闭 → 版本页返回，也回到原比较页。
+- 独立标签页直接打开同一样本，返回后清除 `sample`；刷新不再重新弹出预览。质量任务共用入口和同版本前进后退通过组件回归测试。
+- 1024×768 亮暗主题真实返回通过，截图为 `docs/design/frontend/verification/compare-20261116/return-light-1024.jpg`、`return-dark-1024.jpg`。恢复亮色、默认视口，关闭本轮临时标签页。控制台无错误。
+- 数据集全量 23 文件、65 项通过；补充查看版本返回后，相关 2 文件、11 项复测通过。TypeScript、生产构建、diff 检查通过；仍有既有大分块提示。本轮未创建根目录 `.tmp` 产物，未操作后端服务，无需重启后端。

@@ -297,6 +297,7 @@
         :tab="tab"
         @samples="tab = 'sampleTab'"
         @filter="filterSamples"
+        @categories="tab = 'categories'"
         @version="changeVersion"
         @sample="showExternalImage"
       />
@@ -330,14 +331,14 @@
       :key="viewerSample.sample_id" :dataset="datasetId" :name="workspace.dataset.display_name" :version="`v${workspace.version_number}`"
       :neighbors="!viewerStandalone && samples.some(s=>s.sample_id===viewerSample?.sample_id) ? samples.slice(Math.max(0,viewerIndex-offset-3),viewerIndex-offset+4) : []" @pick="showImage($event)" :sample="viewerSample" :media="sampleMedia(viewerSample)!" :image="viewer.src" :busy="viewerBusy"
       :previous="!viewerStandalone && viewerIndex>0" :next="!viewerStandalone && viewerIndex<total-1"
-      @info="showInfo(viewerSample)" @close="closeViewer" @previous="adjacent(-1)" @next="adjacent(1)" />
+      @info="showInfo(viewerSample)" @close="returnFromViewer" @previous="adjacent(-1)" @next="adjacent(1)" />
     <DatasetImageViewer v-else-if="viewer && workspace" :open="!!viewer" :image="viewer"
       :dataset-name="workspace.dataset.display_name" :version="`v${workspace.version_number}`"
       :split="viewerSample?.split || ''" :object-count="viewerSample?.annotations.length || 0"
       :annotations="viewerAnnotations" :busy="viewerBusy" :invalid="viewerInvalid"
       :info-open="infoOpen" :focused-bounds="selectedAnnotation ? annotationBounds(selectedAnnotation) : null" :task="workspace.task_type"
       :has-previous="!viewerStandalone && viewerIndex > 0" :has-next="!viewerStandalone && viewerIndex < total - 1"
-      @close="closeViewer" @close-info="infoOpen = false" @previous="adjacent(-1)" @next="adjacent(1)"
+      @close="returnFromViewer" @close-info="infoOpen = false" @previous="adjacent(-1)" @next="adjacent(1)"
       @info="viewerSample && showInfo(viewerSample)" @annotations="viewerAnnotations = $event; updateViewerImage()" />
     <DatasetInfoDrawer v-if="datasetInfoMode && workspace" :info="workspace.dataset" :mode="datasetInfoMode" :editable="canWrite"
       @close="datasetInfoMode = null" @saved="saveInfo" />
@@ -603,14 +604,7 @@ async function load() {
       await syncQuery()
       await loadSamples()
     }
-    if (route.query.sample && request === workspaceGeneration) {
-      const sample = await getDatasetSample(
-        datasetId.value,
-        versionId.value,
-        String(route.query.sample),
-      )
-      if (request === workspaceGeneration) showExternalImage(sample)
-    }
+    if (route.query.sample && request === workspaceGeneration) await openLinkedSample()
   } catch (e) {
     if (request === workspaceGeneration) error.value = datasetError(e)
   } finally {
@@ -660,6 +654,8 @@ function page(delta: number) {
   void loadSamples()
 }
 function backToCatalog() {
+  if (route.query.sample) { returnFromViewer(); return }
+  if (returnToOrigin()) return
   const back = window.history.state?.back
   if (typeof back === 'string' && /^\/datasets(?:\?|$)/.test(back))
     router.back()
@@ -668,6 +664,7 @@ function backToCatalog() {
 function syncQuery() {
   return router.replace({
     query: {
+      sample: route.query.sample,
       tab: tab.value === 'sampleTab' ? undefined : tab.value,
       q: q.value || undefined,
       split: split.value || undefined,
@@ -823,7 +820,38 @@ function mediaCaption(sample:DatasetSample) {
   if(m?.kind==='point-cloud')return m.point_count?.toLocaleString()+' '+label('点','points')
   return sample.annotations.length+' '+text('object')
 }
+let linkedSampleGeneration = 0
+async function openLinkedSample() {
+  const id = route.query.sample
+  if (typeof id !== 'string' || !id) return
+  const request = ++linkedSampleGeneration
+  const currentWorkspace = workspaceGeneration
+  try {
+    const sample = await getDatasetSample(datasetId.value, versionId.value, id)
+    if (request === linkedSampleGeneration && currentWorkspace === workspaceGeneration && route.query.sample === id)
+      await showImage(sample, 0, true)
+  } catch (e) {
+    if (request === linkedSampleGeneration && currentWorkspace === workspaceGeneration) error.value = datasetError(e)
+  }
+}
+function returnFromViewer() {
+  closeViewer()
+  if (!route.query.sample) return
+  if (!returnToOrigin())
+    void router.replace({ query: { ...route.query, sample: undefined } })
+}
+function returnToOrigin() {
+  const origin = window.history.state?.datasetReturnTo
+  // 返回进入预览的任务页；直接样本链接则清理 URL，避免刷新重新打开。
+  if (typeof origin === 'string' && origin.startsWith(`/datasets/${encodeURIComponent(datasetId.value)}/versions/`) && origin.includes('/tools/')) {
+    if (window.history.state?.back === origin) router.back()
+    else void router.replace(origin)
+    return true
+  }
+  return false
+}
 function closeViewer() {
+  linkedSampleGeneration++
   overlayGeneration++
   viewerBlob = null
   viewerSelectedObject.value = ''
@@ -889,12 +917,17 @@ watch([tab, grid], () => {
 })
 watch(
   () => route.query,
-  () => {
+  (query, previous) => {
     const before = JSON.stringify(sampleQuery())
     readQuery()
     if (workspace.value && before !== JSON.stringify(sampleQuery())) {
       clearSelection()
       void loadSamples()
+    }
+    if (query.sample !== previous.sample) {
+      closeViewer()
+      if (query.sample && workspace.value?.dataset_version_id === versionId.value)
+        void openLinkedSample()
     }
   },
 )

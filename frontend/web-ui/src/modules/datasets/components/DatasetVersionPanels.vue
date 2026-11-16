@@ -1,6 +1,7 @@
 <template>
   <div class="dataset-panels" :aria-busy="loading">
     <InlineError v-if="error" :message="error" />
+    <Button v-if="error" size="sm" class="panel-retry" @click="load">{{ label('重试', 'Retry') }}</Button>
     <div
       v-if="loading && tab !== 'structure'"
       role="status"
@@ -20,7 +21,7 @@
           <thead>
             <tr>
               <th>{{ text('classes') }}</th>
-              <th>{{ label('样本数', 'Samples with class') }}</th>
+              <th>{{ label('包含该类的图像', 'Images with class') }}</th>
               <th>{{ label('标注对象', 'Objects') }}</th>
               <th v-for="split in categorySplits" :key="split">
                 {{ split }} {{ text('object') }}
@@ -39,7 +40,7 @@
               <td>{{ number(row.sample_count) }}</td>
               <td>{{ number(row.object_count) }}</td>
               <td v-for="split in categorySplits" :key="split">
-                {{ number(row.split_objects[split] ?? 0) }}
+                {{ configured(split) ? number(row.split_objects[split] ?? 0) : '—' }}
               </td>
               <td>
                 <Button
@@ -56,7 +57,7 @@
               <td>—</td>
               <td>{{ number(totalObjects) }}</td>
               <td v-for="split in categorySplits" :key="split">
-                {{ number(splitObjects(split)) }}
+                {{ configured(split) ? number(splitObjects(split)) : '—' }}
               </td>
               <td>—</td>
             </tr>
@@ -65,7 +66,7 @@
         <p class="dataset-muted dataset-note">
           <Info :size="15" />{{
             label(
-              '同一样本可包含多个类别，类别样本数不能相加。',
+              '同一图像可含多个类别，类别图像数不能相加。',
               'A sample can belong to multiple classes. Class sample counts are not additive.',
             )
           }}
@@ -80,7 +81,7 @@
           <thead>
             <tr>
               <th>{{ label('划分', 'Split') }}</th>
-              <th>{{ label('样本数量', 'Samples') }}</th>
+              <th>{{ label('图像数量', 'Images') }}</th>
               <th>{{ label('对象数量', 'Objects') }}</th>
               <th>{{ label('占比', 'Share') }}</th>
               <th>{{ label('说明', 'Purpose') }}</th>
@@ -126,6 +127,7 @@
       v-else-if="tab === 'quality'"
       :workspace="workspace"
       @sample="emit('sample', $event)"
+      @categories="emit('categories')"
     />
     <template v-else-if="tab === 'lineage'">
       <ResourceTable
@@ -136,10 +138,10 @@
           <tr>
             <th>{{ text('version') }}</th>
             <th>{{ text('source') }}</th>
-            <th>{{ text('samples') }}</th>
+            <th>{{ label('图像', 'Images') }}</th>
             <th>{{ text('object') }}</th>
             <th>{{ text('created') }}</th>
-            <th>{{ label('引用', 'References') }}</th>
+            <th><span class="reference-heading">{{ label('引用', 'References') }}<Info :size="14" :aria-label="label('外部引用固定版本，不随最新版本切换。', 'References remain linked to a fixed version.')"><title>{{ label('外部引用固定版本，不随最新版本切换。', 'References remain linked to a fixed version.') }}</title></Info></span></th>
             <th>{{ text('actions') }}</th>
           </tr>
         </thead>
@@ -151,10 +153,12 @@
           >
             <td>
               <div class="version-label">
-                <span
+                <button
                   class="version-marker"
                   :class="{ active: isCurrent(version) }"
-                  aria-hidden="true"
+                  :aria-label="label('切换到 v', 'Switch to v') + version.version_number"
+                  :aria-pressed="isCurrent(version)"
+                  @click="!isCurrent(version) && emit('version', version.dataset_version_id, true)"
                 />
                 v{{ version.version_number }}
                 <small v-if="isCurrent(version)" class="current-tag">{{
@@ -194,11 +198,21 @@
                   {{ text('view') }}
                 </button>
                 <button
-                  v-if="canWrite && !isCurrent(version)"
+                  v-if="canWrite && versionTotal > 1"
                   @click="compareWith(version.dataset_version_id)"
                 >
                   {{ label('比较', 'Compare') }}
                 </button>
+                <ResourceMenu
+                  v-if="canWrite"
+                  :label="label('v' + version.version_number + ' 更多操作', 'More actions for v' + version.version_number)"
+                  :items="[
+                    { id: 'samples', label: label('查看样本', 'View samples'), icon: Images },
+                    { id: 'derive', label: label('创建新版本', 'Create version'), icon: Plus },
+                    { id: 'export', label: text('export'), icon: Download },
+                  ]"
+                  @action="versionAction(version, $event)"
+                />
               </span>
             </td>
           </tr>
@@ -269,12 +283,13 @@ import DatasetFileBrowser from './DatasetFileBrowser.vue'
 import DatasetSampleStructure from './DatasetSampleStructure.vue'
 import DatasetJobHistory from './DatasetJobHistory.vue'
 import Button from '@/shared/ui/components/Button.vue'
+import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import SegmentedButtonGroup from '@/shared/ui/components/SegmentedButtonGroup.vue'
 import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
 import DatasetQualityPanel from './DatasetQualityPanel.vue'
 import DatasetVersionReferences from './DatasetVersionReferences.vue'
 import DatasetSourceSummary from './DatasetSourceSummary.vue'
-import { Info } from '@lucide/vue'
+import { Info, Images, Plus, Download } from '@lucide/vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { annotationColor } from '../annotations'
@@ -301,15 +316,27 @@ const canReadTasks = computed(() => session.hasScopes(['tasks:read']))
 function compareWith(id: string) {
   router.push({
     path: `/datasets/${encodeURIComponent(props.workspace.dataset_id)}/versions/${encodeURIComponent(props.workspace.dataset_version_id)}/tools/compare`,
-    query: { compare: id },
+    query: id === props.workspace.dataset_version_id ? {} : { compare: id },
   })
 }
 const emit = defineEmits<{
-  version: [id: string]
+  version: [id: string, keepTab?: boolean]
   samples: []
+  categories: []
   sample: [sample: DatasetSample]
   filter: [value: { category?: number; split?: string }]
 }>()
+function versionAction(version: DatasetVersion, action: string) {
+  const id = version.dataset_version_id
+  if (action === 'samples') {
+    if (isCurrent(version)) emit('samples')
+    else emit('version', id)
+  } else if (action === 'export') {
+    void router.push({ path: '/datasets/export', query: { dataset: props.workspace.dataset_id, version: id } })
+  } else if (action === 'derive') {
+    void router.push(`/datasets/${encodeURIComponent(props.workspace.dataset_id)}/versions/${encodeURIComponent(id)}/tools/derive`)
+  }
+}
 const { locale } = useI18n(),
   text = useDatasetText(),
   label = (zh: string, en: string) => (locale.value.startsWith('zh') ? zh : en)
@@ -354,6 +381,7 @@ const sourceLabel = (v: DatasetVersion) =>
           datasetFormatLabel(
             String(v.metadata.format_id || v.metadata.format_type || ''),
           ),
+          'ZIP',
           label('导入', 'import'),
         ]
           .filter((s) => s !== '—')
@@ -488,8 +516,8 @@ function pageVersions(delta: number) {
   margin-left: 8px;
 }
 .dataset-note {
-  margin: 12px 0 0;
-  font-size: 12px;
+  margin: 0;
+  font-size: 13px;
 }
 summary {
   cursor: pointer;
@@ -514,7 +542,7 @@ summary {
   font-weight: 600;
 }
 .stats-table :deep(th:first-child) {
-  width: 17%;
+  width: 16%;
 }
 .lineage-table :deep(th:nth-child(5)) {
   width: 18%;
@@ -542,13 +570,17 @@ summary {
   display: inline-block;
   vertical-align: middle;
   border: 1px solid var(--am-border);
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  flex: none;
+  cursor: pointer;
+  background: transparent;
   border-radius: 50%;
 }
 .version-marker.active {
   border: 4px solid var(--am-brand-primary);
-  background: white;
+  background: var(--am-surface);
 }
 .version-label {
   display: flex;
@@ -572,6 +604,39 @@ summary {
 }
 .panel-section {
   margin: 0;
+  padding: 20px;
+  gap: 16px;
+}
+.panel-section > .stats-table {
+  margin: 0;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+}
+.stats-table :deep(thead th),
+.lineage-table :deep(thead th) {
+  background: var(--am-hover-surface);
+  font-size: 14px;
+  font-weight: 500;
+}
+.stats-table :deep(:is(th, td)) { border-radius: 0; }
+.stats-table :deep(:is(th, td):not(:last-child)) { border-right: 1px solid var(--am-border); }
+.stats-table :deep(tfoot tr > *) { border-bottom: 0; }
+.stats-table :deep(th:last-child) { width: 15%; }
+.stats-table :deep(th) { white-space: normal; }
+.stats-table :deep(.ui-button) { white-space: nowrap; }
+.dataset-note svg { flex: none; }
+.lineage-table :deep(th:first-child) { width: 14%; }
+.lineage-table :deep(th:last-child) { width: 21%; }
+.lineage-table :deep(td:last-child) { overflow: visible; }
+.version-row-actions > button + button { border-left: 1px solid var(--am-border); border-radius: 0; padding-left: 10px; }
+.reference-heading { display: inline-flex; align-items: center; gap: 6px; }
+.reference-heading svg { flex: none; }
+.panel-retry { justify-self: start; }
+@media (max-width: 1100px) {
+  .panel-section { padding: 16px; }
+  .stats-table :deep(:is(td, th)), .lineage-table :deep(:is(td, th)) { padding: 10px; }
+  .lineage-table :deep(th:last-child) { width: 24%; }
+  .lineage-table :deep(th:first-child) { width: 15%; }
 }
 .current-tag {
   padding: 2px 4px;

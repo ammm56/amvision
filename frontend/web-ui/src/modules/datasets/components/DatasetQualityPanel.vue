@@ -8,7 +8,7 @@
       class="check-summary"
       :class="{
         warning: stale || (report && report.issue_count > 0),
-        success: report && !stale && report.issue_count === 0,
+        success: report && !stale && report.issue_count === 0 && checkedCount > 0,
       }"
       role="status"
     >
@@ -20,7 +20,7 @@
               ? CircleCheck
               : Info
         "
-        :size="28"
+        :size="40"
       />
       <div>
         <small
@@ -28,11 +28,10 @@
           {{ datasetDate(job?.finished_at || job?.created_at) }}</small
         >
         <h2>{{ headline }}</h2>
-        <span v-if="report"
-          >{{ number(report.sample_count) }} {{ label('个样本', 'samples') }} ·
-          {{ number(report.issue_count) }}
-          {{ label('项提示', 'findings') }}</span
-        >
+        <span v-if="report">{{ label(
+          `已检查 ${checkedCount} 项，${reviewCount} 项待复核；${rows.length - checkedCount} 项未检查。`,
+          `${checkedCount} checked, ${reviewCount} need review; ${rows.length - checkedCount} not checked.`,
+        ) }}</span>
         <span v-else-if="job?.error_message">{{ job.error_message }}</span>
       </div>
       <RouterLink
@@ -84,17 +83,20 @@
                 ? '—'
                 : row.affected == null
                   ? label('未完整记录', 'Not fully recorded')
-                  : number(row.affected)
+                  : number(row.affected) + label(' 张', ' images')
             }}
           </td>
           <td>
             <Button
               size="sm"
               v-if="row.checked || row.key === 'semantic'"
-              @click="activeKey = row.key"
-              ><component :is="row.checked && row.issues.length ? ImageIcon : FileText" :size="14" aria-hidden="true" />{{
+              @click="row.key === 'category' && row.checked && !row.count ? emit('categories') : activeKey = row.key"
+              ><component :is="row.key === 'category' && row.checked && !row.count ? ChartNoAxesColumn : row.checked && row.issues.length ? ImageIcon : FileText" :size="14" aria-hidden="true" />{{
+                row.key === 'category' && row.checked && !row.count
+                  ? label('查看分布', 'View distribution')
+                  :
                 row.checked && row.issues.length
-                  ? label('查看样本', 'View samples')
+                  ? row.key === 'duplicates' ? label('查看候选', 'View candidates') : label('查看样本', 'View samples')
                   : row.checked
                     ? label('查看报告', 'View report')
                     : label('查看说明', 'Details')
@@ -107,7 +109,7 @@
     <p class="quality-note">
       <Info :size="15" />{{
         label(
-          '同一样本可能有多项提示。检查不会修改或删除样本。',
+          '问题可能涉及同一图像，不累计为总图像数。重复检查仅识别内容完全相同的样本，不自动删除。',
           'A sample may have multiple findings. Checks do not change samples.',
         )
       }}
@@ -120,6 +122,7 @@
         {{ label('导入时的检查报告', 'Import validation report') }}
       </summary>
       <InlineError v-if="importError" :message="importError" />
+      <Button v-if="importError" size="sm" @click="importRetry++">{{ label('重试', 'Retry') }}</Button>
       <p v-else-if="!importReport" role="status">{{ text('loading') }}</p>
       <div v-else-if="importReport.available">
         <RouterLink
@@ -151,7 +154,9 @@
     >
       <template v-if="active"
         ><p>{{ active.description }}</p>
+        <p v-if="stale" class="dataset-muted">{{ label('以下为样本更新前的检查结果，请重新检查。', 'These results predate sample changes. Run checks again.') }}</p>
         <p v-if="active.checked">
+          {{ label('已检查样本', 'Checked samples') }}：{{ number(report?.sample_count ?? 0) }} ·
           {{ label('问题数', 'Findings') }}：{{ number(active.count) }}
         </p>
         <InlineError v-if="sampleError" :message="sampleError" />
@@ -191,6 +196,7 @@ import {
   Image as ImageIcon,
   Check,
   Minus,
+  ChartNoAxesColumn,
 } from '@lucide/vue'
 import Button from '@/shared/ui/components/Button.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
@@ -207,7 +213,7 @@ import {
   type DatasetSample,
 } from '../services/dataset-workspace.service'
 const props = defineProps<{ workspace: DatasetWorkspace }>(),
-  emit = defineEmits<{ sample: [sample: DatasetSample] }>()
+  emit = defineEmits<{ sample: [sample: DatasetSample]; categories: [] }>()
 const { locale } = useI18n(),
   text = useDatasetText(),
   label = (zh: string, en: string) => (locale.value.startsWith('zh') ? zh : en)
@@ -249,8 +255,10 @@ const headline = computed(() =>
     ? label('样本已更新，需重新检查', 'Samples changed; run checks again')
     : report.value
       ? report.value.issue_count
-        ? label('检查完成，有待核对项', 'Completed with findings')
-        : label('检查通过', 'Checks passed')
+        ? label('检查完成，有待复核项', 'Completed with findings')
+        : checkedCount.value
+          ? label('已检查项通过', 'Completed checks passed')
+          : label('尚无已完成的检查项', 'No checks completed')
       : job.value
         ? text(job.value.state)
         : error.value
@@ -338,14 +346,17 @@ const rows = computed(() => {
 const active = computed(() =>
   rows.value.find((row) => row.key === activeKey.value),
 )
+const checkedCount = computed(() => rows.value.filter(row => row.checked).length)
+const reviewCount = computed(() => rows.value.filter(row => row.checked && row.count > 0).length)
 watch(activeKey, () => {
   sampleError.value = ''
 })
 const importOpen = ref(false),
+  importRetry = ref(0),
   importError = ref(''),
   importReport = ref<Awaited<ReturnType<typeof getDatasetReport>> | null>(null)
 watch(
-  () => [props.workspace, importOpen.value],
+  () => [props.workspace, importOpen.value, importRetry.value],
   async (_, __, cleanup) => {
     importReport.value = null
     importError.value = ''
@@ -481,12 +492,14 @@ async function openSample(sampleId: string) {
 }
 .check-summary.success {
   background: color-mix(in srgb, var(--am-brand-primary) 7%, var(--am-surface));
+  border-color: color-mix(in srgb, var(--am-brand-primary) 25%, var(--am-border));
 }
 .check-summary.success > svg {
   color: var(--am-brand-primary);
 }
 .check-summary.warning {
   background: color-mix(in srgb, var(--am-warning-text) 9%, var(--am-surface));
+  border-color: color-mix(in srgb, var(--am-warning-text) 30%, var(--am-border));
 }
 .check-summary.warning > svg {
   color: var(--am-warning-text);
@@ -494,6 +507,13 @@ async function openSample(sampleId: string) {
 .quality-table :deep(th:first-child) {
   width: 35%;
 }
+.quality-table :deep(thead th) {
+  background: var(--am-hover-surface);
+  font-size: 14px;
+  font-weight: 500;
+}
+.quality-table :deep(td) { padding-top: 16px; padding-bottom: 16px; border-radius: 0; }
+.check-summary > svg { flex: none; }
 .quality-table .check-name,
 .quality-table .check-result {
   display: inline-flex;
@@ -538,7 +558,12 @@ async function openSample(sampleId: string) {
   gap: 8px;
   align-items: center;
   margin: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+  background: var(--am-hover-surface);
 }
+.quality-note svg { flex: none; }
 .issue-list {
   padding: 0;
   list-style: none;

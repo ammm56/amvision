@@ -2,10 +2,11 @@
   <div class="task-progress" :class="{ 'task-progress--compact': compact }">
     <div v-if="!compact || label" class="task-progress__header">
       <span v-if="label">{{ label }}</span>
-      <strong>{{ percentText }}</strong>
+      <strong v-if="!indeterminate || normalizedPercent !== null">{{ percentText }}</strong>
     </div>
     <div
       class="task-progress__track"
+      :class="{ 'is-indeterminate': indeterminate && normalizedPercent === null }"
       role="progressbar"
       :aria-label="ariaLabel || label"
       :aria-valuenow="normalizedPercent ?? undefined"
@@ -27,6 +28,7 @@ const props = withDefaults(
     label?: string
     ariaLabel?: string
     compact?: boolean
+    indeterminate?: boolean
   }>(),
   {
     label: '',
@@ -82,6 +84,14 @@ const percentText = computed(() => normalizedPercent.value === null ? '-' : `${n
   background: var(--am-progress-fill);
   transition: width 160ms ease;
 }
+.task-progress__track.is-indeterminate span {
+  width: 28% !important;
+  animation: task-progress-pending 1.6s ease-in-out infinite;
+}
+@keyframes task-progress-pending {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(360%); }
+}
 
 .task-progress--compact {
   grid-template-columns: minmax(72px, 1fr) 38px;
@@ -98,6 +108,7 @@ const percentText = computed(() => normalizedPercent.value === null ? '-' : `${n
 @media (prefers-reduced-motion: reduce) {
   .task-progress__track span {
     transition: none;
+    animation: none !important;
   }
 }
 </style>
