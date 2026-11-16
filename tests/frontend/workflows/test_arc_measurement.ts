@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -38,8 +39,7 @@ it('mode switch clears incompatible quantities only in the draft and source swit
   const w=mount(DimensionSettingsEditor,{props:{modelValue:value,nodeType:'custom.metrology3d.measure-arc'},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
   try{
     await w.get('button').trigger('click');await flushPromises()
-    const mode=[...document.querySelectorAll('select')].find(s=>s.textContent?.includes('Supported angular union'))!
-    expect(mode).toBeDefined();mode.value='supported-union';mode.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'supported-union'),'supported-union')
     expect(document.querySelector('input[aria-label="Signed sweep ID"]')).toBeNull()
     expect(JSON.stringify(value)).toBe(original)
     expect(w.emitted('update:modelValue')).toBeUndefined()

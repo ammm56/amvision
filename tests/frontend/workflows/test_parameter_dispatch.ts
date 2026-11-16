@@ -1,9 +1,13 @@
+import { selectControl, chooseSelect } from './select-control'
+import Select from '@/shared/ui/components/Select.vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import Widgets from '@/workflows/workflow-editor/components/WorkflowNodeParameterWidgets.vue'
 import RoiEditor from '../../../custom_nodes/metrology3d_nodes/frontend/RoiEditor.vue'
+import CloudFileSettingsEditor from '../../../custom_nodes/metrology3d_nodes/frontend/CloudFileSettingsEditor.vue'
+import CloudDataSettingsEditor from '../../../custom_nodes/metrology3d_nodes/frontend/CloudDataSettingsEditor.vue'
 import CloudResourceParameter from '@/workflows/workflow-editor/point-cloud/CloudResourceParameter.vue'
 import { useWorkflowNodeParameters } from '@/workflows/workflow-editor/parameters/useWorkflowNodeParameters'
 import { rowScalar } from '@/workflows/workflow-editor/parameters/row-scalar'
@@ -55,27 +59,36 @@ it('dispatches the real ROI union schema to its existing editor and isolates nod
 
 it.each([['read-cloud', 'source', { kind: 'file' }], ['save-cloud', 'target', { kind: 'new', name: 'Scan' }]] as const)('dispatches %s resource union before scalar controls', (kind, name, value) => {
   const { w } = render(kind, name, value)
-  try { expect(w.findComponent(CloudResourceParameter).exists()).toBe(true); expect(w.find('select').exists()).toBe(true) } finally { w.unmount() }
+  try { expect(w.findComponent(CloudResourceParameter).exists()).toBe(true); expect(w.findComponent(Select).exists()).toBe(true) } finally { w.unmount() }
 })
 
 it('does not display an uncommitted file source in a blank node', async () => {
   const { w, node } = render('read-cloud', 'source', undefined)
   try {
-    expect((w.get('select').element as HTMLSelectElement).value).toBe('')
+    expect(String(selectControl(w).props('modelValue'))).toBe('')
     expect(node.node.parameters.source).toBeUndefined()
-    await w.get('select').setValue('file')
+    await chooseSelect(selectControl(w),'file')
     expect(node.node.parameters.source).toEqual({ kind: 'file' })
     node.node.node_id = 'another'; node.node.parameters = {}
     await flushPromises()
-    expect((w.get('select').element as HTMLSelectElement).value).toBe('')
+    expect(String(selectControl(w).props('modelValue'))).toBe('')
     expect(node.node.parameters.source).toBeUndefined()
   } finally { w.unmount() }
 })
 
-it.each([['read-cloud', 'file_options'], ['cloud-preview', 'color']] as const)('keeps %s.%s compound data visible as JSON, never an empty string', (kind, name) => {
+it.each([['read-cloud', 'file_options'], ['cloud-preview', 'color']] as const)('dispatches %s.%s to its visual form without flattening or replacing data', async (kind, name) => {
   const value = name === 'color' ? { mode: 'solid' } : { profile_id: 'ply-ascii' }
-  const { w } = render(kind, name, value)
-  try { expect(w.get('textarea').element.value).toBe(JSON.stringify(value, null, 2)); expect(w.find('input').exists()).toBe(false) } finally { w.unmount() }
+  const { w, node } = render(kind, name, value)
+  try {
+    const editor=w.findComponent(name==='color'?CloudDataSettingsEditor:CloudFileSettingsEditor)
+    expect(editor.exists()).toBe(true);expect(editor.props('modelValue')).toEqual(value)
+    expect(w.find('textarea').exists()).toBe(false)
+    await editor.get('button').trigger('click');await flushPromises()
+    expect(document.querySelector('[role=dialog]')).not.toBeNull()
+    ;[...document.querySelectorAll('button')].find(button=>button.textContent?.trim()==='Cancel')!.click();await flushPromises()
+    expect(node.node.parameters[name]).toEqual(value)
+    expect(w.emitted('update-value')).toBeUndefined()
+  } finally { w.unmount() }
 })
 
 it('keeps original-point detail preparation opt-in and dispatches the current Catalog checkbox', async () => {

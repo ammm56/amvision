@@ -15,7 +15,7 @@ const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
 const unit=(v:unknown)=>vector(v)&&Math.abs(v.reduce((s,x)=>s+x*x,0)-1)<=1e-8
 export const dimensionComponents=['diameter','center_x','center_y','center_z']
 /** 与公开参数指标一致，仅做配置提示；数值判定仍由后端执行。 */
-function metricUnits(kind:string,p:Form):Record<string,string>{
+export function metricUnits(kind:string,p:Form):Record<string,string>{
   const length=String(object(p.evaluation).length_unit),units:Record<string,string>={geometry_usable:'1'}
   if(kind==='measure-extents'){
     Object.assign(units,{support_count:'1',span_u:length,span_v:length})

@@ -21,6 +21,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
@@ -42,7 +43,7 @@ const issues=computed(()=>geometryIssues(plane.value?'fit-plane':'build-frame',d
 const referenceIssues=computed(()=>open.value?props.draftIssues?.(draft.value)??[]:[])
 function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newSettings(plane.value);initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
 function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.disabled,()=>props.nodeType,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.disabled,()=>props.nodeType,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

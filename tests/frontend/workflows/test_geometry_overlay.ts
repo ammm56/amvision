@@ -63,6 +63,27 @@ it('writes physical ROI dimensions without cumulative scale and focuses only sel
     expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
   }
 })
+it('resizes only finite section thickness and cancels without changing its bound',()=>{
+  const scene=new Scene(),canvas=document.createElement('canvas'),changed=vi.fn()
+  const overlay=createGeometryOverlay(scene,new PerspectiveCamera(),canvas,[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})
+  const section={...roi,roi_id:'slice',kind:'section-band',geometry:{origin:[1000002,2,2],normal:[0,0,1],thickness:.5,bounds_roi_id:'r'}}
+  try{
+    overlay.update({payload,rois:[roi,section],selectedId:'slice',mode:'scale',changed})
+    let control:TransformControls|undefined
+    scene.traverse(o=>{const c=(o as Object3D&{controls?:TransformControls}).controls;if(c)control=c})
+    const c=control!;expect(c.space).toBe('local');expect(c.showX).toBe(false);expect(c.showZ).toBe(false)
+    c.dragging=true;c.dispatchEvent({type:'mouseDown',mode:'scale'})
+    c.object!.scale.set(2,3,2);c.dispatchEvent({type:'objectChange'})
+    expect(changed.mock.lastCall![0].geometry).toMatchObject({...section.geometry,thickness:1.5})
+    c.object!.scale.set(1,4,1);c.dispatchEvent({type:'objectChange'})
+    expect(changed.mock.lastCall![0].geometry.thickness).toBe(2)
+    c.object!.scale.set(1,0,1);c.dispatchEvent({type:'objectChange'});expect(changed).toHaveBeenCalledTimes(2)
+    canvas.ownerDocument.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
+    expect(changed.mock.lastCall![0]).toEqual(section);expect(c.dragging).toBe(false)
+    expect(roi.geometry.size).toEqual([2,2,2])
+  }finally{overlay.dispose()}
+  expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+})
 it('uses physical local coordinates and releases geometry/control budgets on replacement and close',()=>{
   const scene=new Scene(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},error=>{throw error})
   try{

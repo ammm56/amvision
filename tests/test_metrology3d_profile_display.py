@@ -10,7 +10,7 @@ from backend.service.application.workflows.point_cloud.detail_index import (
     prepare_index,
     read_block,
 )
-from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
 from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
 from custom_nodes.metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
 from custom_nodes.metrology3d_nodes.shared.resample import resample_cloud

@@ -1,4 +1,4 @@
-"""全量候选扫描、确定性抽样及独立有界显示副本，不持有原云 lease。"""
+"""节点显示和编辑器输入查看共用有界副本，不持有原云 lease。"""
 
 import base64
 from hashlib import sha256
@@ -35,17 +35,26 @@ def unavailable_body(reference, reason):
     )
 
 
-def build_cloud_preview(runtime, reference, options, *, policy, cancel):
+def build_cloud_preview(
+    runtime, reference, options, *, policy, cancel, fit_budget=False
+):
     """显示分配失败只交付显示错误，不改变其他节点的业务结果。"""
     try:
         return _build_cloud_preview(
-            runtime, reference, options, policy=policy, cancel=cancel
+            runtime,
+            reference,
+            options,
+            policy=policy,
+            cancel=cancel,
+            fit_budget=fit_budget,
         )
     except MemoryError:
         return unavailable_body(reference, "preview_allocation_failed")
 
 
-def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
+def _build_cloud_preview(
+    runtime, reference, options, *, policy, cancel, fit_budget=False
+):
     """有界多遍扫描；原始行号来自可信运行记录，不能由当前点数推断。"""
     options = CloudPreviewOptions.model_validate(options)
     if options.point_limit > policy.max_points:
@@ -116,6 +125,35 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
                 (name, "uint64", 1)
                 for name in ("acquisition_line_id", "profile_sample_index")
             )
+        if fit_budget:
+            # 编辑器自动概览按同一布局计算容量，保留描述字段空间；节点显式点数不变。
+            overhead = (
+                len(canonical_cloud_json(reference.model_dump(mode="json"))) + 4096
+            )
+            working = min(policy.max_working_bytes, runtime.policy.max_working_bytes)
+            lower, upper = 0, shown
+            while lower < upper:
+                cancel()
+                candidate = (lower + upper + 1) // 2
+                size = 0
+                for _, dtype, components in layout:
+                    width = FIELD_WIDTHS[dtype]
+                    size = (
+                        size + width - 1
+                    ) // width * width + candidate * components * width
+                encoded = 4 * ((size + 2) // 3)
+                if (
+                    size <= policy.max_data_bytes
+                    and encoded + overhead <= policy.max_body_bytes
+                    and size + 4 * encoded + candidate * 24 + rows * access_bytes
+                    <= working
+                ):
+                    lower = candidate
+                else:
+                    upper = candidate - 1
+            if shown and not lower:
+                return unavailable_body(reference, "preview_size_limit")
+            shown = lower
         descriptors, length = [], 0
         for name, dtype, components in layout:
             width = FIELD_WIDTHS[dtype]

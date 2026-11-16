@@ -1,3 +1,4 @@
+import { selectControl, chooseSelect } from './select-control'
 import {afterEach,expect,it} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -18,7 +19,7 @@ it('pages complete recorded samples without creating a row for every support poi
 it('uses stable groups without retaining stale segment IDs or inventing parameters',async()=>{
   const w=mount(BoundarySelectionEditor,{props:{modelValue:{feature_id:'boundary',segment_ids:['old']},segments:['old'],groups:['S2']},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
   try{
-    await w.get('select').setValue('group_ids')
+    await chooseSelect(selectControl(w),'group_ids')
     const empty=w.emitted('update:modelValue')!.at(-1)![0]
     expect(empty).toEqual({feature_id:'boundary',group_ids:[]})
     await w.setProps({modelValue:empty});await flushPromises()

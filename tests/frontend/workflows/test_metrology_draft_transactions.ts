@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -53,8 +54,7 @@ it('changes only the explicit circle weighting method and preserves all quality 
   const w=mount(BoundarySettingsEditor,{props:{modelValue:before,nodeType:node.node_type_id,inputSources:recipeSources(g.nodes,g.edges,node.node_id)},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
   try{
     await w.get('button').trigger('click');await flushPromises()
-    const select=[...document.querySelectorAll('select')].find(s=>[...s.options].some(o=>o.value==='arc-length-soft-l1'))!
-    select.value='arc-length-soft-l1';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'arc-length-soft-l1'),'arc-length-soft-l1')
     expect(applyButton().disabled).toBe(false)
     expect(w.emitted('update:modelValue')).toBeUndefined()
     applyButton().click();await flushPromises()

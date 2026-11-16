@@ -21,7 +21,7 @@ it('reads full JSON through explicit bounded pages and supports nested paths', a
   const readValue = vi.fn().mockResolvedValue({ value: { items: { summary: true } }, children: [{ key: 'items', path: ['items'], total: 2000 }], path: [], offset: 0, limit: 50, total: 1, has_more: false })
   const wrapper = mount(WorkflowPreviewNodeValues, { props: { run: run({ kind: 'json', blob_id: 'blob' }, readValue), nodeId: 'n' } })
   expect(readValue).not.toHaveBeenCalled()
-  await wrapper.get('button').trigger('click'); await flushPromises()
+  await wrapper.findAll('button').find(button => button.text() === 'workflowEditor.editor.previewValueRead')!.trigger('click'); await flushPromises()
   expect(readValue).toHaveBeenCalledWith('blob', 0, [])
   await wrapper.findAll('button').find(button => button.text().includes('items'))!.trigger('click')
   expect(readValue).toHaveBeenLastCalledWith('blob', 0, ['items'])
@@ -32,7 +32,7 @@ it('ignores a page returned after switching the selected node', async () => {
   let finish!: (value: unknown) => void
   const readValue = vi.fn(() => new Promise(resolve => { finish = resolve }))
   const wrapper = mount(WorkflowPreviewNodeValues, { props: { run: run({ kind: 'json', blob_id: 'blob' }, readValue), nodeId: 'n' } })
-  await wrapper.get('button').trigger('click')
+  await wrapper.findAll('button').find(button => button.text() === 'workflowEditor.editor.previewValueRead')!.trigger('click')
   await wrapper.setProps({ nodeId: 'other' })
   finish({ value: 'stale', children: [], path: [], offset: 0, limit: 50, total: 1, has_more: false })
   await flushPromises()

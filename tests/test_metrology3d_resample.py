@@ -300,7 +300,7 @@ def test_budget_and_duplicate_source_rejection():
 
 
 def test_voxel_preview_has_bounded_keys_and_counts_not_member_json():
-    from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+    from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
     from tests.test_metrology3d_preview import decode, preview_policy
 
     scope, runtime, source, _ = fixture()
@@ -337,7 +337,7 @@ def test_voxel_preview_has_bounded_keys_and_counts_not_member_json():
         )
         assert small["state"] == "ready"
         # 显示策略不能覆盖更小的 Run 工作预算；正文与扫描块要同时准入。
-        from custom_nodes.metrology3d_nodes.shared.preview import _build_cloud_preview
+        from backend.service.application.workflows.point_cloud.preview import _build_cloud_preview
 
         previous_policy = runtime.policy
         runtime.policy = previous_policy.model_copy(update={"max_working_bytes": 512})

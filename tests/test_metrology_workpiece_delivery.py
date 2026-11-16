@@ -6,11 +6,31 @@ from pathlib import Path
 import pytest
 
 from backend.contracts.workflows.metrology import LimitRule, NumericTable
+from backend.contracts.workflows.measurement3d_multi_reference import (
+    MultiReferenceStepParameters,
+)
 from backend.nodes.core_nodes.support.measurement import check_limits
 from scripts.metrology_workpiece import app_document, build_documents
 from tests.integration.metrology3d.workpiece_workflow import workpiece_documents
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_delivery_expanded_layout_keeps_objects_and_groups_separate():
+    """共享区、对象行及交付区不重叠，全部节点留在自己的展开分组内。"""
+    graph, _ = build_documents()
+    nodes = {node.node_id: node for node in graph.nodes}
+    for index, group in enumerate(graph.groups):
+        box = group.rect
+        assert not group.collapsed
+        for other in graph.groups[index + 1:]:
+            b = other.rect
+            assert (box.x + box.width <= b.x or b.x + b.width <= box.x
+                    or box.y + box.height <= b.y or b.y + b.height <= box.y)
+        for node_id in group.member_node_ids:
+            point = nodes[node_id].ui_state
+            assert box.x <= point['x'] and point['x'] + 360 <= box.x + box.width
+            assert box.y + 60 <= point['y'] and point['y'] + 500 <= box.y + box.height
 
 
 @pytest.mark.parametrize("input_kind", ["file", "array"])
@@ -20,10 +40,57 @@ def test_delivery_preserves_measurement_algorithms(input_kind, view):
     graph, app = build_documents(input_kind=input_kind, view=view)
     baseline, _ = workpiece_documents(file=input_kind == "file", visible=True)
     nodes = {n.node_id: n for n in graph.nodes}
+    baseline_nodes = {n.node_id: n for n in baseline.nodes}
+    consumed_crops = set()
+    for node in graph.nodes:
+        if node.node_type_id.endswith(".fit-plane"):
+            original_edge = next(
+                e
+                for e in baseline.edges
+                if e.target_node_id == node.node_id and e.target_port == "cloud"
+            )
+            crop = baseline_nodes[original_edge.source_node_id]
+            consumed_crops.add(crop.node_id)
+            assert node.parameters["support"] == crop.parameters["source"]
+            assert (
+                node.parameters["settings"]
+                == baseline_nodes[node.node_id].parameters["settings"]
+            )
+            original_input = next(
+                e
+                for e in baseline.edges
+                if e.target_node_id == crop.node_id and e.target_port == "cloud"
+            )
+            actual_input = next(
+                e
+                for e in graph.edges
+                if e.target_node_id == node.node_id and e.target_port == "cloud"
+            )
+            assert (actual_input.source_node_id, actual_input.source_port) == (
+                original_input.source_node_id,
+                original_input.source_port,
+            )
+    assert len(consumed_crops) == 19 and not consumed_crops.intersection(nodes)
+    combined_items = {}
+    for node in graph.nodes:
+        if node.node_type_id.endswith(".measure-step"):
+            p = MultiReferenceStepParameters.model_validate(node.parameters["settings"])
+            for item in p.measurements():
+                assert item.item_id not in combined_items
+                combined_items[item.item_id] = item.model_dump(mode="json")
+    assert len(combined_items) == 24
     for source in baseline.nodes:
+        if source.node_type_id.endswith(".measure-step"):
+            assert (
+                combined_items[source.parameters["settings"]["item_id"]]
+                == source.parameters["settings"]
+            )
+            continue
         if (
             source.node_type_id.startswith("custom.metrology3d.")
             and source.node_id != "preview"
+            and source.node_id not in consumed_crops
+            and not source.node_type_id.endswith(".fit-plane")
         ):
             assert nodes[source.node_id].parameters == source.parameters
     assert len(nodes["limits"].parameters["rules"]) == 50
@@ -37,6 +104,10 @@ def test_delivery_preserves_measurement_algorithms(input_kind, view):
     )
     assert len({e.edge_id for e in graph.edges}) == len(graph.edges)
     assert {n for g in graph.groups for n in g.member_node_ids} == set(nodes)
+    assert len(graph.groups) == 16 and all(not g.collapsed for g in graph.groups)
+    assert sum(n.node_type_id.endswith('.crop-roi') for n in graph.nodes) == 6
+    if input_kind == "file" and view == "full":
+        assert (len(graph.nodes), len(graph.edges)) == (80, 250)
     assert (
         nodes["save-result"].parameters["save_directory"] == "{workflow_app_result_dir}"
     )
@@ -47,7 +118,7 @@ def test_delivery_preserves_measurement_algorithms(input_kind, view):
             for e in graph.edges
             if e.target_node_id == "preview" and e.target_port == "evidence"
         }
-        assert len(evidence) == 38
+        assert len(evidence) == 26
 
 
 def test_delivery_rules_accept_values_but_reject_missing_and_outside():

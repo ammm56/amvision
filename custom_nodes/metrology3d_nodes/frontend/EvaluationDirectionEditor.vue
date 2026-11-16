@@ -1,8 +1,9 @@
 <template>
-  <label>{{ label }}<select :value="axis?'axis':'vector'" @change="change(($event.target as HTMLSelectElement).value)"><option value="vector">{{ text('源坐标方向 XYZ','Source direction XYZ') }}</option><option value="axis">{{ text('评价面轴向','Evaluation axis') }}</option></select></label>
+  <label>{{ label }}<UiSelect :model-value="axis?'axis':'vector'" @change="change(String($event))" :options="[...[{ value: 'vector', label: String(text('源坐标方向 XYZ','Source direction XYZ')), disabled: false }], ...[{ value: 'axis', label: String(text('评价面轴向','Evaluation axis')), disabled: false }]]" floating /></label>
   <GeometryFields :model-value="{direction:modelValue}" :fields="fields" @update:model-value="$emit('update:modelValue',$event.direction)" />
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import GeometryFields from './GeometryFields.vue'

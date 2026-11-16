@@ -129,7 +129,7 @@ def test_run_python_module_resolves_explicit_relative_python_before_cwd_change(
     def run(command, **kwargs):
         calls.append({"command": command, **kwargs})
         from types import SimpleNamespace
-        return SimpleNamespace(wait=lambda: 0, stop=lambda **_: None)
+        return SimpleNamespace(wait=lambda **_: 0, stop=lambda **_: None)
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("backend.runtime.processes.managed_process.ManagedProcess", run)
@@ -158,7 +158,8 @@ def test_run_python_module_returns_standard_code_on_keyboard_interrupt(
 
     def run(*args, **kwargs):
         from types import SimpleNamespace
-        def wait():
+        def wait(**kwargs):
+            assert kwargs == {"timeout": 0.2}
             raise KeyboardInterrupt
         return SimpleNamespace(wait=wait, stop=lambda **_: None)
 
@@ -280,7 +281,7 @@ def test_managed_launcher_refuses_sealed_scope(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     process = ManagedProcess([sys.executable, str(script)], python_entrypoint=True,
-                             env={**os.environ, "PYTHONPATH": str(root)},
+                             env={**os.environ, "PYTHONPATH": str(root), "PYTHONIOENCODING": "utf-8"},
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     _, error = process.communicate(timeout=20)
     assert process.returncode != 0

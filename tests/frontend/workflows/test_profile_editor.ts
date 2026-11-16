@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
@@ -32,15 +33,13 @@ it('switches input and displacement atomically and rejects stale or cancelled ed
   try {
     await w.get('button').trigger('click'); await flushPromises()
     expect(button('Apply').disabled).toBe(false)
-    const method=document.querySelector<HTMLSelectElement>('[aria-label="Scan displacement"]')!
-    method.value='encoder-positions';method.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'encoder-positions'),'encoder-positions')
     expect(button('Apply').disabled).toBe(true)
     button('Cancel').click();await flushPromises();expect(w.emitted('update:modelValue')).toBeUndefined()
     await w.get('button').trigger('click');await flushPromises();button('Apply').click();await flushPromises()
     expect(w.emitted('update:modelValue')![0]![0]).toEqual(valid())
     await w.get('button').trigger('click');await flushPromises()
-    const source=document.querySelector<HTMLSelectElement>('[aria-label="Input source"]')!
-    source.value='local-array';source.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'local-array'),'local-array')
     expect(document.querySelector('[aria-label="Scan displacement"]')).toBeNull()
     button('Apply').click();await flushPromises();expect(w.emitted('update:modelValue')![1]![0]).toEqual({kind:'local-array'})
     for(const update of [{inputSources:{file:[]}}, {nodeType:'other'}, {disabled:true}]) {

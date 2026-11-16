@@ -3,14 +3,7 @@
     <div class="debug-controls">
       <label
         >{{ zh ? '提取证据' : 'Extraction evidence'
-        }}<select
-          :value="selectedId"
-          @change="emit('select', ($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="item in items" :key="item.id" :value="item.id">
-            {{ item.featureId }} · {{ item.nodeId }}
-          </option>
-        </select></label
+        }}<UiSelect :model-value="selectedId" @change="emit('select', String($event))" :options="[...(items ?? []).flatMap((item) => [{ value: item.id, label: String(item.featureId) + ' · ' + String(item.nodeId), disabled: false }])]" floating /></label
       >
       <label v-for="layer in availableLayers" :key="layer.key"
         ><input
@@ -62,15 +55,7 @@
       <div v-if="current.state === 'ready'" class="debug-controls">
         <label
           >{{ zh ? '证据类别' : 'Evidence kind'
-          }}<select v-model="kind">
-            <option
-              v-for="entry in kinds"
-              :key="entry.value"
-              :value="entry.value"
-            >
-              {{ entry.label }}
-            </option>
-          </select></label
+          }}<UiSelect v-model="kind" :options="[...(kinds ?? []).flatMap((entry) => [{ value: entry.value, label: String(entry.label), disabled: false }])]" floating /></label
         ><label
           >{{ zh ? '序号' : 'Index'
           }}<input
@@ -129,6 +114,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronLeft, ChevronRight } from '@lucide/vue'

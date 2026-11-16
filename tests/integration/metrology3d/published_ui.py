@@ -59,6 +59,15 @@ def main():
 
         policy = representative_policy()
     with published_system(root, point_cloud_policy=policy) as system:
+        from tests.api_test_support import build_test_headers
+
+        # 页面使用正式项目目录；只写配方文件不能形成可选择的项目。
+        response = system.client.post(
+            "/api/v1/projects/bootstrap",
+            headers=build_test_headers(scopes="*"),
+            json={"project_id": "project-1", "display_name": "3D isolated acceptance"},
+        )
+        response.raise_for_status()
         kinds = (
             (
                 "three-planes",

@@ -1,3 +1,5 @@
+import { selectWithOption, chooseSelect } from './select-control'
+import Select from '@/shared/ui/components/Select.vue'
 import {afterEach, expect, it, vi} from 'vitest'
 import {flushPromises, mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -23,12 +25,12 @@ it('compares only compatible current-run previews and clears stale selection wit
   const previews=['output','input','other'].map((id,i)=>({id,label:id,projectId:'p',payload:{state:'ready',cloud_id:id,observation_id:i===2?'different':'same',spatial:{frame_id:'sensor',length_unit:'mm'}}}))
   const w=mount(ResampleSettingsEditor,{props:{modelValue:value,nodeType:'custom.metrology3d.resample-cloud'},attachTo:document.body,
     global:{plugins:[createI18n({legacy:false,locale:'en-US'})],provide:{[parameterCloudPreviewsKey as symbol]:()=>previews,[parameterPreviewStateKey as symbol]:()=>state}}})
-  const choose=async(label:string,id:string)=>{const el=[...document.querySelectorAll('label')].find(l=>l.textContent?.startsWith(label))!.querySelector('select')!;el.value=id;el.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()}
+  const choose=async(label:string,id:string)=>{const control=w.findAllComponents(Select).find(c=>c.element.closest('label')?.textContent?.startsWith(label))!;await chooseSelect(control,id)}
   try{
     await w.get('button').trigger('click');await flushPromises();await choose('Point cloud view','output');await choose('Overlay comparison','input')
     expect(document.querySelector('[data-test=cloud]')?.getAttribute('data-comparison')).toBe('input')
-    const select=[...document.querySelectorAll('label')].find(l=>l.textContent?.startsWith('Overlay comparison'))!.querySelector('select')!
-    expect([...select.options].map(o=>o.value)).toEqual(['','input'])
+    const select=w.findAllComponents(Select).find(c=>c.element.closest('label')?.textContent?.startsWith('Overlay comparison'))!
+    expect(select.props('options').map(o=>o.value)).toEqual(['','input'])
     expect(w.emitted('update:modelValue')).toBeUndefined()
     state.runId='r2';await flushPromises();expect(document.querySelector('[data-test=cloud]')).toBeNull()
     await choose('Point cloud view','output');expect(document.querySelector('[data-test=cloud]')?.hasAttribute('data-comparison')).toBe(false)
@@ -41,7 +43,7 @@ it('discards method fields and uncommitted drafts on cancel, source changes and 
     global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
   await w.get('button').trigger('click');await flushPromises()
   expect(button('Apply').disabled).toBe(false)
-  const select=document.querySelector('select')!;select.value='voxel-centroid';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await chooseSelect(selectWithOption(w,'voxel-centroid'),'voxel-centroid')
   expect(button('Apply').disabled).toBe(true)
   expect(document.body.textContent).toContain('Generated points')
   expect([...document.querySelectorAll('input')].map(i=>i.value)).toEqual(['','','','','',''])

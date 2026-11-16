@@ -15,7 +15,7 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前包 `0.1.34`，共三十节点。新增 Measure Datum Deviation（基准偏差）：Crop ROI.cloud 接 `cloud`，Fit Plane.features 接 `features`；参数显式提供基准 ID、空间/单位、支持半径、实测/有限延伸、原支持质量及五项量值 ID。`measurements` 接既有 Check Limits/结果记录，`evidence` 接 Cloud Preview；Preview.body 接 HTTP Response.body，其 response 接应用输出。五项为最小、最大、峰谷、均值、RMS，任一点支持失败则全部无效，诊断数值不作为有效值。
+当前包 `0.1.36`，共三十节点。Fit Plane 支持内置 ROI，Measure Step 支持同线多基准，均复用现有算法及证据契约。Measure Datum Deviation（基准偏差）：Crop ROI.cloud 接 `cloud`，Fit Plane.features 接 `features`；参数显式提供基准 ID、空间/单位、支持半径、实测/有限延伸、原支持质量及五项量值 ID。`measurements` 接既有 Check Limits/结果记录，`evidence` 接 Cloud Preview；Preview.body 接 HTTP Response.body，其 response 接应用输出。五项为最小、最大、峰谷、均值、RMS，任一点支持失败则全部无效，诊断数值不作为有效值。
 
 正常使用无需 Save Cloud。确需保留复算支持时，`cloud/features/evidence` 同接 derived 模式 Save Cloud，Read Cloud 恢复三端口。参数工作区、完整目标失败计数、原始极值行号和三维极值选择同批接通，不将峰谷叫作正式平面度。详见[B17 使用与验证](../../docs/development/3d-metrology-datum-deviation.md#11-公开节点与日常使用2026-11-13)。下文 0.1.33 及更早段落是前批能力说明。
 

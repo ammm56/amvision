@@ -1,6 +1,6 @@
 <template>
   <div class="measurement-summary">
-    <div class="summary-tools"><span>{{ zh?'几何结果 · 未作产品公差判定':'Geometry results · no product tolerance decision' }}</span><label>{{ zh?'显示小数':'Display decimals' }}<select v-model="precision"><option value="raw">{{ zh?'原值':'Original' }}</option><option v-for="n in [2,3,4,6]" :key="n" :value="n">{{ n }}</option></select></label></div>
+    <div class="summary-tools"><span>{{ zh?'几何结果 · 未作产品公差判定':'Geometry results · no product tolerance decision' }}</span><label>{{ zh?'显示小数':'Display decimals' }}<UiSelect v-model="precision" :options="[...[{ value: 'raw', label: String(zh?'原值':'Original'), disabled: false }], ...([2,3,4,6]).flatMap((n) => [{ value: n, label: String(n), disabled: false }])]" floating /></label></div>
     <table><thead><tr><th>{{ zh?'测量项':'Measurement' }}</th><th>{{ zh?'数值':'Value' }}</th><th>{{ zh?'状态 / 原因':'State / reason' }}</th><th>{{ zh?'支持点数':'Support points' }}</th></tr></thead>
       <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ item.kind==='measure-relation'?(item.component==='angle'?(zh?'夹角':'Angle'):(zh?'距离':'Distance')):componentLabel(item.component) }}</div></td><td class="measurement-number"><span class="measurement-value" :title="item.valid?String(item.value):undefined">{{ displayValue(item) }}</span> <span class="measurement-unit">{{ measurementUnit(item,unit) }}</span></td><td>{{ item.valid?(zh?'几何有效':'Geometry valid'):(zh?'几何无效':'Geometry invalid') }}<div v-if="!item.valid">{{ measurementReason(item.reason,zh) }}</div><div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
     </table>
@@ -29,6 +29,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {object} from './preview-data'

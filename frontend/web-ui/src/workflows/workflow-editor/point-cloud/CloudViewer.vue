@@ -4,16 +4,16 @@
       <button :title="t('reset')" :aria-label="t('reset')" :disabled="!scene" @click="scene?.fit()"><RotateCcw :size="18" /></button>
       <button :title="zh?'放大':'Zoom in'" :aria-label="zh?'放大':'Zoom in'" :disabled="!scene" @click="scene?.zoom(true)"><ZoomIn :size="18" /></button>
       <button :title="zh?'缩小':'Zoom out'" :aria-label="zh?'缩小':'Zoom out'" :disabled="!scene" @click="scene?.zoom(false)"><ZoomOut :size="18" /></button>
-      <label v-if="focusOptions.length">{{ zh?'定位对象':'Focus object' }}<select v-model="focusTarget"><option v-for="target in focusOptions" :key="target.id" :value="target.id">{{ target.label }}</option></select></label><button v-if="focusOptions.length" :title="zh?'聚焦所选对象':'Focus selected object'" :aria-label="zh?'聚焦所选对象':'Focus selected object'" :disabled="!scene" @click="scene?.focus(focusTarget)"><Focus :size="18" /></button>
+      <label v-if="focusOptions.length">{{ zh?'定位对象':'Focus object' }}<UiSelect v-model="focusTarget" :options="[...(focusOptions ?? []).flatMap((target) => [{ value: target.id, label: String(target.label), disabled: false }])]" floating /></label><button v-if="focusOptions.length" :title="zh?'聚焦所选对象':'Focus selected object'" :aria-label="zh?'聚焦所选对象':'Focus selected object'" :disabled="!scene" @click="scene?.focus(focusTarget)"><Focus :size="18" /></button>
       <button v-if="presentation==='full'&&(body.geometry||body.height_map||body.edge_diagnostics||curves.length||measurements.length||debugItems.length||debugError)" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
       <div class="cloud-modes" role="group" :aria-label="zh?'视角操作':'View navigation'"><button :title="zh?'旋转视角':'Rotate view'" :aria-label="zh?'旋转视角':'Rotate view'" :aria-pressed="!pan" :disabled="!scene" @click="pan=false; scene?.pan(false)"><Orbit :size="18" /></button><button :title="t('pan')" :aria-label="t('pan')" :aria-pressed="pan" :disabled="!scene" @click="pan=true; scene?.pan(true)"><Hand :size="18" /></button></div>
-      <button v-if="allowPick" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
-      <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
-      <label>{{ t('axis') }}<select :value="axis" :disabled="!scene" @change="selectView"><option value="free" disabled>{{ zh?'自由视图':'Free view' }}</option><option value="iso">3D</option><option value="z">{{ zh?'顶视 +Z':'Top +Z' }}</option><option value="-z">{{ zh?'底视 -Z':'Bottom -Z' }}</option><option value="y">{{ zh?'前视 -Y':'Front -Y' }}</option><option value="-y">{{ zh?'后视 +Y':'Back +Y' }}</option><option value="x">{{ zh?'右视 +X':'Right +X' }}</option><option value="-x">{{ zh?'左视 -X':'Left -X' }}</option></select></label>
+      <button v-if="allowPick&&pickActive===undefined" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
+      <label>{{ t('projection') }}<UiSelect v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)" :options="[...[{ value: false, label: String(t('perspective')), disabled: false }], ...[{ value: true, label: String(t('orthographic')), disabled: false }]]" floating /></label>
+      <label>{{ t('axis') }}<UiSelect :model-value="axis" :disabled="!scene" @change="selectView" :options="[...[{ value: 'free', label: String(zh?'自由视图':'Free view'), disabled: true }], ...[{ value: 'iso', label: '3D', disabled: false }], ...[{ value: 'z', label: String(zh?'顶视 +Z':'Top +Z'), disabled: false }], ...[{ value: '-z', label: String(zh?'底视 -Z':'Bottom -Z'), disabled: false }], ...[{ value: 'y', label: String(zh?'前视 -Y':'Front -Y'), disabled: false }], ...[{ value: '-y', label: String(zh?'后视 +Y':'Back +Y'), disabled: false }], ...[{ value: 'x', label: String(zh?'右视 +X':'Right +X'), disabled: false }], ...[{ value: '-x', label: String(zh?'左视 -X':'Left -X'), disabled: false }]]" floating /></label>
       <label>{{ t('size') }}<input v-model.number="size" :disabled="!scene" type="range" min="1" max="8" step="1" @input="scene?.pointSize(size)"></label>
-      <label>{{ zh?'着色':'Coloring' }}<select v-model="colorMode" :disabled="!scene"><option value="original">{{ zh?'原色':'Source colors' }}</option><option value="coordinate-z" :disabled="!sourceRange">{{ zh?'坐标 Z':'Coordinate Z' }}</option><option value="support" :disabled="!selectedPlane">{{ zh?'支持 / 剔除':'Support / rejected' }}</option><option value="residual" :disabled="!selectedPlane">{{ zh?'有符号残差':'Signed residual' }}</option></select></label>
+      <label>{{ zh?'着色':'Coloring' }}<UiSelect v-model="colorMode" :disabled="!scene" :options="[...[{ value: 'original', label: String(zh?'原色':'Source colors'), disabled: false }], ...[{ value: 'coordinate-z', label: String(zh?'坐标 Z':'Coordinate Z'), disabled: !sourceRange }], ...[{ value: 'support', label: String(zh?'支持 / 剔除':'Support / rejected'), disabled: !selectedPlane }], ...[{ value: 'residual', label: String(zh?'有符号残差':'Signed residual'), disabled: !selectedPlane }]]" floating /></label>
       <template v-if="colorMode==='coordinate-z'"><label>{{ zh?'色标下限':'Scale minimum' }}<input v-model.number="rangeMin" class="color-bound" type="number" step="any" :aria-invalid="!validRange" @change="applyRange"></label><label>{{ zh?'色标上限':'Scale maximum' }}<input v-model.number="rangeMax" class="color-bound" type="number" step="any" :aria-invalid="!validRange" @change="applyRange"></label><button :title="zh?'重置色标范围':'Reset color range'" :aria-label="zh?'重置色标范围':'Reset color range'" @click="resetRange"><RefreshCw :size="16" /></button><span v-if="!validRange" role="alert">{{ zh?'色标需为有限数值，下限不大于上限':'Use finite bounds, minimum no greater than maximum' }}</span></template>
-      <label v-if="planes.length">{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label>
+      <label v-if="planes.length">{{ zh?'平面':'Plane' }}<UiSelect v-model="selectedPlane" :options="[...[{ value: '', label: String(zh?'未选择':'None'), disabled: false }], ...(planes ?? []).flatMap((plane) => [{ value: String(plane.feature_id), label: String(plane.feature_id), disabled: false }])]" floating /></label>
       <label><input v-model="showEvidence" type="checkbox" :disabled="!scene" @change="scene?.evidenceVisibility(showEvidence)">{{ zh?'测量叠加':'Measurement overlays' }}</label>
       <label><input v-model="showAxes" type="checkbox" :disabled="!scene" @change="scene?.axesVisible(showAxes)">{{ zh?'坐标轴':'Axes' }}</label>
       <template v-if="body.normal_info">
@@ -25,7 +25,7 @@
       <button v-if="picked?.voxelCorners" :title="zh?'聚焦选中体素':'Focus selected voxel'" :aria-label="zh?'聚焦选中体素':'Focus selected voxel'" :disabled="!scene||!showVoxel" @click="scene?.focusVoxel(picked.voxelCorners)"><Focus :size="18" /></button>
       <label v-if="body.asset_details"><input v-model="showAssetDetails" type="checkbox" :disabled="!scene||!detailController||!['original','coordinate-z'].includes(colorMode)">{{ zh?'原始点细节':'Original point details' }}</label>
       <button v-if="body.asset_details" :title="zh?'重新加载资产细节':'Reload asset details'" :aria-label="zh?'重新加载资产细节':'Reload asset details'" :disabled="!detailError||loading" @click="load"><RefreshCw :size="18" /></button>
-      <label v-if="activeCurve?.fit_weights">{{ zh?'拟圆证据颜色':'Circle evidence colors' }}<select v-model="curveColorMode"><option value="support">{{ zh?'支持分类':'Support classes' }}</option><option value="weight">{{ zh?'拟合权重':'Fit weights' }}</option><option value="residual">{{ zh?'径向残差':'Radial residuals' }}</option></select></label>
+      <label v-if="activeCurve?.fit_weights">{{ zh?'拟圆证据颜色':'Circle evidence colors' }}<UiSelect v-model="curveColorMode" :options="[...[{ value: 'support', label: String(zh?'支持分类':'Support classes'), disabled: false }], ...[{ value: 'weight', label: String(zh?'拟合权重':'Fit weights'), disabled: false }], ...[{ value: 'residual', label: String(zh?'径向残差':'Radial residuals'), disabled: false }]]" floating /></label>
       <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
       <button v-if="scalableRoi" :title="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-label="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-pressed="editMode==='scale'" :disabled="!scene||!selectedRoiVisible" @click="editMode='scale'"><Scaling :size="18" /></button>
     </div>
@@ -68,6 +68,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Hand, RefreshCw, RotateCcw, Move3D, Rotate3D, Crosshair, ZoomIn, ZoomOut, Orbit, List, Focus, Scaling } from '@lucide/vue'
@@ -100,7 +101,7 @@ import RoiVisibilityButton from './RoiVisibilityButton.vue'
 import {navigateTab} from './tab-navigation'
 import {coordinateRange,displayNumber,type CloudColorMode,type CoordinateRange, type scaleBar} from './view-presentation'
 
-const props = withDefaults(defineProps<{ payload: Record<string, unknown>; comparePayload?:Record<string,unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full'})
+const props = withDefaults(defineProps<{ payload: Record<string, unknown>; comparePayload?:Record<string,unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; pickActive?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full',pickActive:undefined})
 const viewerId=useId(),viewportVisible=computed(()=>props.presentation==='full'||props.presentation==='view')
 const emit=defineEmits<{'roi-change':[value:RoiValue];candidate:[value:{payload:Record<string,unknown>;xyz:number[]}];'feature-selection':[value:{payload:Record<string,unknown>;featureId:string;segmentId:string}];'arc-change':[value:{payload:Record<string,unknown>;key:string;values:ArcValues}]}>()
 const { t,te,locale } = useI18n({ useScope: 'local', messages: {
@@ -151,8 +152,8 @@ const colorTicks=computed(()=>appliedRange.value?Array.from({length:5},(_,index)
 const viewScale=ref<ReturnType<typeof scaleBar>>(null),showEvidence=ref(true),showAxes=ref(false)
 function applyRange(){if(validRange.value){appliedRange.value={min:Number(rangeMin.value),max:Number(rangeMax.value)};updateColors()}}
 function resetRange(){const range=sourceRange.value;if(range){rangeMin.value=range.min;rangeMax.value=range.max;appliedRange.value={...range};updateColors()}}
-function selectView(event: Event) {
-  const selected = (event.target as HTMLSelectElement).value as CloudViewState
+function selectView(event: string | number | boolean | null) {
+  const selected = String(event) as CloudViewState
   if (selected !== 'free') scene.value?.fit(selected)
 }
 const showDetails=ref(false)
@@ -193,7 +194,7 @@ const activeCurve=computed(()=>curves.value.find(c=>c.feature_id===selectedCurve
 const curveScale=computed(()=>activeCurve.value?curveColorScale(activeCurve.value,curveColorMode.value):null)
 const focusTarget=ref<GeometryFocus>('measurement')
 const focusOptions=computed<{id:GeometryFocus;label:string}[]>(()=>[...(activeDebug.value?[{id:'debug' as const,label:zh.value?'提取调试':'Extraction debug'}]:[]),...(props.editArc?[{id:'arc' as const,label:zh.value?'当前角域':'Current angular region'}]:[]),...(props.selectedRoiId&&selectedRoiVisible.value?[{id:'roi' as const,label:`ROI · ${props.selectedRoiId}`}]:[]),...(selectedMeasurement.value?[{id:'measurement' as const,label:selectedMeasurement.value}]:[]),...(selectedCurve.value?[{id:'feature' as const,label:`${selectedCurve.value} ${selectedSegment.value}`}]:[]),...(selectedPlane.value?[{id:'plane' as const,label:selectedPlane.value}]:[])])
-const scalableRoi=computed(()=>props.editRois?.some(r=>r.roi_id===props.selectedRoiId&&['box','cylinder'].includes(String(r.kind))))
+const scalableRoi=computed(()=>props.editRois?.some(r=>r.roi_id===props.selectedRoiId&&['box','cylinder','section-band'].includes(String(r.kind))))
 watch(scalableRoi,canScale=>{if(!canScale&&editMode.value==='scale')editMode.value='translate'})
 watch(focusOptions,targets=>{if(!targets.some(t=>t.id===focusTarget.value))focusTarget.value=targets[0]?.id??'measurement'})
 watch(evidenceTabs,tabs=>{if(!tabs.some(tab=>tab.id===detailTab.value))detailTab.value=tabs[0]?.id??''})
@@ -249,6 +250,7 @@ async function load() {
       axis.value = view
     },viewportVisible.value,{range:appliedRange.value,coordinateColor:colorMode.value==='coordinate-z',scaleChanged:scale=>{if(token===generation&&!signal.aborted&&props.payload===payload)viewScale.value=scale}})
     scenePayload=payload
+    picking.value=!!props.allowPick&&props.pickActive===true
     comparisonPolicy=policy
     const rendererForComparison=scene.value
     comparisonController=createComparisonController(value=>{
@@ -293,6 +295,7 @@ watch(()=>[props.roiScope,props.editRois,props.selectedRoiId,props.editArc,editM
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
 watch(()=>[showAssetDetails.value,viewportVisible.value,colorMode.value],syncDetails,{flush:'sync'})
 watch(()=>props.allowPick,()=>{picking.value=false})
+watch(()=>props.pickActive,value=>{if(value!==undefined)picking.value=value&&!!props.allowPick})
 watch(hiddenRois,hidden=>{if(scenePayload===props.payload)scene.value?.roiVisibility(hidden)})
 watch(viewportVisible,visible=>{if(!visible)scene.value?.activity(false)},{flush:'sync'})
 watch(()=>props.presentation,async()=>{

@@ -14,7 +14,7 @@ from backend.service.application.errors import InvalidRequestError
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
 )
-from custom_nodes.metrology3d_nodes.shared.preview import unavailable_body
+from backend.service.application.workflows.point_cloud.preview import unavailable_body
 from custom_nodes.metrology3d_nodes.shared.pose_source import require_pose_quality
 
 

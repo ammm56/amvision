@@ -15,6 +15,7 @@ import type { WorkflowValidationIssue } from '../validation/useWorkflowPreflight
 export interface WorkflowPreviewRunUiOptions {
   preserveImageViewerNodeId?: string | null
   targetNodeId?: string | null
+  inputPort?: string
 }
 
 export interface WorkflowSaveRunOrchestrationOptions {
@@ -83,7 +84,7 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
   async function runPreview(uiOptions: WorkflowPreviewRunUiOptions = {}): Promise<void> {
     if (!options.workflowApp.value || saveInProgress.value || options.isDocumentBusy?.()) return
     const sourceDocument = options.workflowApp.value
-    if (options.commitParameterDrafts && !options.commitParameterDrafts()) return
+    if (!uiOptions.inputPort && options.commitParameterDrafts && !options.commitParameterDrafts()) return
     const previewBlocker = options.readNewWorkflowAppSaveBlocker()
     if (previewBlocker) {
       options.setActionError(previewBlocker)
@@ -93,14 +94,17 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
     if (!template) return
     const application = options.buildCurrentApplication(template)
     if (!application) return
-    const preflightIssue = options.runWorkflowPreflight(template, application)
+    const preflightIssue = uiOptions.inputPort ? null : options.runWorkflowPreflight(template, application)
     if (preflightIssue) {
       options.applyWorkflowValidationIssue(preflightIssue)
       return
     }
     const targetNodeId = readOptionalText(uiOptions.targetNodeId)
-    const scopedInputBindings = targetNodeId
-      ? collectNodeScopeInputBindings(template, application, targetNodeId)
+    const inputEdges = uiOptions.inputPort ? template.edges.filter(edge=>edge.target_node_id===targetNodeId&&edge.target_port===uiOptions.inputPort) : []
+    if(uiOptions.inputPort&&inputEdges.length!==1){options.setActionError('点云输入必须连接唯一上游节点');return}
+    const scopeNodeId=uiOptions.inputPort?inputEdges[0]!.source_node_id:targetNodeId
+    const scopedInputBindings = scopeNodeId
+      ? collectNodeScopeInputBindings(template, application, scopeNodeId)
       : undefined
     const previewInputPayload = await options.buildPreviewInputBindings(scopedInputBindings)
     if (!previewInputPayload || options.workflowApp.value !== sourceDocument) return
@@ -114,7 +118,7 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       inputBindings: previewInputPayload.inputBindings,
       fileUploads: previewInputPayload.fileUploads,
       displayOptions: { reopenImageViewerNodeId: preserveImageViewerNodeId, isCurrent: () => options.workflowApp.value === sourceDocument },
-      executionScope: targetNodeId
+      executionScope: targetNodeId && uiOptions.inputPort ? {kind:'node-input',targetNodeId,inputPort:uiOptions.inputPort} : targetNodeId
         ? { kind: 'node', targetNodeId }
         : { kind: 'application' },
     })

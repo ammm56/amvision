@@ -14,7 +14,7 @@ from tests.test_metrology3d_height_step import two_planes
 from custom_nodes.metrology3d_nodes.shared.measurement_preview import (
     attach_measurements,
 )
-from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from backend.service.application.workflows.point_cloud.preview import build_cloud_preview
 from tests.test_metrology3d_preview import preview_policy
 from backend.service.application.errors import InvalidRequestError
 from tests.test_metrology3d_dimension_runtime import ordered

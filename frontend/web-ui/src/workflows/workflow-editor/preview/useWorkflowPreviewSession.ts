@@ -237,7 +237,9 @@ export function useWorkflowPreviewSession() {
     const accepted = await submitPreviewSession(connection.identity.session_id, {
       request_id: crypto.randomUUID(), document_revision: requestedRevision,
       application: input.application, template: input.template, input_bindings: input.inputBindings, input_ids: inputIds,
-      execution_scope: input.executionScope?.kind === 'node' ? { kind: 'node', target_node_id: input.executionScope.targetNodeId } : { kind: 'application' },
+      execution_scope: input.executionScope?.kind === 'node-input'
+        ? {kind:'node-input',target_node_id:input.executionScope.targetNodeId,input_port:input.executionScope.inputPort}
+        : input.executionScope?.kind === 'node' ? { kind: 'node', target_node_id: input.executionScope.targetNodeId } : { kind: 'application' },
     })
     if (!isCurrent(token)) return null
     clientTimings.client_submit_ms = performance.now() - submitStarted

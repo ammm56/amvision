@@ -535,10 +535,15 @@ def run_python_module(
     from backend.runtime.processes.managed_process import ManagedProcess
     process = ManagedProcess(command, python_entrypoint=True, cwd=str(app_root), env=runtime_env)
     try:
-        return process.wait()
+        # Windows 的无限 WaitForSingleObject 不唤醒 Python 信号处理；受管子组
+        # 又默认忽略 Ctrl+C。限时等待让主线程处理中断，停止仍由既有整组入口负责。
+        while True:
+            try:
+                return process.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                continue
     except KeyboardInterrupt:
-        # 交互式 Ctrl+C 会同时传递给前台子进程。外层 launcher 只返回
-        # 标准中断码，避免在正常运维停止时打印误导性的 Python 堆栈。
+        # 子进程是否接收控制台信号不影响退出；finally 必须确认完整组已停止。
         return 130
     finally:
         process.stop(grace=5, timeout=15)

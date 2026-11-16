@@ -19,7 +19,7 @@ from custom_nodes.metrology3d_nodes.shared.node_runtime import (
     cloud_input,
 )
 from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.plane_node_support import fit_supported_plane
 from custom_nodes.metrology3d_nodes.shared.build_frame import build_frame
 from custom_nodes.metrology3d_nodes.shared.transform_cloud import transform_cloud
 
@@ -49,9 +49,16 @@ def plane(request):
     """使用显式方法与质量策略，全精度算法不从 Preview 取点。"""
     p = PlaneNodeParameters.model_validate(request.parameters)
     env = require_node_runtime(request)
-    features = fit_plane(
-        env.runtime, cloud_input(request, env.runtime), p.settings, cancel=env.cancel
+    cloud = cloud_input(request, env.runtime)
+    features = fit_supported_plane(
+        env.runtime, cloud, p, cancel=env.cancel
     )
+    if request.execution_metadata.get("_preview_target_node_id") == request.node_id:
+        from custom_nodes.metrology3d_nodes.shared.geometry_preview import (
+            capture_plane_editor_preview,
+        )
+
+        capture_plane_editor_preview(request, env, cloud, features)
     return {"features": features.model_dump(mode="json")}
 
 

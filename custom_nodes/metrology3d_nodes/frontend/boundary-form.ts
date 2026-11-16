@@ -6,6 +6,7 @@ import {newEnvelope,envelopeIssues} from './envelope-form'
 import {fragmentIssues,selectionIssues,robustIssues} from './circle-form'
 import {dimensionFeatureChoices} from './dimension-form'
 import {edgeIssues,isEdge} from './edge-form'
+import {measurementNumericItems} from './measurement-form'
 
 export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const kind=node.node_type_id.split('.').at(-1)!,p=object(node.parameters.settings),issues=boundaryIssues(kind,p)
@@ -29,7 +30,7 @@ export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
     const known=(sources.features??[]).every(s=>['custom.metrology3d.fit-plane','custom.metrology3d.height-query'].includes(s.nodeTypeId))
     const ids=(sources.features??[]).map(s=>object(s.nodeTypeId.endsWith('height-query')?object(s.parameters.settings).plane_fit:s.parameters.settings).feature_id)
     if(known&&(new Set(ids).size!==ids.length||[...((m.kind==='contour'||dynamic)?[m.reference_feature_id]:[]),...(ratio?[h.reference_feature_id,h.target_feature_id]:[])].some(id=>!ids.includes(id))))issues.push(zh?'平面来源缺失或重复':'Plane sources are missing or duplicated')
-    if(ratio&&(sources.evidence??[]).every(s=>['custom.metrology3d.measure-step','custom.metrology3d.height-query'].includes(s.nodeTypeId))&&!(sources.evidence??[]).some(s=>object(s.parameters.settings).item_id===h.item_id))issues.push(zh?'测量量不在当前证据输入中':'Measurement item is not in current evidence inputs')
+    if(ratio&&(sources.evidence??[]).every(s=>['custom.metrology3d.measure-step','custom.metrology3d.height-query'].includes(s.nodeTypeId))&&!(sources.evidence??[]).some(s=>measurementNumericItems(s)?.some(item=>item.item_id===h.item_id)))issues.push(zh?'测量量不在当前证据输入中':'Measurement item is not in current evidence inputs')
   }
   if(kind!=='extract-boundary'&&!sources.features?.length)issues.push(zh?'必须连接边界特征':'Boundary features input is required')
   if(kind!=='extract-boundary'&&(sources.features??[]).some(s=>object(object(s.parameters.settings).method).kind==='visible-envelope'))issues.push(zh?'格剖面不能作为实测截线拟合':'Grid profiles are not measured sections for fitting')

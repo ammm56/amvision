@@ -1,3 +1,5 @@
+import { selectControl, selectWithOption, chooseSelect } from './select-control'
+import Select from '@/shared/ui/components/Select.vue'
 import {afterEach,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -30,7 +32,7 @@ it('rejects mixed source fields, stale origin and invalid signed-source contract
 it('checks connected pose, measurement item and live plane sources',()=>{
   const settings={...newBoundarySettings('extract-boundary'),evaluation:{...space,kind:'pose',pose_id:'datum',target_frame_id:'part'},method:{kind:'pose-contour',reference_feature_id:'base',height:{kind:'measurement-ratio',item_id:'step',reference_feature_id:'base',target_feature_id:'top',ratio:.5,order:'target-above'},numeric_tolerance:1e-8}}
   const node:Parameters<RecipeValidator>[0]={node_id:'extract',enabled:true,ui_state:{},metadata:{},node_type_id:'custom.metrology3d.extract-boundary',parameters:{settings}}
-  const source=(kind:string,settings:Record<string,unknown>,outputPort:string)=>({nodeId:kind,nodeTypeId:'custom.metrology3d.'+kind,parameters:{settings},outputPort})
+  const source=(kind:string,settings:Record<string,unknown>,outputPort:string)=>({nodeId:kind,nodeTypeId:'custom.metrology3d.'+kind,parameters:{settings:{length_unit:'mm',...settings}},outputPort})
   const sources={features:[source('fit-plane',{feature_id:'base'},'features'),source('fit-plane',{feature_id:'top'},'features')],pose:[source('build-frame',{pose_id:'datum',target_frame_id:'part'},'pose')],evidence:[source('measure-step',{item_id:'step'},'evidence')]}
   const good=boundaryRecipeValidator(node,sources,false)
   expect(good.some(v=>v.includes('connection')||v.includes('sources')||v.includes('evidence'))).toBe(false)
@@ -41,7 +43,7 @@ it('checks connected pose, measurement item and live plane sources',()=>{
 it('switching the evaluation source removes editable stale geometry and switching back leaves the origin blank',async()=>{
   const w=mount(EvaluationEditor,{props:{modelValue:{...space,origin:[1,2,3],rotation:[[1,0,0],[0,1,0],[0,0,1]]},allowFeature:true},global:{plugins}})
   try{
-    await w.get('select').setValue('feature')
+    await chooseSelect(selectControl(w),'feature')
     const next=w.emitted('update:modelValue')![0]![0]
     expect(next).toEqual({...space,kind:'feature'})
     await w.setProps({modelValue:next})
@@ -51,16 +53,16 @@ it('switching the evaluation source removes editable stale geometry and switchin
 })
 it('switches dynamic/fixed modes without leaving hidden source fields and closes on source changes',async()=>{
   const w=mount(BoundarySettingsEditor,{props:{modelValue:newBoundarySettings('extract-boundary'),nodeType:'custom.metrology3d.extract-boundary'},attachTo:document.body,global:{plugins}})
-  async function select(text:string,value:string){const s=[...document.querySelectorAll('select')].find(s=>s.textContent?.includes(text))!;s.value=value;s.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()}
+  async function select(_text:string,value:string){await chooseSelect(selectWithOption(w,value),value)}
   try{
     await w.get('button').trigger('click');await flushPromises()
     await select('Current pose contour','pose-contour')
     expect(document.body.textContent).toContain('Current pose ID')
     expect(document.body.textContent).not.toContain('Evaluation origin XYZ')
     await select('Current measurement ratio','measurement-ratio')
-    expect(document.body.textContent).toContain('Target below reference')
+    expect(w.findAllComponents(Select).some(c=>c.props('options').some(o=>o.label==='Target below reference'))).toBe(true)
     await select('Current measurement ratio','fixed')
-    expect(document.body.textContent).not.toContain('Target below reference')
+    expect(w.findAllComponents(Select).some(c=>c.props('options').some(o=>o.label==='Target below reference'))).toBe(false)
     await select('Current pose contour','projection')
     expect(document.body.textContent).not.toContain('Current pose ID')
     await w.setProps({inputSources:{features:[]}})

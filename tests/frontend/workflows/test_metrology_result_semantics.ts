@@ -1,3 +1,4 @@
+import { selectControl, chooseSelect } from './select-control'
 import {expect,it} from 'vitest'
 import {mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -14,12 +15,12 @@ it('labels partial-arc estimates without claiming accuracy or product pass; form
   const input=structuredClone(item),before=JSON.stringify(input)
   const wrapper=mount(MeasurementSummary,{props:{items:[input],unit:'mm',selected:input.item_id},global:{plugins:[createI18n({legacy:false,locale:'zh-CN'})]}})
   expect(wrapper.text()).toContain('几何有效');expect(wrapper.text()).toContain('未作产品公差判定');expect(wrapper.text()).toContain('部分实测圆弧估计')
-  expect(wrapper.get('select').element.value).toBe('4')
+  expect(String(selectControl(wrapper).props('modelValue'))).toBe('4')
   expect(wrapper.text()).toContain('20.1843')
   expect(wrapper.text()).not.toContain('20.184324165')
-  await wrapper.find('select').setValue('raw')
+  await chooseSelect(selectControl(wrapper),'raw')
   expect(wrapper.text()).toContain('20.184324165')
-  await wrapper.find('select').setValue('3')
+  await chooseSelect(selectControl(wrapper),3)
   expect(wrapper.text()).toContain('20.184');expect(wrapper.find('[title="20.184324165"]').exists()).toBe(true)
   expect(JSON.stringify(input)).toBe(before)
   await wrapper.setProps({items:[{...input,valid:false,value:null,reason:'outside_support'}]})
@@ -36,7 +37,7 @@ it.each([
     expect(wrapper.get('.measurement-unit').text()).toBe('mm')
     expect(wrapper.get('.measurement-value').attributes('title')).toBe(String(value))
     expect(wrapper.text()).toContain('Geometry valid')
-    await wrapper.get('select').setValue('raw')
+    await chooseSelect(selectControl(wrapper),'raw')
     expect(wrapper.get('.measurement-value').text()).toBe(String(value))
     expect(JSON.stringify(input)).toBe(before)
     await wrapper.setProps({items:[{...input,valid:false,value:null,reason:'outside_support'}]})
@@ -57,8 +58,8 @@ it('keeps selection explicit across source/run changes and explains stale, faile
   state.phase='stale';await wrapper.vm.$nextTick();expect(wrapper.text()).toContain('已过期')
   state.phase='ready';state.succeeded=true
   const previews=[{id:'a:cloud',projectId:'p',label:'同名预览',payload:{spatial:{frame_id:'camera',length_unit:'mm'}}},{id:'b:cloud',projectId:'p',label:'同名预览',payload:{spatial:{frame_id:'fixture',length_unit:'mm'}}}]
-  await wrapper.setProps({previews});expect(wrapper.get('select').element.value).toBe('');expect(wrapper.text()).toContain('尚未选择')
-  await wrapper.get('select').setValue('b:cloud');expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['b:cloud'])
+  await wrapper.setProps({previews});expect(String(selectControl(wrapper).props('modelValue'))).toBe('');expect(wrapper.text()).toContain('尚未选择')
+  await chooseSelect(selectControl(wrapper),'b:cloud');expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['b:cloud'])
   await wrapper.setProps({modelValue:'b:cloud',changed:true});expect(wrapper.text()).toContain('fixture / mm');expect(wrapper.text()).toContain('结果未更新')
   state.runId='two';state.phase='running';await wrapper.setProps({previews:[]});expect(wrapper.text()).not.toContain('b:cloud');expect(wrapper.text()).toContain('正在运行')
   wrapper.unmount()

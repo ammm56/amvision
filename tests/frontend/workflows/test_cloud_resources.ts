@@ -1,3 +1,4 @@
+import { selectControl, chooseSelect } from './select-control'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive, ref } from 'vue'
@@ -70,19 +71,19 @@ it('shows referenced-version deletion failure in the resource dialog',async()=>{
 })
 it('does not leave an uncommitted asset mode after cancelling selection',async()=>{
   const w=mount(CloudResourceParameter,{props:{modelValue:{kind:'file'},schema:{'x-ui-widget':'cloud-source','x-live-source-kind':'file'}},global:global()});wrappers.push(w)
-  await w.get('select').setValue('asset');await flushPromises()
+  await chooseSelect(selectControl(w),'asset');await flushPromises()
   await w.get('[role=dialog]').findAll('button').find(b=>b.text()==='Cancel dialog')!.trigger('click')
-  expect((w.get('select').element as HTMLSelectElement).value).toBe('file')
+  expect(String(selectControl(w).props('modelValue'))).toBe('file')
   expect(w.emitted('update:modelValue')).toBeUndefined()
 })
 it('cancels asset selection back to the unconfigured state, without inventing a source',async()=>{
   const w=mount(CloudResourceParameter,{props:{modelValue:undefined,schema:{'x-ui-widget':'cloud-source','x-live-source-kind':'file'}},global:global()});wrappers.push(w)
-  expect((w.get('select').element as HTMLSelectElement).value).toBe('')
-  await w.get('select').setValue('asset');await flushPromises()
+  expect(String(selectControl(w).props('modelValue'))).toBe('')
+  await chooseSelect(selectControl(w),'asset');await flushPromises()
   await w.get('[role=dialog]').findAll('button').find(b=>b.text()==='Cancel dialog')!.trigger('click')
-  expect((w.get('select').element as HTMLSelectElement).value).toBe('')
+  expect(String(selectControl(w).props('modelValue'))).toBe('')
   expect(w.emitted('update:modelValue')).toBeUndefined()
-  await w.setProps({disabled:true});expect((w.get('select').element as HTMLSelectElement).disabled).toBe(true)
+  await w.setProps({disabled:true});expect(selectControl(w).props('disabled')).toBe(true)
 })
 it('clears the edited file-options draft when committing an asset source',()=>{
   const drafts=ref<Record<string,string>>({})

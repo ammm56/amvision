@@ -30,7 +30,7 @@ Catalog 已注册 `resample-cloud` 和 `estimate-normals`。配方格距、邻�
 | [保存读取](../../custom_nodes/metrology3d_nodes/shared/cloud_assets.py)、[来源流](../../custom_nodes/metrology3d_nodes/shared/cloud_lineage_assets.py)、[导入校验](../../backend/service/application/workflows/documents/cloud_lineage_validation.py) | 同一资产机制已有摘要、流写、CSR、失败清理及读取校验 | 增加聚合来源和法向说明的严格分派、流式布局与恢复；不另写保存器 |
 | [预算](../../backend/service/application/workflows/point_cloud/budget.py)、[策略](../../backend/service/application/workflows/point_cloud/policy.py)、OwnedCloudArrays/Scope | 活跃数组先准入，借用只读，关闭有既有路径；工作预算不是 RSS 硬限制 | 复用并列出新增数组、树、原生副本和输出的成本；不能只计 XYZ 字节 |
 | [GeometryFields](../../custom_nodes/metrology3d_nodes/frontend/GeometryFields.vue)、[MetrologyWorkspace](../../custom_nodes/metrology3d_nodes/frontend/MetrologyWorkspace.vue)、[去噪编辑器](../../custom_nodes/metrology3d_nodes/frontend/DenoiseSettingsEditor.vue) | 已有合法草稿/应用/取消、来源切换保护和同屏三维预览 | 新增两种 settings 编辑器，不新建页面框架或重做应用列表 |
-| [预览](../../custom_nodes/metrology3d_nodes/shared/preview.py)、[查看器](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/CloudViewer.vue)、原始叶块读取 | 概览有界，source/generated 拾取身份已区分，保存资产可显示原始细节 | 加方法/来源状态和有界法向线段，不把显示抽样当算法输入 |
+| [预览](../../backend/service/application/workflows/point_cloud/preview.py)、[查看器](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/CloudViewer.vue)、原始叶块读取 | 概览有界，source/generated 拾取身份已区分，保存资产可显示原始细节 | 加方法/来源状态和有界法向线段，不把显示抽样当算法输入 |
 | [单位归一](../../custom_nodes/metrology3d_nodes/shared/normalize_units.py)、[刚体变换](../../custom_nodes/metrology3d_nodes/shared/transform_cloud.py) | 单位字段可换算，normals 只旋转不平移 | 新法向质量字段的单位、有效位和坐标依赖说明必须同批变换/传递 |
 
 需要重点补齐的不是“再做一个 CloudRuntime”，而是：**体素 1:N 来源、来源种类明确分派、计算法向状态及全链读取方**。当前边界提取要求实测 source 支持，这一限制不因新增质心而解除。

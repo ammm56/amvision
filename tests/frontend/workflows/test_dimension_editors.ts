@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -54,8 +55,7 @@ it('ignores late picks after run/source switches and closes on unmount',async()=
   const w=mount(DimensionSettingsEditor,{props:{modelValue:value,nodeType:'custom.metrology3d.measure-edge-pair'},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})],provide:{[parameterCloudPreviewsKey as symbol]:()=>views.value,[parameterPreviewStateKey as symbol]:()=>state.value}}})
   try{
     await w.get('button').trigger('click');await flushPromises()
-    const select=[...document.querySelectorAll('select')].find(s=>s.textContent?.includes('Cloud'))!
-    select.value='v';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+    await chooseSelect(selectWithOption(w,'v'),'v')
     const viewer=w.findComponent({name:'DimensionCloud'})
     state.value={runId:'two',succeeded:false};await flushPromises()
     viewer.vm.$emit('candidate',{payload,xyz:[9,9,9]});await flushPromises()

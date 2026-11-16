@@ -1,9 +1,61 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import Select from './Select.vue'
 
 describe('Select', () => {
+  it('keeps layout attributes on the wrapper and listens globally only while open', async () => {
+    const add = vi.spyOn(document, 'addEventListener')
+    const remove = vi.spyOn(document, 'removeEventListener')
+    const wrapper = mount(Select, { attrs: {
+      class: 'compact-field', style: 'max-width: 150px', id: 'choice', 'aria-invalid': 'true',
+    }, props: { modelValue: 'a', options: [{ value: 'a', label: 'A' }] } })
+    const trigger = wrapper.get('.ui-select__button')
+    expect(wrapper.classes()).toContain('compact-field')
+    expect(trigger.classes()).not.toContain('compact-field')
+    expect(trigger.attributes('id')).toBe('choice')
+    expect(trigger.attributes('aria-invalid')).toBe('true')
+    expect(add.mock.calls.filter(call => call[0] === 'pointerdown')).toHaveLength(0)
+    await trigger.trigger('click')
+    const listener = add.mock.calls.find(call => call[0] === 'pointerdown')![1]
+    await trigger.trigger('keydown', { key: 'Escape' })
+    expect(remove).toHaveBeenCalledWith('pointerdown', listener)
+    wrapper.unmount()
+    add.mockRestore(); remove.mockRestore()
+  })
+  it('preserves numeric, boolean and null values and skips disabled options', async () => {
+    const wrapper = mount(Select, { props: { modelValue: null, options: [
+      { value: null, label: 'Choose', disabled: true },
+      { value: 0, label: 'First' }, { value: false, label: 'Off', disabled: true },
+      { value: true, label: 'On' },
+    ] } })
+    const trigger = wrapper.get('button')
+    await trigger.trigger('keydown', { key: 'ArrowDown' })
+    expect(wrapper.get('.is-active').text()).toBe('First')
+    await trigger.trigger('keydown', { key: 'ArrowDown' })
+    await trigger.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('change')).toEqual([[true]])
+    await trigger.trigger('click')
+    await wrapper.findAll('[role=option]')[1]!.trigger('pointerdown')
+    await wrapper.findAll('[role=option]')[1]?.trigger('click')
+    expect(wrapper.emitted('change')).toEqual([[true], [0]])
+    wrapper.unmount()
+  })
+
+  it('closes on disable, changed options and unmount without leaving a floating menu', async () => {
+    const wrapper = mount(Select, { attachTo: document.body, props: {
+      modelValue: 'a', floating: true, options: [{ value: 'a', label: 'A' }],
+    } })
+    const trigger = wrapper.get('button')
+    await trigger.trigger('click'); await wrapper.setProps({ disabled: true })
+    expect(document.querySelector('[role=listbox]')).toBeNull()
+    await wrapper.setProps({ disabled: false }); await trigger.trigger('click')
+    await wrapper.setProps({ options: [{ value: 'b', label: 'B' }] })
+    expect(document.querySelector('[role=listbox]')).toBeNull()
+    await trigger.trigger('click'); wrapper.unmount()
+    expect(document.querySelector('[role=listbox]')).toBeNull()
+    expect(wrapper.emitted('change')).toBeUndefined()
+  })
   it('renders custom value and option content without changing selection or keyboard behavior', async () => {
     const wrapper = mount(Select, {
       props: { modelValue: 'asc', options: [{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }] },

@@ -28,7 +28,7 @@ describe('WorkflowNoteDetailPanel', () => {
 
     expect(wrapper.get('input').attributes('disabled')).toBeDefined()
     expect(wrapper.get('textarea').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('select').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.ui-select__button').attributes('disabled')).toBeDefined()
     expect(wrapper.get('.workflow-note-detail-panel__boundary').text()).toContain('不参与 Workflow 执行')
 
     const actionButtons = wrapper.findAll('.workflow-note-detail-panel__actions button')

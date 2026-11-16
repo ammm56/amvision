@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import {afterEach, expect, it, vi} from 'vitest'
 import {flushPromises, mount} from '@vue/test-utils'
 import {reactive} from 'vue'
@@ -21,7 +22,7 @@ it('supports reactive drafts, discards other-method fields and cancels on task/s
     global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
   await w.get('button').trigger('click');await flushPromises()
   expect(button('Apply').disabled).toBe(false)
-  const select=document.querySelector('select')!;select.value='radius';select.dispatchEvent(new Event('change',{bubbles:true}));await flushPromises()
+  await chooseSelect(selectWithOption(w,'radius'),'radius')
   expect(button('Apply').disabled).toBe(true)
   const inputs=[...document.querySelectorAll<HTMLInputElement>('input')];expect(inputs.map(i=>i.value)).toEqual(['',''])
   // 与真实逐字段操作一致，父组件先接收当前字段再编辑下一字段。

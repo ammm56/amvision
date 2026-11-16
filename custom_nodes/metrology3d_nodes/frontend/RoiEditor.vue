@@ -7,9 +7,10 @@
       </template>
       <template #view="{presentation}">
       <section class="roi-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" />
+        <RoiCreationTools ref="creation" :roi="form?.current" :payload="preview?.payload" :scope="visibilityScope" @change="form?.setCurrent($event)" @active="creating=$event" />
 
         <p v-if="preview&&!matching" role="status">{{ zh?'显示空间与 ROI 不一致，仅查看背景':'Display space differs from ROI; background only' }}</p>
-        <CloudViewer v-if="preview" :key="visibilityScope" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matching?roiView.rois:[]" :selected-roi-id="roiView.selectedId" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" @roi-change="changeRoi" />
+        <CloudViewer v-if="preview" :key="visibilityScope" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matching?roiView.rois:[]" :selected-roi-id="roiView.selectedId" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" allow-pick :pick-active="creating" @candidate="creation?.pick($event)" @roi-change="changeRoi" />
 
       </section>
       </template>
@@ -26,15 +27,17 @@ import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
 import MetrologyWorkspace from './MetrologyWorkspace.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
-import {parameterCloudPreviewsKey,parameterPreviewStateKey} from '@/workflows/workflow-editor/parameters/editor-context'
+import {parameterCloudPreviewsKey,parameterPreviewStateKey,parameterSourceSignature,type ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
 import RoiForm from './RoiForm.vue'
+import RoiCreationTools from './RoiCreationTools.vue'
 import {object,copy,newRoi,geometryIssues,type Form} from './form'
 defineOptions({inheritAttrs:false})
-const props=defineProps<{modelValue:unknown;disabled?:boolean;allowInput?:boolean;draftIssues?:(value:unknown)=>string[]}>(),emit=defineEmits<{'update:modelValue':[value:Form]}>()
+const props=withDefaults(defineProps<{modelValue:unknown;disabled?:boolean;allowInput?:boolean;inputSources?:ParameterEditorSources;draftIssues?:(value:unknown)=>string[]}>(),{allowInput:true}),emit=defineEmits<{'update:modelValue':[value:Form]}>()
 const CloudViewer=defineAsyncComponent(()=>import('@/workflows/workflow-editor/point-cloud/CloudViewer.vue').then(m=>m.default))
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
 const resolve=inject(parameterCloudPreviewsKey,()=>[]),state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))
 const open=ref(false),draft=ref<Form>({}),previewId=ref(''),initial=ref(''),form=ref<InstanceType<typeof RoiForm>>()
+const creation=ref<InstanceType<typeof RoiCreationTools>>(),creating=ref(false)
 const roiView=ref<{rois:Form[];selectedId:string}>({rois:[],selectedId:''})
 const hiddenRois=shallowRef<ReadonlySet<string>>(new Set())
 const visibilityScope=computed(()=>JSON.stringify([state().runId,previewId.value,preview.value?.payload.observation_id,preview.value?.payload.spatial,draft.value.kind]))
@@ -43,9 +46,11 @@ const previews=computed(()=>state().succeeded?resolve():[]),preview=computed(()=
 const matching=computed(()=>{const s=object(preview.value?.payload.spatial);return !!roiView.value.rois.length&&roiView.value.rois.every(r=>r.frame_id===s.frame_id&&r.length_unit===s.length_unit)})
 const changed=computed(()=>JSON.stringify(draft.value)!==initial.value)
 const issues=computed(()=>geometryIssues('crop-roi',draft.value)),referenceIssues=computed(()=>open.value?props.draftIssues?.(draft.value)??[]:[])
-function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):{kind:'parameters',roi:newRoi(),bounds:[]};initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
+function show(){if(props.disabled)return;draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):{kind:'parameters',roi:newRoi(),bounds:[]};initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
 function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch(()=>[props.modelValue,props.disabled],()=>{open.value=false})
+function invalidate(){open.value=false;previewId.value='';hiddenRois.value=new Set()}
+watch(()=>props.modelValue,invalidate,{deep:true})
+watch([()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],invalidate)
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

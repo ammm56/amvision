@@ -8,6 +8,7 @@ import {evaluationIssues,newEvaluation} from './evaluation-form'
 import {dimensionFeatureChoices} from './dimension-form'
 
 export const relationKinds=['point-point','point-line','point-plane','line-line','line-angle','plane-angle']
+export const relationMetrics=(kind:string)=>['geometry_usable','reference_usable','target_usable',...(kind.endsWith('angle')?[]:['contacts_unique'])]
 const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v)
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)
 export function newOperand(kind:string):Form {
@@ -54,7 +55,7 @@ export function relationIssues(value:unknown):string[] {
   if(String(r.kind).endsWith('angle')&&(!['unoriented','oriented','signed'].includes(String(r.angle_mode))||r.angle_mode==='signed'&&s.kind!=='projection'))issues.push('angle_mode')
   const rules=Array.isArray(q.rules)?q.rules.map(normalizeLimitRule):[],guard=rules.find(r=>r.item_id==='geometry_usable')
   if(!id(q.policy_id)||!Number.isSafeInteger(q.policy_version)||Number(q.policy_version)<1)issues.push('quality_policy')
-  const allowed=String(r.kind).endsWith('angle')?['geometry_usable','reference_usable','target_usable']:['geometry_usable','reference_usable','target_usable','contacts_unique']
+  const allowed=relationMetrics(String(r.kind))
   if(!guard?.enabled||!guard.required||guard.lower!==1||!guard.include_lower||new Set(rules.map(r=>r.item_id)).size!==rules.length||rules.some(r=>limitRuleError(r)||!allowed.includes(r.item_id)||r.unit!=='1'))issues.push('quality.rules')
   return issues
 }

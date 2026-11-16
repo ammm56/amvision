@@ -6,11 +6,7 @@
       @confirm="apply" @cancel="open=false">
       <MetrologyWorkspace>
         <template #parameters>
-          <label>{{ zh ? '方法' : 'Method' }}<select :value="draft.kind" @change="changeMethod">
-            <option value="stride">{{ zh ? '行间隔抽取' : 'Row stride' }}</option>
-            <option value="voxel-representative">{{ zh ? '体素原点代表' : 'Voxel representative' }}</option>
-            <option value="voxel-centroid">{{ zh ? '体素质心' : 'Voxel centroid' }}</option>
-          </select></label>
+          <label>{{ zh ? '方法' : 'Method' }}<UiSelect :model-value="draft.kind" @change="changeMethod" :options="[...[{ value: 'stride', label: String(zh ? '行间隔抽取' : 'Row stride'), disabled: false }], ...[{ value: 'voxel-representative', label: String(zh ? '体素原点代表' : 'Voxel representative'), disabled: false }], ...[{ value: 'voxel-centroid', label: String(zh ? '体素质心' : 'Voxel centroid'), disabled: false }]]" floating /></label>
           <GeometryFields :model-value="draft" :fields="fields" @update:model-value="draft=$event" />
           <dl><dt>{{ zh ? '输出' : 'Output' }}</dt><dd>{{ draft.kind==='voxel-centroid'
             ? (zh?'生成点 · 仅坐标 · 完整成员来源':'Generated points · positions only · complete member lineage')
@@ -19,7 +15,7 @@
         <template #view="{presentation}">
           <section class="resample-view">
             <CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" />
-            <label v-if="preview">{{ zh?'叠加对照':'Overlay comparison' }}<select v-model="comparisonId"><option value="">{{ zh?'关闭':'Off' }}</option><option v-for="item in comparisons" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
+            <label v-if="preview">{{ zh?'叠加对照':'Overlay comparison' }}<UiSelect v-model="comparisonId" :options="[...[{ value: '', label: String(zh?'关闭':'Off'), disabled: false }], ...(comparisons ?? []).flatMap((item) => [{ value: item.id, label: String(item.label), disabled: false }])]" floating /></label>
             <CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :compare-payload="comparison?.payload" :project-id="preview.projectId" allow-pick />
           </section>
         </template>
@@ -28,6 +24,8 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
+import {parameterSourceSignature} from '@/workflows/workflow-editor/parameters/editor-context'
 import {computed, defineAsyncComponent, inject, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -62,9 +60,9 @@ const fields=computed<Field[]>(()=>draft.value.kind==='stride' ? [
   ...(draft.value.kind==='voxel-centroid'?[{path:'max_position_error',type:'number' as const,label:zh.value?'最大坐标回写误差':'Maximum position rounding error'}]:[]),
 ])
 function show(){draft.value=props.modelValue && typeof props.modelValue==='object' ? copy(props.modelValue) as Form : newResample('stride');initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
-function changeMethod(event:Event){draft.value=newResample((event.target as HTMLSelectElement).value)}
+function changeMethod(event:string | number | boolean | null){draft.value=newResample(String(event))}
 function apply(){if(!props.disabled && resampleValid(draft.value)){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>parameterSourceSignature(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

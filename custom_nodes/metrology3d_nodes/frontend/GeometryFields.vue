@@ -1,7 +1,7 @@
 <template>
   <div class="geometry-fields">
     <label v-for="field in fields" :key="field.path"><span>{{ field.label }}<template v-if="field.unit"> ({{ field.unit }})</template></span>
-      <select v-if="field.type==='select'" :aria-label="field.label" :value="get(modelValue,field.path)??''" @change="set(field.path,($event.target as HTMLSelectElement).value)"><option value="" disabled></option><option v-for="option in field.options" :key="option" :value="option">{{ option }}</option></select>
+      <UiSelect v-if="field.type==='select'" :aria-label="field.label" :aria-invalid="unknown(field)||undefined" :model-value="get(modelValue,field.path)??''" @change="set(field.path,String($event))" :options="[...[{ value: '', label: String(zh?'请选择':'Select an option'), disabled: true }], ...(unknown(field) ? [{ value: String(get(modelValue,field.path)), label: String(zh?'无效选项':'Invalid option') + ': ' + String(get(modelValue,field.path)), disabled: true }] : []), ...(field.options ?? []).flatMap((option) => [{ value: option, label: String(geometryOptionLabel(field.path,option,zh)), disabled: false }])]" floating />
       <component :is="field.type==='matrix'?'details':'div'" v-else-if="field.type==='vector'||field.type==='matrix'||field.type==='pair'" :class="field.type==='matrix'?'matrix':'vector'" >
         <summary v-if="field.type==='matrix'">3 × 3</summary><div class="vector" :class="{pair:field.type==='pair'}">
         <span v-for="i in field.type==='matrix'?9:field.type==='pair'?2:3" :key="i" class="cell"><small>{{ component(field,i-1) }}</small><input type="number" step="any" :aria-label="`${field.label} ${i}`" :title="`${field.label} ${component(field,i-1)}${field.unit?' ('+field.unit+')':''}`" :value="cell(field,i-1)" @input="setCell(field,i-1,$event)"></span>
@@ -13,10 +13,15 @@
   </div>
 </template>
 <script setup lang="ts">
-import { useId } from 'vue'
+import UiSelect from '@/shared/ui/components/Select.vue'
+import { computed,useId } from 'vue'
+import {useI18n} from 'vue-i18n'
 import { get,put,type Field,type Form } from './form'
+import {geometryOptionLabel} from './field-options'
 const props=defineProps<{modelValue:Form;fields:Field[];suggestions?:Record<string,string[]>}>()
 const emit=defineEmits<{'update:modelValue':[value:Form]}>(),uid=useId()
+const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
+function unknown(field:Field){const value=get(props.modelValue,field.path);return value!==null&&value!==undefined&&value!==''&&!field.options?.includes(String(value))}
 function number(e:Event){const i=e.target as HTMLInputElement;return i.validity.badInput?NaN:i.value===''?null:Number(i.value)}
 function component(field:Field,i:number){return field.components?.[i]??(field.type==='matrix'?`${Math.floor(i/3)+1},${i%3+1}`:field.type==='vector'?['X','Y','Z'][i]:String(i+1))}
 function set(path:string,value:unknown){emit('update:modelValue',put(props.modelValue,path,value))}

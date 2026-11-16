@@ -6,6 +6,8 @@
 
 ## 可直接使用的文档
 
+当前仓库的文件/full 配方为 **80 节点、250 条边、16 个展开分组**。19 个专用拟面 ROI 已内置到原 Fit Plane，6 个共享 ROI 仍独立；十二组 H/Z 使用 Measure Step 的同线多基准模式，每项保留独立基准、质量策略和延伸上限。50 项测量定义、数值与判定不变，没有隐藏节点或子工作流。此配方更新不自动覆盖此前创建的日常 App，已有草稿需审核后更新并重新发布。接口与验证见[简化实施记录](../../development/3d-metrology-workpiece-app.md#拟面支持与同线多基准实施2026-11-14)。
+
 冻结图为 [template](lithium_workpiece.template.json) 与 [application](lithium_workpiece.application.json)。导出工具不依赖测试目录：
 
 ```powershell

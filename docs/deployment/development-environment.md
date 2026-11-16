@@ -61,6 +61,8 @@ python runtimes/launchers/service/start_backend_service.py --app-root . --host 1
 
 Windows 热重载通过 `backend.service.infrastructure.http.reload_server` 复用 Uvicorn 文件监控和正常停机流程。父进程不持有监听 socket；每次旧服务进程退出后，新进程自行绑定相同 host/port，避免跨 IOCP 复用监听导致 `WinError 87`。源码重载期间存在短暂的端口关闭窗口，不承诺无中断执行；生产运行不得启用 `--reload`。
 
+前台启动器以限时等待接收 `Ctrl+C`，随后调用既有受管进程组停止入口，不依赖子进程自己退出。Windows 内部热重载通过同一个跨进程事件通知 HTTP 服务正常关闭，不再广播控制台 `CTRL_C_EVENT`，避免把源码重载误当作用户停止。收到退出请求时，不再重建服务。此修改沿用现有 Windows Job / Ubuntu 进程归属，不新增进程管理器或后台监视线程。启动器与 reloader 自身升级后仍需完整重启原命令；服务模块的后续修改才可依赖热重载。
+
 升级此启动入口后，必须停止原启动命令（包括 WatchFiles 父进程），再执行上述命令。仅等待 Python 文件自动重载无法替换原父进程的监听策略；Windows 开发环境不要直接使用 `python -m uvicorn ... --reload` 绕过此入口。
 
 性能与稳定性验证使用同一命令去掉 `--reload`，其余进程仍按本文顺序启动。手工分终端启动不包含生产 full Supervisor 的持续 HTTP 探测和整栈恢复。

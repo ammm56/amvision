@@ -83,3 +83,14 @@ export function geometryIssues(kind: string, value: unknown): string[] {
   }
   return issues
 }
+
+/** Fit Plane 只接受整个输入或节点 ROI；复用裁剪的几何校验。 */
+export function planeSupportIssues(value: unknown): string[] {
+  if(value===undefined)return []
+  const p=object(value)
+  if(p.kind==='cloud')return Object.keys(p).length===1?[]:['support / fields']
+  if(p.kind!=='parameters')return ['support / source']
+  const issues=geometryIssues('crop-roi',p)
+  if(Object.keys(p).some(k=>!['kind','roi','bounds'].includes(k))||p.bounds!==undefined&&!Array.isArray(p.bounds))issues.push('support / fields')
+  return issues
+}

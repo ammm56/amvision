@@ -1,3 +1,4 @@
+import { selectWithOption, chooseSelect } from './select-control'
 import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
@@ -47,8 +48,7 @@ it.each(cases)('%s isolates changed upstream identity without closing an equival
     expect(document.querySelector('[role=dialog]')).not.toBeNull()
     await wrapper.setProps({ inputSources: structuredClone(sources) }); await flushPromises()
     expect(document.querySelector('[role=dialog]')).not.toBeNull()
-    const select = [...document.querySelectorAll('select')].find(input => [...input.options].some(option => option.value === 'cloud'))!
-    select.value = 'cloud'; select.dispatchEvent(new Event('change', { bubbles: true })); await flushPromises()
+    await chooseSelect(selectWithOption(wrapper,'cloud'),'cloud')
     expect(document.querySelector('[data-cloud]')).not.toBeNull()
     await wrapper.setProps({ inputSources: { features: [{ ...sources.features[0]!, nodeId: 'source-b' }] } }); await flushPromises()
     expect(document.querySelector('[role=dialog]')).toBeNull()
@@ -57,8 +57,7 @@ it.each(cases)('%s isolates changed upstream identity without closing an equival
     expect(JSON.stringify(value)).toBe(before)
     await wrapper.get('button').trigger('click'); await flushPromises()
     expect(document.querySelector('[data-cloud]')).toBeNull()
-    const reopenedSelect = [...document.querySelectorAll('select')].find(input => [...input.options].some(option => option.value === 'cloud'))!
-    reopenedSelect.value = 'cloud'; reopenedSelect.dispatchEvent(new Event('change', { bubbles: true })); await flushPromises()
+    await chooseSelect(selectWithOption(wrapper,'cloud'),'cloud')
     expect(document.querySelector('[data-cloud]')).not.toBeNull()
     state.value = { runId: 'run-b', succeeded: false }; await flushPromises()
     expect(document.querySelector('[data-cloud]')).toBeNull()

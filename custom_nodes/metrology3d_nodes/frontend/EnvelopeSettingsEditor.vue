@@ -1,13 +1,14 @@
 <template>
   <fieldset><legend>{{ label('可见包络','Visible envelope') }}</legend>
-    <label>{{ label('目标分区','Target partition') }}<select :value="get(modelValue,'selection.kind')" @change="emit('update:modelValue',selectEnvelopePartition(modelValue,($event.target as HTMLSelectElement).value))"><option value="grid-connected">{{ label('栅格连通','Grid connectivity') }}</option><option value="distance-connected">{{ label('实际距离连通','Physical distance connectivity') }}</option></select></label>
+    <label>{{ label('目标分区','Target partition') }}<UiSelect :model-value="get(modelValue,'selection.kind')" @change="emit('update:modelValue',selectEnvelopePartition(modelValue,String($event)))" :options="[...[{ value: 'grid-connected', label: String(label('栅格连通','Grid connectivity')), disabled: false }], ...[{ value: 'distance-connected', label: String(label('实际距离连通','Physical distance connectivity')), disabled: false }]]" floating /></label>
     <GeometryFields :model-value="modelValue" :fields="fields" @update:model-value="emit('update:modelValue',$event)" />
-    <label v-if="get(modelValue,'selection.kind')==='grid-connected'">{{ label('连通邻域','Connectivity') }}<select :value="get(modelValue,'selection.connectivity')??''" @change="set('selection.connectivity',Number(($event.target as HTMLSelectElement).value))"><option value="" disabled></option><option :value="4">4</option><option :value="8">8</option></select></label>
-    <label>{{ label('前景方向','Foreground') }}<select :value="get(modelValue,'profiles.foreground')??''" @change="set('profiles.foreground',($event.target as HTMLSelectElement).value)"><option value="" disabled></option><option value="above">{{ label('高于截面','Above plane') }}</option><option value="below">{{ label('低于截面','Below plane') }}</option></select></label>
-    <label>{{ label('边界位置','Edge position') }}<select :value="get(modelValue,'profiles.edge_policy')??''" @change="set('profiles.edge_policy',($event.target as HTMLSelectElement).value)"><option value="" disabled></option><option value="cell-edge">{{ label('格边','Cell edge') }}</option><option value="interpolate-or-cell-edge">{{ label('格中心阈值插值／格边估计','Threshold interpolation / cell edge') }}</option></select></label>
+    <label v-if="get(modelValue,'selection.kind')==='grid-connected'">{{ label('连通邻域','Connectivity') }}<UiSelect :model-value="get(modelValue,'selection.connectivity')??''" @change="set('selection.connectivity',Number(String($event)))" :options="[...[{ value: '', label: '', disabled: true }], ...[{ value: 4, label: '4', disabled: false }], ...[{ value: 8, label: '8', disabled: false }]]" floating /></label>
+    <label>{{ label('前景方向','Foreground') }}<UiSelect :model-value="get(modelValue,'profiles.foreground')??''" @change="set('profiles.foreground',String($event))" :options="[...[{ value: '', label: '', disabled: true }], ...[{ value: 'above', label: String(label('高于截面','Above plane')), disabled: false }], ...[{ value: 'below', label: String(label('低于截面','Below plane')), disabled: false }]]" floating /></label>
+    <label>{{ label('边界位置','Edge position') }}<UiSelect :model-value="get(modelValue,'profiles.edge_policy')??''" @change="set('profiles.edge_policy',String($event))" :options="[...[{ value: '', label: '', disabled: true }], ...[{ value: 'cell-edge', label: String(label('格边','Cell edge')), disabled: false }], ...[{ value: 'interpolate-or-cell-edge', label: String(label('格中心阈值插值／格边估计','Threshold interpolation / cell edge')), disabled: false }]]" floating /></label>
   </fieldset>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import GeometryFields from './GeometryFields.vue'

@@ -1,3 +1,5 @@
+import { selectControl, chooseSelect } from './select-control'
+import Select from '@/shared/ui/components/Select.vue'
 import {expect,it} from 'vitest'
 import {mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
@@ -35,14 +37,14 @@ it('removes finite coverage in model mode and requires new explicit coverage whe
   const wrapper=mount(RelationSettingsEditor,{props:{modelValue:validMethod('point-plane'),nodeType:'custom.metrology3d.measure-relation'},global:{plugins:[createI18n({legacy:false,locale:'en'})],stubs:{Teleport:true,CloudViewer:true}}})
   try{
     await wrapper.get('button').trigger('click')
-    const support=wrapper.findAll('select').find(s=>s.element.value==='finite')!
-    await support.setValue('model')
+    const support=selectControl(wrapper,'finite')
+    await chooseSelect(support,'model')
     await wrapper.findAll('button').find(b=>b.text()==='Apply')!.trigger('click')
     const emitted=wrapper.emitted('update:modelValue')![0]![0]
     expect(object(object(emitted).relation).coverage).toBeNull()
     await wrapper.setProps({modelValue:emitted})
     await wrapper.get('button').trigger('click')
-    await wrapper.findAll('select').find(s=>s.element.value==='model')!.setValue('finite')
+    await chooseSelect(selectControl(wrapper,'model'),'finite')
     expect(wrapper.text()).toContain('coverage')
     expect(wrapper.findAll('button').find(b=>b.text()==='Apply')!.attributes('disabled')).toBeDefined()
     expect(wrapper.emitted('update:modelValue')).toHaveLength(1)
@@ -53,8 +55,8 @@ it('does not carry projected signed angles into spatial mode',async()=>{
   const wrapper=mount(RelationSettingsEditor,{props:{modelValue:p,nodeType:'custom.metrology3d.measure-relation'},global:{plugins:[createI18n({legacy:false,locale:'en'})],stubs:{Teleport:true,CloudViewer:true}}})
   try{
     await wrapper.get('button').trigger('click')
-    await wrapper.findAll('select').find(s=>s.element.value==='projection')!.setValue('spatial')
-    expect(wrapper.findAll('select').some(s=>s.element.value==='oriented')).toBe(true)
+    await chooseSelect(selectControl(wrapper,'projection'),'spatial')
+    expect(wrapper.findAllComponents(Select).some(s=>s.props('modelValue')==='oriented')).toBe(true)
     await wrapper.findAll('button').find(b=>b.text()==='Apply')!.trigger('click')
     expect(object(object(wrapper.emitted('update:modelValue')![0]![0]).relation).angle_mode).toBe('oriented')
   }finally{wrapper.unmount()}
@@ -91,7 +93,7 @@ it('changes methods without carrying stale coverage and refuses apply while disa
   const wrapper=mount(RelationSettingsEditor,{props:{modelValue:valid(),nodeType:'custom.metrology3d.measure-relation'},global:{plugins:[createI18n({legacy:false,locale:'en'})],stubs:{Teleport:true,CloudViewer:true}}})
   try{
     await wrapper.get('button').trigger('click')
-    await wrapper.get('select').setValue('point-plane')
+    await chooseSelect(selectControl(wrapper),'point-plane')
     expect(wrapper.text()).toContain('Finite measured support')
     expect(wrapper.text()).toContain('coverage')
     await wrapper.setProps({disabled:true})

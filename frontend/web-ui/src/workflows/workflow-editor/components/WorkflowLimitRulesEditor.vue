@@ -10,7 +10,7 @@
         <tr v-for="index in pageRows" :key="index" :class="{'limits-invalid':rowErrors[index]}">
           <td><input v-model="selection" type="checkbox" :value="index" :aria-label="`${text.select} ${index+1}`"></td>
           <td><SelectField v-if="available" :model-value="draft[index]!.item_id" :options="itemOptions(draft[index]!.item_id)" :aria-label="`${text.item} ${index+1}`" @update:model-value="chooseItem(index,String($event))" /><input v-else v-model="draft[index]!.item_id" :aria-label="`${text.item} ${index+1}`"><small v-if="rowErrors[index]" role="alert">{{ rowErrors[index] }}</small></td>
-          <td><span v-if="availableIndex.has(draft[index]!.item_id)" :title="draft[index]!.unit">{{ formatResultUnit(draft[index]!.unit) }}</span><input v-else v-model="draft[index]!.unit" :aria-label="`${text.unit} ${index+1}`"></td>
+          <td><span v-if="availableIndex.get(draft[index]!.item_id)?.unit!==undefined" :title="draft[index]!.unit">{{ formatResultUnit(draft[index]!.unit) }}</span><UiSelect v-else-if="unitOptions(draft[index]!.item_id)" v-model="draft[index]!.unit" :aria-label="`${text.unit} ${index+1}`" :options="[...[{ value: '', label: String(locale==='zh-CN'?'请选择单位':'Select unit'), disabled: true }], ...(draft[index]!.unit&&!unitOptions(draft[index]!.item_id)!.includes(draft[index]!.unit) ? [{ value: draft[index]!.unit, label: String(draft[index]!.unit), disabled: true }] : []), ...(unitOptions(draft[index]!.item_id) ?? []).flatMap((unit) => [{ value: unit, label: String(formatResultUnit(unit)), disabled: false }])]" floating /><input v-else v-model="draft[index]!.unit" :aria-label="`${text.unit} ${index+1}`"></td>
           <td v-for="bound in bounds" :key="bound"><div class="limits-bound"><input type="number" step="any" placeholder="—" :aria-label="`${text[bound]} ${index+1}`" :value="draft[index]![bound] ?? ''" @input="setBound(index,bound,$event)"><label><input v-model="draft[index]![bound==='lower'?'include_lower':'include_upper']" type="checkbox" :aria-label="`${text[bound==='lower'?'include_lower':'include_upper']} ${index+1}`">{{ locale==='zh-CN'?'含边界':'Inclusive' }}</label></div></td>
           <td v-for="key in flags" :key="key"><input v-model="draft[index]![key]" type="checkbox" :aria-label="`${text[key]} ${index+1}`"></td>
           <td><button type="button" :aria-label="`${text.remove} ${index+1}`" @click="remove(index)">×</button></td>
@@ -29,6 +29,7 @@
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
+import UiSelect from '@/shared/ui/components/Select.vue'
 import {computed,ref,inject,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -36,18 +37,20 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import {limitRuleError,normalizeLimitRule,type LimitRule} from '../parameters/limit-rules'
-import {parameterEditorSourcesKey,parameterNumericItemsKey,type ParameterEditorSources} from '../parameters/editor-context'
-import {staticNumericItems} from '../parameters/static-numeric-items'
+import {parameterEditorSourcesKey,parameterNumericItemsKey,parameterSourceSignature,type ParameterEditorSources} from '../parameters/editor-context'
+import {staticNumericItems,type StaticNumericItem} from '../parameters/static-numeric-items'
 import {formatResultUnit} from '@/shared/ui/image-viewer/result-format'
 defineOptions({inheritAttrs:false})
-const props=defineProps<{modelValue:unknown;disabled?:boolean;inputSources?:ParameterEditorSources;quality?:boolean}>(),emit=defineEmits<{'update:modelValue':[value:LimitRule[]]}>()
+type AvailableItem=Omit<StaticNumericItem,'unit'>&{unit?:string;unitOptions?:string[]}
+const props=defineProps<{modelValue:unknown;disabled?:boolean;inputSources?:ParameterEditorSources;quality?:boolean;availableItems?:AvailableItem[]}>(),emit=defineEmits<{'update:modelValue':[value:LimitRule[]]}>()
 const resolve=inject(parameterEditorSourcesKey,undefined)
 const providers=inject(parameterNumericItemsKey,{})
-const available=computed(()=>staticNumericItems(props.inputSources,resolve,providers))
+const available=computed<AvailableItem[]|null>(()=>props.availableItems??staticNumericItems(props.inputSources,resolve,providers))
 const availableIndex=computed(()=>new Map(available.value?.map(item=>[item.item_id,item])))
 const availableOptions=computed(()=>(available.value??[]).map(item=>({value:item.item_id,label:item.label??item.item_id})))
 function itemOptions(current:string){return availableIndex.value.has(current)?availableOptions.value:[{value:current,label:current||'—'},...availableOptions.value]}
-function chooseItem(index:number,id:string){draft.value[index]!.item_id=id;const item=availableIndex.value.get(id);if(item)draft.value[index]!.unit=item.unit}
+function chooseItem(index:number,id:string){draft.value[index]!.item_id=id;const item=availableIndex.value.get(id);if(item?.unit!==undefined)draft.value[index]!.unit=item.unit}
+function unitOptions(id:string){return availableIndex.value.get(id)?.unitOptions}
 const {locale}=useI18n()
 const title=computed(()=>props.quality?(locale.value==='zh-CN'?'几何质量规则':'Geometry quality'):text.value.title)
 const text=computed(()=>locale.value==='zh-CN'?{title:'公差规则',apply:'应用',cancel:'取消',help:'按保存的检查项 ID 判定。空白表示不限制该侧；必检集合不随本次成功结果改变。',search:'搜索检查项',group:'分组',all:'全部',select:'选择',item:'检查项',unit:'单位',lower:'下限',upper:'上限',include_lower:'包含下限',include_upper:'包含上限',required:'必检',enabled:'启用',add:'添加规则',remove:'移除',batch:'批量设置',batchApply:'更新所选规则',restore:'恢复批量设置前',keep:'保持不变',yes:'是',no:'否',invalid:'检查重复 ID、无效数值和空区间；至少启用一个必检项。',identity:'检查 ID 和单位',number:'请输入有限数值',boolean:'必须是布尔值',bound:'至少设置一侧界限',interval:'区间为空或上下限倒置',duplicate:'ID 重复'}:{title:'Limits',apply:'Apply',cancel:'Cancel',help:'Checks use saved item IDs. Blank means no bound on that side. Required items never follow only successful observations.',search:'Search items',group:'Group',all:'All',select:'Select',item:'Item',unit:'Unit',lower:'Lower',upper:'Upper',include_lower:'Include lower',include_upper:'Include upper',required:'Required',enabled:'Enabled',add:'Add rule',remove:'Remove',batch:'Batch settings',batchApply:'Update selected rules',restore:'Restore before batch',keep:'Unchanged',yes:'Yes',no:'No',invalid:'Check duplicate IDs, invalid numbers and empty intervals; enable at least one required item.',identity:'Check ID and unit',number:'Finite number required',boolean:'Boolean required',bound:'At least one bound required',interval:'Empty or reversed interval',duplicate:'Duplicate ID'})
@@ -57,17 +60,20 @@ const batch=ref<{lower:number|null;upper:number|null}>({lower:null,upper:null}),
 const batchValid=computed(()=>bounds.every(bound=>!batchEnabled.value[bound]||batch.value[bound]===null||Number.isFinite(batch.value[bound])))
 const count=computed(()=>Array.isArray(props.modelValue)?props.modelValue.length:0)
 const groups=computed(()=>[...new Set(draft.value.map(r=>r.item_id.split(':')[0]!))])
-const visible=computed(()=>draft.value.flatMap((r,i)=>r.item_id.toLowerCase().includes(search.value.toLowerCase())&&(!group.value||r.item_id.split(':')[0]===group.value)?[i]:[]))
+const visible=computed(()=>draft.value.flatMap((r,i)=>`${r.item_id} ${availableIndex.value.get(r.item_id)?.label??''}`.toLowerCase().includes(search.value.toLowerCase())&&(!group.value||r.item_id.split(':')[0]===group.value)?[i]:[]))
 const offset=ref(0),pageRows=computed(()=>visible.value.slice(offset.value,offset.value+100))
 watch([search,group],()=>{selection.value=[];offset.value=0},{flush:'sync'})
 watch(offset,()=>{selection.value=[]},{flush:'sync'})
 watch(()=>visible.value.length,()=>{if(offset.value>=visible.value.length)offset.value=Math.max(0,Math.floor((visible.value.length-1)/100)*100)})
 const rowErrors=computed(()=>{
   const counts=new Map<string,number>();for(const r of draft.value)counts.set(r.item_id,(counts.get(r.item_id)??0)+1)
-  return draft.value.map(r=>{const problem=counts.get(r.item_id)!>1?'duplicate':limitRuleError(r);if(problem)return text.value[problem as keyof typeof text.value];if(r.enabled&&available.value){const item=availableIndex.value.get(r.item_id);if(!item)return locale.value==='zh-CN'?'上游配方缺少该项':'Missing from upstream recipe';if(item.unit!==r.unit)return locale.value==='zh-CN'?'单位与上游不一致，请重新选择检查项':'Unit differs from upstream; select the item again'}return ''})
+  return draft.value.map(r=>{const problem=counts.get(r.item_id)!>1?'duplicate':limitRuleError(r);if(problem)return text.value[problem as keyof typeof text.value];if(r.enabled&&available.value){const item=availableIndex.value.get(r.item_id);if(!item)return locale.value==='zh-CN'?'当前方法或上游配方缺少该项':'Missing from the method or upstream recipe';if(item.unit!==undefined&&item.unit!==r.unit||item.unitOptions&&!item.unitOptions.includes(r.unit))return locale.value==='zh-CN'?'单位与检查项不一致，请重新选择':'Unit differs from the check; select the item again'}return ''})
 })
 const valid=computed(()=>draft.value.length>0&&draft.value.length<=8192&&!rowErrors.value.some(Boolean)&&draft.value.some(r=>r.enabled&&r.required))
-function show(){draft.value=Array.isArray(props.modelValue)?props.modelValue.map(r=>normalizeLimitRule(JSON.parse(JSON.stringify(r??{})))):[];undo.value=null;offset.value=0;search.value='';group.value='';selection.value=[];batchEnabled.value={lower:false,upper:false};batchRequired.value=null;open.value=true}
+function show(){if(props.disabled)return;draft.value=Array.isArray(props.modelValue)?props.modelValue.map(r=>normalizeLimitRule(JSON.parse(JSON.stringify(r??{})))):[];undo.value=null;offset.value=0;search.value='';group.value='';selection.value=[];batchEnabled.value={lower:false,upper:false};batchRequired.value=null;open.value=true}
+function invalidate(){open.value=false;selection.value=[];undo.value=null}
+watch(()=>props.modelValue,invalidate,{deep:true})
+watch([()=>props.disabled,()=>parameterSourceSignature(props.inputSources),()=>JSON.stringify(props.availableItems?.map(item=>[item.item_id,item.unit,item.unitOptions]))],invalidate)
 function apply(){if(valid.value&&!props.disabled){emit('update:modelValue',JSON.parse(JSON.stringify(draft.value)));open.value=false}}
 function setBound(index:number,bound:'lower'|'upper',event:Event){const input=event.target as HTMLInputElement;draft.value[index]![bound]=input.validity.badInput?NaN:input.value===''?null:Number(input.value)}
 function remove(index:number){draft.value.splice(index,1);selection.value=[]}
