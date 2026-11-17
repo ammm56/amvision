@@ -12,7 +12,7 @@
           <td class="project-description project-description-column"><span :title="project.description || undefined">{{ project.description || '—' }}</span></td><td class="project-count-column">{{ project.resource_counts?.datasets ?? '—' }}</td><td class="project-count-column">{{ project.resource_counts?.models ?? '—' }}</td><td class="project-count-column">{{ project.resource_counts?.deployments ?? '—' }}</td><td class="project-count-column">{{ project.resource_counts?.apps ?? '—' }}</td>
           <td @click.stop>
             <div class="project-row-actions">
-              <Button size="sm" :aria-label="text('view')" :title="text('view')" @click="view(project)"><FolderOpen :size="16" />{{ text('view') }}</Button>
+              <Button size="sm" variant="ghost" class="project-row-view" :aria-label="text('view')" :title="text('view')" @click="view(project)">{{ text('view') }}</Button>
               <ProjectMenu :editable="canWrite && !!project.revision" :deletable="session.hasScopes(['projects:delete']) && !isProtected(project)" @action="open($event, project)" />
             </div>
           </td>
