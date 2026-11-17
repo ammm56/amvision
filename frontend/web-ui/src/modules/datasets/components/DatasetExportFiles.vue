@@ -74,7 +74,7 @@
                   :is="cleaned ? TriangleAlert : CircleCheck"
                   :size="14"
                 />{{
-                  cleaned ? l('已清理', 'Cleaned') : l('可用', 'Available')
+                  cleaned ? (cleanedLabel || l('文件不可下载', 'File unavailable')) : l('可用', 'Available')
                 }}</span
               >
             </td><td :title="filePurpose(row.file.path)">{{ filePurpose(row.file.path) }}</td></template
@@ -122,6 +122,7 @@ const props = defineProps<{
   id: string
   format?: string
   cleaned: boolean
+  cleanedLabel?: string
   history: DatasetFile[]
   truncated: boolean
   formatBytes: (n: number | null) => string

@@ -38,3 +38,34 @@ it('大图复用缩放状态，标注开关不重置缩放；上一张边界禁�
   expect(w.get('[data-zoom]').text()).toBe('75')
   w.unmount()
 })
+
+it('分割预览分别控制轮廓、填充和透明度，加载时禁止修改', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  const w = mount(DatasetImageViewer, {
+    props: { open: true, image: { id: 'seg-1', title: 'a.jpg', src: 'blob:seg', width: 100, height: 100 }, datasetName: '数据集', version: 'v1', split: 'train', objectCount: 1, annotations: true, busy: false, hasPrevious: false, hasNext: false, invalid: 0, task: 'segmentation', segmentationOutline: true, segmentationFill: true, segmentationOpacity: 35 },
+    global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })], stubs: { SelectField: { props: ['modelValue', 'disabled'], template: '<button :disabled="disabled" @click="$emit(\'update:modelValue\', \'50\')">{{ modelValue }}</button>' } } },
+  })
+  const controls = w.findAll('input[type="checkbox"]')
+  await controls[0].setValue(false)
+  await controls[1].setValue(false)
+  await w.get('.dataset-image-opacity').trigger('click')
+  expect(w.emitted('segmentation-outline')).toEqual([[false]])
+  expect(w.emitted('segmentation-fill')).toEqual([[false]])
+  expect(w.emitted('segmentation-opacity')).toEqual([[50]])
+  await w.setProps({ busy: true })
+  expect(controls.every(control => control.attributes('disabled') !== undefined)).toBe(true)
+  expect(w.get('.dataset-image-opacity').attributes('disabled')).toBeDefined()
+  w.unmount()
+})
+
+it('分类大图显示标签数量和样本信息入口', () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  const w = mount(DatasetImageViewer, {
+    props: { open: true, image: { id: 'class-1', title: 'a.jpg', src: 'blob:raw', width: 100, height: 100 }, datasetName: '数据集', version: 'v1', split: 'train', objectCount: 1, annotations: true, busy: false, hasPrevious: false, hasNext: false, invalid: 0, task: 'classification' },
+    global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })], stubs: { SelectField: true } },
+  })
+  expect(w.text()).toContain('1 标签')
+  expect(w.text()).toContain('样本信息')
+  expect(w.find('input[role="switch"]').exists()).toBe(false)
+  w.unmount()
+})

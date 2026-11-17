@@ -8,7 +8,7 @@ import type { CloudRendererPolicy } from '../services/measurement-resource.servi
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
 import {fillPlaneColors,type PlaneColors} from './plane-colors'
 import {createGeometryOverlay,type GeometryOverlayInput,type GeometryFocus} from './geometry-overlay'
-import {fillCoordinateColors,linearizeDisplayColors, type CloudColorMode, type CoordinateRange, scaleBar} from './view-presentation'
+import {fillCoordinateColors,linearizeDisplayColors,projectOrientation, type CloudColorMode, type CoordinateRange, scaleBar} from './view-presentation'
 export type CloudViewAxis = 'iso' | 'x' | '-x' | 'y' | '-y' | 'z' | '-z'
 export type CloudViewState = CloudViewAxis | 'free'
 
@@ -22,7 +22,7 @@ const presetRotations = (Object.keys(directions) as CloudViewAxis[]).map(axis =>
 /** 一个激活视口一个 renderer；无常驻动画，资产细节请求由外部控制器管理。 */
 export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, policy: CloudRendererPolicy,
   picked: (index: number) => void, failed: (error: Error) => void, viewChanged: (view: CloudViewState) => void, initialActive = true,
-  presentation?: {range:CoordinateRange|null; coordinateColor:boolean; scaleChanged:(scale:ReturnType<typeof scaleBar>)=>void}) {
+  presentation?: {range:CoordinateRange|null; coordinateColor:boolean; scaleChanged:(scale:ReturnType<typeof scaleBar>)=>void; orientationChanged?: (axes:ReturnType<typeof projectOrientation>)=>void}) {
   const rect = host.getBoundingClientRect()
   function dimensions(width: number, height: number) {
     const w = Math.max(1, Math.floor(width)), h = Math.max(1, Math.floor(height))
@@ -55,6 +55,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     if (!closed && active && measurable && renderer) {
       renderer.render(scene, camera)
       presentation?.scaleChanged(camera instanceof OrthographicCamera ? scaleBar((camera.right-camera.left)/camera.zoom,width) : null)
+      if (presentation?.orientationChanged) presentation.orientationChanged(projectOrientation(camera.quaternion))
     }
   }
   function schedule() { if (!closed && active && measurable && !frame) frame = requestAnimationFrame(() => { frame = 0; render() }) }

@@ -2,6 +2,7 @@
   <section
     ref="shell"
     class="media-viewer"
+    :class="{ 'media-viewer--info-open': infoOpen }"
     tabindex="-1"
     @keydown.esc.stop="$emit('close')"
   >
@@ -26,17 +27,13 @@
       <div v-if="media.kind !== 'point-cloud'" class="dataset-actions">
         <Button :aria-label="l('缩小', 'Zoom out')" @click="zoom(0.8)"
           ><Minus :size="15" /></Button
-        ><Button @click="scales = [1, 1]">{{ l('适配', 'Fit') }}</Button
-        ><Button :aria-label="l('放大', 'Zoom in')" @click="zoom(1.25)"
+        ><SelectField :model-value="String(Math.round(currentScale * 100))" :aria-label="l('缩放比例', 'Zoom')" :options="zoomOptions" @update:model-value="setZoom" />
+        <Button :aria-label="l('放大', 'Zoom in')" @click="zoom(1.25)"
           ><Plus :size="15"
-        /></Button>
+        /></Button><Button @click="scales = [1, 1]">{{ l('适配', 'Fit') }}</Button>
       </div>
       <div v-if="media.kind === 'rgbd'" class="dataset-actions">
-        <SelectField
-          v-model="mode"
-          :aria-label="l('视图', 'View')"
-          :options="modes"
-        /><label
+        <SegmentedButtonGroup v-model="mode" :label="l('视图', 'View')" :options="modes" /><label
           ><input v-model="linked" type="checkbox" />
           {{ l('联动缩放', 'Linked zoom') }}</label
         >
@@ -45,14 +42,14 @@
         ><input v-model="overlay" type="checkbox" />
         {{ l('针位编号', 'PIN labels') }}</label
       >
-      <label v-if="media.kind === 'anomaly'">
-        {{ l('标注图层', 'Layer') }}
-        <select v-model="overlay">
-          <option :value="true">{{ l('真值', 'Ground truth') }}</option>
-          <option :value="false">{{ l('原图', 'Image') }}</option>
-          <option disabled>{{ l('预测 · 未载入', 'Prediction · not loaded') }}</option>
-        </select>
-      </label>
+      <template v-if="media.kind === 'anomaly'">
+        <label class="media-layer">{{ l('标注图层', 'Annotation layer') }}
+          <SelectField :model-value="overlay" :aria-label="l('标注图层', 'Annotation layer')" :options="annotationLayers" @update:model-value="overlay = $event === true" />
+        </label>
+        <label class="media-layer">{{ l('预测图层', 'Prediction layer') }}
+          <SelectField model-value="unloaded" disabled :aria-label="l('预测图层', 'Prediction layer')" :options="predictionLayers" />
+        </label>
+      </template>
       <Button @click="$emit('info')"
         ><Info :size="15" />{{
           media.kind === 'connector-reference'
@@ -85,6 +82,7 @@
         @pointerdown="active = 0"
         @wheel.ctrl.prevent="wheelZoom(0, $event)"
       >
+        <span v-if="media.kind === 'rgbd'" class="media-plane-label">RGB {{ sample.width }} × {{ sample.height }}</span>
         <div
           class="media-frame"
           :style="frameStyle(0, sample.width / sample.height)"
@@ -118,6 +116,7 @@
         @pointerdown="active = 1"
         @wheel.ctrl.prevent="wheelZoom(1, $event)"
       >
+        <span class="media-plane-label">{{ l('深度', 'Depth') }} {{ media.depth_size?.join(' × ') }} <template v-if="media.unit">({{ media.unit }})</template></span>
         <div
           v-if="depth && media.depth_size"
           class="media-frame"
@@ -204,6 +203,7 @@ import {
 import DatasetSampleImage from './DatasetSampleImage.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
+import SegmentedButtonGroup from '@/shared/ui/components/SegmentedButtonGroup.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { readSampleAsset, type SampleMedia } from '../sample-media'
 import type { DatasetSample } from '../services/dataset-workspace.service'
@@ -221,6 +221,7 @@ const props = defineProps<{
   next: boolean
   busy: boolean
   neighbors: DatasetSample[]
+  infoOpen?: boolean
 }>()
 defineEmits<{
   close: []
@@ -237,10 +238,23 @@ const overlay = ref(true),
   active = ref(0),
   scales = ref<[number, number]>([1, 1])
 const modes = computed(() => [
-  { value: 'both', label: l('并排', 'Side by side') },
   { value: 'rgb', label: 'RGB' },
   { value: 'depth', label: l('深度', 'Depth') },
+  { value: 'both', label: l('并排', 'Side by side') },
 ])
+const currentScale = computed(() => scales.value[mode.value === 'depth' ? 1 : mode.value === 'rgb' ? 0 : active.value])
+const zoomOptions = computed(() => [...new Set([25, 50, 75, 100, 150, 200, Math.round(currentScale.value * 100)])].sort((a, b) => a - b).map(value => ({ value: String(value), label: `${value}%` })))
+function setZoom(value: string | number | boolean | null) {
+  const next = Number(value) / 100
+  if (!Number.isFinite(next)) return
+  const which = mode.value === 'depth' ? 1 : mode.value === 'rgb' ? 0 : active.value
+  scales.value = scales.value.map((v, i) => linked.value || i === which ? Math.min(8, Math.max(0.25, next)) : v) as [number, number]
+}
+const annotationLayers = computed(() => [
+  { value: true, label: l('真值', 'Ground truth') },
+  { value: false, label: l('原图', 'Image') },
+])
+const predictionLayers = computed(() => [{ value: 'unloaded', label: l('未载入', 'Not loaded') }])
 const mask = ref(''),
   depth = ref(''),
   reading = ref(''),
@@ -331,6 +345,9 @@ onBeforeUnmount(reset)
   min-width: 0;
   gap: 14px;
 }
+.media-viewer--info-open :deep(.cloud-sample),
+.media-viewer--info-open .media-planes,
+.media-viewer--info-open .media-footer { width: max(80px, calc(100% - min(520px, 50vw))); }
 .media-toolbar,
 .media-footer {
   display: flex;
@@ -347,6 +364,7 @@ onBeforeUnmount(reset)
 .media-toolbar label {
   white-space: nowrap;
 }
+.media-layer { display: flex; align-items: center; gap: 8px; }
 .media-toolbar .ui-select {
   width: 100px;
 }
@@ -359,6 +377,7 @@ onBeforeUnmount(reset)
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .media-plane {
+  position: relative;
   min-width: 0;
   height: 57vh;
   overflow: auto;
@@ -366,6 +385,7 @@ onBeforeUnmount(reset)
   background: var(--am-surface-soft);
   border-radius: var(--am-radius-md);
 }
+.media-plane-label { position: absolute; z-index: 1; top: 8px; left: 8px; padding: 4px 8px; border-radius: var(--am-radius-sm); background: rgba(0, 0, 0, .7); color: white; font-size: 12px; }
 .media-frame {
   position: relative;
   margin-inline: auto;

@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest'
-import {Color,SRGBColorSpace} from 'three'
-import {coordinateRange,coordinateColor,fillCoordinateColors,linearizeDisplayColors,scaleBar} from '@/workflows/workflow-editor/point-cloud/view-presentation'
+import {Color,Quaternion,SRGBColorSpace,Vector3} from 'three'
+import {coordinateRange,coordinateColor,fillCoordinateColors,linearizeDisplayColors,projectOrientation,scaleBar} from '@/workflows/workflow-editor/point-cloud/view-presentation'
 
 it('matches CSS/sRGB legend and input RGB after the renderer output conversion',()=>{
   const values=new Float32Array([.25,.5,.75]),expected=values.slice()
@@ -26,4 +26,16 @@ it('uses physical 1/2/5 scale steps within the viewport and handles zoom',()=>{
   expect(scaleBar(50,600)).toEqual({value:10,pixels:120})
   expect(scaleBar(100,300)).toEqual({value:20,pixels:60})
   for(const [world,pixels] of [[0,600],[Infinity,600],[1,40]])expect(scaleBar(world!,pixels!)).toBeNull()
+})
+it('projects world axes into the current camera view without changing the camera quaternion', () => {
+  const rotation = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI / 2)
+  const before = rotation.clone()
+  const axes = projectOrientation(rotation)
+  const x = axes.find(axis => axis.label === 'X')!
+  const y = axes.find(axis => axis.label === 'Y')!
+  const z = axes.find(axis => axis.label === 'Z')!
+  expect(x.x).toBeCloseTo(0); expect(x.y).toBeCloseTo(1)
+  expect(y.x).toBeCloseTo(1); expect(y.y).toBeCloseTo(0)
+  expect(z.depth).toBeCloseTo(1)
+  expect(rotation.equals(before)).toBe(true)
 })

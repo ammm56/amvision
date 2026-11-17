@@ -48,16 +48,21 @@
         ><RefreshCw :size="16" />{{ text('refresh') }}</Button
       >
     </div>
+    <div v-if="error && rowsTab === tab && rows.length" class="dataset-stale-warning" role="status">
+      <span>{{ label('刷新失败，当前显示上次加载的数据。', 'Refresh failed; showing previously loaded data.') }} <template v-if="lastLoadedAt">{{ label('上次更新：', 'Last updated: ') }}{{ datasetDate(lastLoadedAt) }}</template></span>
+      <Button @click="load">{{ label('重试', 'Retry') }}</Button>
+    </div>
     <InlineError v-if="error" :message="error" />
     <ResourceCleanupPanel
       v-if="project.selectedProjectId && canWrite"
       :project-id="project.selectedProjectId"
+      @status="cleanupOperations = $event"
       @settled="load"
     />
     <ResourceTable
-      v-if="rows.length"
+      v-if="rowsTab === tab && (rows.length || (!loading && !error))"
       :aria-busy="loading"
-      :inert="rowsTab !== tab"
+      :inert="loading"
       class="dataset-table dataset-catalog-table"
       :class="`dataset-catalog-table--${rowsTab}`"
       :label="text(rowsTab)"
@@ -121,6 +126,15 @@
         </tr>
       </thead>
       <tbody>
+        <tr v-if="!rows.length"><td :colspan="rowsTab === 'versions' ? 8 : 7" class="dataset-catalog-empty-cell">
+          <div class="dataset-catalog-empty" role="status">
+            <FileSearch v-if="hasFilters" :size="32" aria-hidden="true" /><Database v-else :size="32" aria-hidden="true" />
+            <strong>{{ hasFilters ? (tab === 'datasets' ? label('未找到匹配的数据集', 'No matching datasets') : text('noMatches')) : tab === 'imports' || tab === 'exports' ? text('noRecords') : text('noData') }}</strong>
+            <span v-if="hasFilters">{{ label('请尝试调整关键词或筛选条件', 'Try adjusting the search or filters') }}</span>
+            <Button v-if="hasFilters" @click="clearFilters">{{ text('clear') }}</Button>
+            <Button v-else-if="tab === 'datasets' && canWrite" variant="primary" @click="router.push('/datasets/import')"><Upload :size="16" />{{ text('import') }}</Button>
+          </div>
+        </td></tr>
         <tr
           v-for="row in rows"
           :key="rowId(row)"
@@ -213,12 +227,12 @@
           )
         }}
       </p>
-      <Button v-if="q || taskType || availability || period || fileState" @click="clearFilters">{{
+      <Button v-if="!loading && (q || taskType || availability || period || fileState)" @click="clearFilters">{{
         text('clear')
       }}</Button>
     </div>
     <PaginationControls
-      v-if="total > limit || offset > 0"
+      v-if="rowsTab === tab && (total > limit || offset > 0)"
       :offset="offset"
       :limit="limit"
       :item-count="rows.length"
@@ -235,7 +249,21 @@
       @close="drawer = null"
       @saved="afterSaved"
     />
-    <DatasetRecordConfirm v-if="removal && ('dataset_import_id' in removal || 'dataset_export_id' in removal)" :importing="'dataset_import_id' in removal" :clean="cleanupOnly" :name="rowName(removal)" :version="removal.version_number ? 'v'+removal.version_number : undefined" :file="'dataset_import_id' in removal ? removal.source_file_name : removal.package_file_name" :busy="deleting" @confirm="remove" @cancel="removal = null" />
+    <DatasetRecordConfirm v-if="removal && ('dataset_import_id' in removal || 'dataset_export_id' in removal)" :importing="'dataset_import_id' in removal" :clean="cleanupOnly" :name="rowName(removal)" :version="removal.version_number ? 'v'+removal.version_number : undefined" :file="'dataset_import_id' in removal ? removal.source_file_name : removal.package_file_name" :format="'dataset_export_id' in removal ? datasetFormatLabel(removal.format_id) : undefined" :size="'dataset_export_id' in removal ? removal.package_size : undefined" :busy="deleting" :operation-error="removalError" :confirm-disabled="removalUncertain" @confirm="remove" @cancel="removal = null" />
+    <ConfirmDialog v-else-if="removal && isVersion(removal)" size="medium" :title="removalBlockers.length ? label('暂时无法删除版本', 'Version cannot be deleted') : label('删除数据集版本', 'Delete dataset version')" :confirm-label="label('删除版本', 'Delete version')" :cancel-label="removalBlockers.length ? label('关闭', 'Close') : text('cancel')" :busy="deleting" :show-confirm="!removalError" @confirm="remove" @cancel="removal = null">
+      <template #title-icon><TriangleAlert v-if="removalBlockers.length" :size="20" class="version-blocked-icon" aria-hidden="true" /><Trash2 v-else :size="20" class="version-delete-icon" aria-hidden="true" /></template>
+      <div class="version-delete-subject"><Database :size="26" /><strong>{{ rowName(removal) }} · v{{ removal.version_number }}</strong></div>
+      <template v-if="removalBlockers.length">
+        <p class="version-blocked-message" role="alert">{{ label('此版本仍被其他资源使用，请先处理引用关系。', 'This version is still used by other resources. Resolve the references first.') }}</p>
+        <ResourceTable class="dataset-table version-delete-table" :label="label('引用资源', 'References')"><thead><tr><th>{{ label('类型', 'Type') }}</th><th>{{ label('资源', 'Resource') }}</th><th>{{ label('状态', 'Status') }}</th></tr></thead><tbody><tr v-for="(blocker, index) in removalBlockers" :key="index"><td>{{ blocker.kind }}</td><td>{{ blocker.id }}</td><td>{{ blocker.state }}</td></tr></tbody></ResourceTable>
+      </template>
+      <template v-else>
+        <InlineError v-if="removalError" :message="removalError" />
+        <p>{{ label('将删除此版本及其关联内容：', 'This version and its associated content will be deleted:') }}</p>
+        <ResourceTable class="dataset-table version-delete-table" :label="label('删除内容', 'Content to delete')"><thead><tr><th>{{ label('内容', 'Content') }}</th><th>{{ label('数量', 'Count') }}</th></tr></thead><tbody><tr><td>{{ isMediaTask(removal.task_type) ? label('样本', 'Samples') : label('图片', 'Images') }}</td><td>{{ removal.sample_count.toLocaleString() }}</td></tr><tr><td>{{ label('标注对象', 'Annotations') }}</td><td>{{ removal.object_count.toLocaleString() }}</td></tr></tbody></ResourceTable>
+        <p>{{ label('关联的导入、导出记录及其任务也将删除；其他版本保留。存在外部引用时将阻止删除，删除后无法恢复。', 'Associated import and export records and their tasks will also be deleted; other versions remain. External references block deletion, and this cannot be undone.') }}</p>
+      </template>
+    </ConfirmDialog>
     <ConfirmDialog
       v-else-if="removal"
       :title="text(cleanupOnly ? 'cleanup' : 'remove')"
@@ -243,6 +271,8 @@
       :confirm-label="text(cleanupOnly ? 'cleanup' : 'remove')"
       :cancel-label="text('cancel')"
       :busy="deleting"
+      :details="removalError"
+      :confirm-disabled="removalUncertain"
       @confirm="remove"
       @cancel="removal = null"
     />
@@ -251,14 +281,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ApiError } from '@/shared/api/error'
+import { useI18n } from 'vue-i18n'
 import {
   Database,
   Download,
+  FileSearch,
   Info,
   Pencil,
   RefreshCw,
   Search,
   Trash2,
+  TriangleAlert,
   Upload,
 } from '@lucide/vue'
 import { useProjectStore } from '@/app/stores/project.store'
@@ -279,7 +313,7 @@ import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vu
 import DatasetInfoDrawer from '../components/DatasetInfoDrawer.vue'
 import DatasetCounts from '../components/DatasetCounts.vue'
 import { useDatasetCounts } from '../dataset-counts'
-import { datasetDate, datasetError, useDatasetText } from '../dataset-workspace'
+import { datasetDate, datasetError, datasetFormatLabel, useDatasetText } from '../dataset-workspace'
 import {
   listDatasetCatalog,
   listDatasetVersionPage,
@@ -296,7 +330,7 @@ import {
   type DatasetImportSummary,
   type DatasetExportSummary,
 } from '../services/dataset.service'
-import { submitResourceDeletion } from '@/shared/api/resource-deletion'
+import { submitResourceDeletion, type DeletionStatus } from '@/shared/api/resource-deletion'
 import '../dataset-workspace.css'
 const tabs = ['datasets', 'versions', 'imports', 'exports'] as const
 type Tab = (typeof tabs)[number]
@@ -307,6 +341,8 @@ const router = useRouter(),
   project = useProjectStore(),
   session = useSessionStore(),
   text = useDatasetText()
+const { locale } = useI18n()
+const label = (zh: string, en: string) => locale.value.startsWith('zh') ? zh : en
 const tab = ref<Tab>('datasets'),
   rowsTab = ref<Tab>('datasets'),
   q = ref(''),
@@ -325,12 +361,18 @@ const tab = ref<Tab>('datasets'),
 const canWrite = computed(() => session.hasScopes(['datasets:write']))
 const feedback = useFeedbackStore()
 const period = ref(''), fileState = ref(''), downloading = ref('')
+const hasFilters = computed(() => !!(q.value || taskType.value || availability.value || period.value || fileState.value))
+const cleanupOperations = ref<DeletionStatus[] | null>(null)
 const periodOptions = computed(() => [{ value: '', label: text('all') }, { value: '7', label: text('last7Days') }, { value: '30', label: text('last30Days') }])
 const fileOptions = computed(() => [{ value: '', label: text('all') }, ...Object.entries({ ready: 'fileReady', generating: 'fileGenerating', not_generated: 'fileNotGenerated', cleaned: 'cleaned' }).map(([value, key]) => ({ value, label: text(key) }))])
 const isExport = (row: Row): row is DatasetExportSummary => 'dataset_export_id' in row
 const canDownload = (row: DatasetExportSummary) => row.status === 'completed' && !row.metadata.files_cleaned_at
 function exportFileLabel(row: DatasetExportSummary) {
-  if (row.metadata.files_cleaned_at) return text('cleaned')
+  if (row.metadata.files_cleaned_at) {
+    if (!cleanupOperations.value) return label('文件不可下载', 'File unavailable')
+    return cleanupOperations.value.some(item => item.resource_kind === 'dataset-export-files' && item.resource_id === row.dataset_export_id)
+      ? label('清理待完成', 'Cleanup pending') : text('cleaned')
+  }
   if (row.status !== 'completed') return text(['queued', 'running'].includes(row.status) ? 'fileGenerating' : 'fileNotGenerated')
   const size = row.package_size
   const sizeLabel = size == null ? '' : size >= 1048576 ? `${(size / 1048576).toFixed(1)} MB` : `${(size / 1024).toFixed(1)} KB`
@@ -399,13 +441,16 @@ const rowName = (row: Row) =>
 const { sampleColumns, splitColumns } = useDatasetCounts()
 let controller: AbortController | undefined,
   timer: ReturnType<typeof setTimeout> | undefined,
-  generation = 0
+  generation = 0,
+  loadedQuery = ''
+const lastLoadedAt = ref('')
 async function load() {
   if (!project.selectedProjectId) return
   controller?.abort()
   controller = new AbortController()
   const request = ++generation
   const requestedTab = tab.value
+  const requestedQuery = JSON.stringify([requestedTab, project.selectedProjectId, q.value, offset.value, taskType.value, availability.value, period.value, fileState.value])
   loading.value = true
   error.value = ''
   try {
@@ -432,6 +477,8 @@ async function load() {
     rowsTab.value = requestedTab
     rows.value = result.items
     total.value = result.total
+    loadedQuery = requestedQuery
+    lastLoadedAt.value = new Date().toISOString()
     if (offset.value && rows.value.length === 0) {
       offset.value = Math.max(0, offset.value - limit)
       await sync()
@@ -442,7 +489,7 @@ async function load() {
       !(e instanceof DOMException && e.name === 'AbortError')
     ) {
       error.value = datasetError(e)
-      if (rowsTab.value !== requestedTab) { rows.value = []; total.value = 0 }
+      if (rowsTab.value !== requestedTab || loadedQuery !== requestedQuery) { rows.value = []; total.value = 0 }
     }
   } finally {
     if (request === generation) loading.value = false
@@ -551,6 +598,9 @@ async function action(id: string, row: Row) {
   if (id !== 'info' && !canWrite.value) return
   error.value = ''
   if (id === 'delete' || id === 'cleanup') {
+    removalError.value = ''
+    removalUncertain.value = false
+    removalBlockers.value = []
     cleanupOnly.value = id === 'cleanup'
     removal.value = row
     return
@@ -588,6 +638,9 @@ async function action(id: string, row: Row) {
   }
 }
 const cleanupOnly = ref(false)
+const removalError = ref('')
+const removalUncertain = ref(false)
+const removalBlockers = ref<{ kind: string; id: string; state: string }[]>([])
 const deleteMessage = computed(() =>
   !removal.value
     ? ''
@@ -600,8 +653,9 @@ const deleteMessage = computed(() =>
           : '删除这条已清理的导出记录？来源数据集版本将保留。',
 )
 async function remove() {
-  if (!canWrite.value || !removal.value || deleting.value) return
+  if (!canWrite.value || !removal.value || deleting.value || removalUncertain.value) return
   deleting.value = true
+  removalError.value = ''
   try {
     const row = removal.value
     if (isVersion(row))
@@ -613,19 +667,24 @@ async function remove() {
     else if ('dataset_import_id' in row)
       await deleteDatasetImport(row.dataset_import_id)
     else if ('dataset_export_id' in row) {
-      if (cleanupOnly.value)
+      if (cleanupOnly.value) {
+        cleanupOperations.value = null
         await submitResourceDeletion(
           'dataset-export-files',
           row.dataset_export_id,
           row.project_id,
         )
-      else await deleteDatasetExport(row.dataset_export_id)
+      } else await deleteDatasetExport(row.dataset_export_id)
     }
     removal.value = null
     await load()
   } catch (e) {
-    error.value = datasetError(e)
-    removal.value = null
+    const blockers = e instanceof ApiError && e.status === 409 && e.details && typeof e.details === 'object' ? (e.details as { blockers?: unknown }).blockers : undefined
+    removalBlockers.value = Array.isArray(blockers) ? blockers.filter(item => item && typeof item === 'object').map(item => ({ kind: String(item.resource_kind || '—'), id: String(item.resource_id || item.snapshot_object_key || '—'), state: String(item.state || '—') })) : []
+    removalUncertain.value = !(e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429)
+    removalError.value = removalUncertain.value
+      ? label('操作结果尚未确认。请关闭后刷新列表，确认状态后再操作。', 'The operation result is unknown. Close and refresh the list before taking further action.')
+      : datasetError(e)
   } finally {
     deleting.value = false
   }
@@ -639,6 +698,7 @@ watch(
     rows.value = []
     total.value = 0
     removal.value = null
+    cleanupOperations.value = null
     // 编辑抽屉保留输入；身份由抽屉打开时的项目固定，不能写到新项目。
   },
 )
@@ -688,3 +748,17 @@ function afterSaved() {
   void load()
 }
 </script>
+<style scoped>
+.dataset-stale-warning { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; margin-bottom: 12px; border-radius: var(--am-radius-sm); background: var(--am-warning-surface); color: var(--am-warning-text); }
+.dataset-catalog-table :deep(td.dataset-catalog-empty-cell) { padding: 0; background: var(--am-surface); }
+.dataset-catalog-empty { min-height: 210px; padding: 32px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; color: var(--am-text-muted); }
+.dataset-catalog-empty strong { color: var(--am-text); font-weight: 600; }
+.dataset-catalog-empty span { font-size: 13px; }
+.version-delete-icon { color: var(--am-danger-icon); vertical-align: middle; margin-inline-end: 10px; }
+.version-blocked-icon { color: var(--am-warning-icon); vertical-align: middle; margin-inline-end: 10px; }
+.version-blocked-message { padding: 12px; border-radius: var(--am-radius-sm); background: var(--am-warning-surface); color: var(--am-warning-text); }
+.version-delete-subject { display: flex; align-items: center; gap: 14px; padding: 12px 4px; overflow-wrap: anywhere; }
+.version-delete-table :deep(table) { table-layout: fixed; }
+.version-delete-table :deep(th), .version-delete-table :deep(td) { padding: 10px 12px; }
+.version-delete-table :deep(td) { overflow-wrap: anywhere; }
+</style>

@@ -4,12 +4,14 @@ import { createI18n } from 'vue-i18n'
 import { createPinia } from 'pinia'
 import { reactive } from 'vue'
 import DatasetVersionPage from '../../../frontend/web-ui/src/modules/datasets/pages/DatasetVersionPage.vue'
+import { ApiError } from '../../../frontend/web-ui/src/shared/api/error'
 
 const api = vi.hoisted(() => ({
   getDatasetWorkspace: vi.fn(),
   getDatasetSample: vi.fn(),
   listDatasetSamples: vi.fn(),
   getDatasetImage: vi.fn(),
+  annotatedImage: vi.fn(async (blob: Blob) => ({ blob, width: 100, height: 80, invalid: 0 })),
 }))
 vi.mock(
   '../../../frontend/web-ui/src/modules/datasets/services/dataset-workspace.service',
@@ -17,12 +19,7 @@ vi.mock(
 )
 vi.mock('../../../frontend/web-ui/src/modules/datasets/annotations', () => ({
   annotationColor: () => '#00cc99',
-  annotatedImage: async (blob: Blob) => ({
-    blob,
-    width: 100,
-    height: 80,
-    invalid: 0,
-  }),
+  annotatedImage: api.annotatedImage,
 }))
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }))
 const route = reactive({ params: { datasetId: 'd', versionId: 'v' }, query: { sample: 's' } as Record<string, string> })
@@ -33,9 +30,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
   route.query = { sample: 's' }
+  route.params.versionId = 'v'
   history.replaceState({}, '')
 })
-async function render() {
+async function render(task = 'detection') {
   const sample = {
     sample_id: 's',
     dataset_version_id: 'v',
@@ -52,7 +50,7 @@ async function render() {
     project_id: 'p',
     dataset: { display_name: '测试' },
     display_name: '测试',
-    task_type: 'detection',
+    task_type: task,
     sample_count: 1,
     category_count: 0,
     object_count: 0,
@@ -85,6 +83,36 @@ async function render() {
   await flushPromises()
   return { wrapper, revoke }
 }
+
+it.each([[404, '版本已删除或不可访问'], [403, '无权访问此版本']] as const)('切换到不可访问的版本（%s）时清除旧工作区并提供返回版本列表', async (status, message) => {
+  route.query = {}
+  const { wrapper } = await render()
+  expect(wrapper.text()).toContain('测试')
+  api.getDatasetWorkspace.mockRejectedValueOnce(new ApiError(status, { message: '不可访问' }))
+  route.params.versionId = 'missing'
+  await flushPromises()
+  expect(wrapper.text()).toContain(message)
+  expect(wrapper.text()).not.toContain('real.jpg')
+  expect(wrapper.find('.dataset-version-content').exists()).toBe(false)
+  wrapper.find('.dataset-version-unavailable').findComponent({ name: 'Button' }).vm.$emit('click')
+  expect(router.push).toHaveBeenCalledWith({ path: '/datasets', query: { tab: 'versions' } })
+  wrapper.unmount()
+})
+it('分类大图保持原图，选择标签不会在图像上绘制浮层', async () => {
+  const { wrapper } = await render('classification')
+  expect(api.annotatedImage).not.toHaveBeenCalled()
+  expect(wrapper.findComponent({ name: 'DatasetImageViewer' }).props('image').src).toBe('blob:sample')
+  wrapper.unmount()
+})
+it('单击样本图片的查看按钮打开大图', async () => {
+  route.query = {}
+  const { wrapper } = await render('classification')
+  await wrapper.get('[role="button"][aria-label="查看 real.jpg"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.findComponent({ name: 'DatasetImageViewer' }).props('open')).toBe(true)
+  expect(wrapper.findComponent({ name: 'DatasetImageViewer' }).props('image').title).toBe('real.jpg')
+  wrapper.unmount()
+})
 it('检查结果的样本链接在异步加载工作区后打开真实大图，并释放 Blob URL', async () => {
   const { wrapper, revoke } = await render()
   expect(api.getDatasetSample).toHaveBeenCalledWith('d', 'v', 's')

@@ -39,12 +39,28 @@ describe('resource deletion', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('清理未完成')
     expect(wrapper.text()).toContain('occupied')
+    expect(wrapper.emitted('status')?.[0]?.[0]).toEqual([expect.objectContaining({ operation_id: 'op', state: 'committed' })])
     await wrapper.get('button').trigger('click')
     await flushPromises()
     expect(mocks.retry).toHaveBeenCalledWith('op')
     expect(wrapper.emitted('settled')).toHaveLength(1)
+    expect(wrapper.emitted('status')?.at(-1)?.[0]).toEqual([])
     wrapper.unmount()
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('清理重试失败时保留待清理状态和原因，成功刷新前不宣称完成', async () => {
+    mocks.list.mockResolvedValue([{ operation_id: 'op-failed', project_id: 'project', resource_id: 'export', resource_kind: 'dataset-export-files', state: 'committed', error: '文件占用' }])
+    mocks.retry.mockRejectedValueOnce(new ApiError(409, { message: '文件仍被占用' }))
+    const wrapper = mount(ResourceCleanupPanel, { props: { projectId: 'project', resourceId: 'export' }, global: { plugins: [i18n] } })
+    await flushPromises()
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('文件仍被占用')
+    expect(wrapper.text()).toContain('文件占用')
+    expect(wrapper.emitted('settled')).toBeUndefined()
+    expect(wrapper.emitted('status')?.at(-1)?.[0]).toEqual([expect.objectContaining({ operation_id: 'op-failed' })])
+    wrapper.unmount()
   })
 
   it('does not expose deletion without permission', () => {

@@ -5,7 +5,7 @@
       <h1 :title="`${datasetName} / ${version} / ${image.title}`">{{ datasetName }} <span>/ {{ version }} /</span> {{ image.title }}</h1>
       <span class="dataset-image-split">{{ split }}</span>
       <span class="dataset-image-meta">{{ image.width }} × {{ image.height }}</span>
-      <span class="dataset-image-meta">{{ objectCount }} {{ text('object') }}</span>
+      <span class="dataset-image-meta">{{ objectCount }} {{ task === 'classification' ? label('标签', 'labels') : text('object') }}</span>
     </header>
     <div class="dataset-image-toolbar">
       <div class="dataset-actions dataset-image-tool-group">
@@ -19,8 +19,13 @@
         <Button @click="fitImage"><Scan :size="16" />{{ label('适配', 'Fit') }}</Button>
       </div>
       <div class="dataset-actions dataset-image-tool-group">
-      <label v-if="task !== 'classification'" class="dataset-image-annotations"><input type="checkbox" role="switch" :checked="annotations" @change="emit('annotations', ($event.target as HTMLInputElement).checked)" />{{ text('showAnnotations') }}</label>
-      <Button class="dataset-image-info" @click="emit('info')"><Info :size="16" />{{ text('objects') }}</Button>
+      <template v-if="task === 'segmentation' || task === 'semantic_segmentation'">
+        <label class="dataset-image-annotations"><input type="checkbox" :checked="segmentationOutline" :disabled="busy" @change="emit('segmentation-outline', ($event.target as HTMLInputElement).checked)" />{{ label('轮廓', 'Outline') }}</label>
+        <label class="dataset-image-annotations"><input type="checkbox" :checked="segmentationFill" :disabled="busy" @change="emit('segmentation-fill', ($event.target as HTMLInputElement).checked)" />{{ label('填充', 'Fill') }}</label>
+        <label class="dataset-image-annotations">{{ label('透明度', 'Opacity') }}<SelectField class="dataset-image-opacity" :disabled="busy" :model-value="String(segmentationOpacity)" :aria-label="label('填充透明度', 'Fill opacity')" :options="opacityOptions" @update:model-value="emit('segmentation-opacity', Number($event))" /></label>
+      </template>
+      <label v-else-if="task !== 'classification'" class="dataset-image-annotations"><input type="checkbox" role="switch" :checked="annotations" @change="emit('annotations', ($event.target as HTMLInputElement).checked)" />{{ text('showAnnotations') }}</label>
+      <Button class="dataset-image-info" @click="emit('info')"><Info :size="16" />{{ task === 'classification' ? label('样本信息', 'Sample info') : text('objects') }}</Button>
       </div>
     </div>
     <div class="dataset-image-viewport" :aria-label="image.title" @wheel.prevent="handleWheel" @mousedown="startPan" @dblclick="fitImage" @keydown.left.prevent="!busy && hasPrevious && emit('previous')" @keydown.right.prevent="!busy && hasNext && emit('next')">
@@ -55,10 +60,14 @@ const props = defineProps<{
   infoOpen?: boolean
   focusedBounds?: number[] | null
   task?: string
+  segmentationOutline?: boolean
+  segmentationFill?: boolean
+  segmentationOpacity?: number
 }>()
-const emit = defineEmits<{ close: []; 'close-info': []; previous: []; next: []; info: []; annotations: [value: boolean] }>()
+const emit = defineEmits<{ close: []; 'close-info': []; previous: []; next: []; info: []; annotations: [value: boolean]; 'segmentation-outline': [value: boolean]; 'segmentation-fill': [value: boolean]; 'segmentation-opacity': [value: number] }>()
 const text = useDatasetText(), { locale } = useI18n()
 const label = (zh: string, en: string) => locale.value.startsWith('zh') ? zh : en
+const opacityOptions = [0, 15, 25, 35, 50, 75, 100].map(value => ({ value: String(value), label: `${value}%` }))
 const viewportRef = ref<HTMLElement | null>(null)
 const { scale, offsetX, offsetY, viewportWidth, imageFrameStyle, imageElementStyle, fitImage, zoomIn, zoomOut, handleWheel, startPan, stopPan } = useImageViewerViewport({
   viewportRef, imageWidth: computed(() => props.image?.width || 1), imageHeight: computed(() => props.image?.height || 1),
@@ -93,6 +102,7 @@ function imageLoaded() { if (needsFit) { fitImage(); needsFit = false } }
 .dataset-image-split { background:var(--am-surface-muted); border-radius:var(--am-radius-sm); padding:4px 8px; font-size:13px; }
 .dataset-image-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:16px; background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-md); padding:12px; }
 .dataset-image-zoom { width:84px; }
+.dataset-image-opacity { width:78px; }
 .dataset-image-tool-group { flex-wrap:nowrap; gap:8px; }
 .dataset-image-tool-group + .dataset-image-tool-group { border-left:1px solid var(--am-border); padding-left:20px; }
 .dataset-image-tool-group:last-child { gap:16px; }
@@ -104,9 +114,9 @@ function imageLoaded() { if (needsFit) { fitImage(); needsFit = false } }
 .dataset-image-frame img { display:block; max-width:none; user-select:none; }
 .dataset-image-loading { position:absolute; top:12px; left:12px; padding:6px 10px; border-radius:var(--am-radius-sm); background:var(--am-surface); }
 .dataset-image-annotations { display:flex; align-items:center; gap:8px; white-space:nowrap; font-size:13px; }
-.dataset-image-annotations input { appearance:none; width:30px; height:18px; border:0; border-radius:20px; position:relative; background:var(--am-border-strong); cursor:pointer; }
-.dataset-image-annotations input:after { content:''; position:absolute; width:12px; height:12px; top:3px; left:3px; background:white; border-radius:50%; transition:transform .16s ease; }
-.dataset-image-annotations input:checked { background:var(--am-brand-primary); }
-.dataset-image-annotations input:checked:after { transform:translateX(12px); }
+.dataset-image-annotations input[role='switch'] { appearance:none; width:30px; height:18px; border:0; border-radius:20px; position:relative; background:var(--am-border-strong); cursor:pointer; }
+.dataset-image-annotations input[role='switch']:after { content:''; position:absolute; width:12px; height:12px; top:3px; left:3px; background:white; border-radius:50%; transition:transform .16s ease; }
+.dataset-image-annotations input[role='switch']:checked { background:var(--am-brand-primary); }
+.dataset-image-annotations input[role='switch']:checked:after { transform:translateX(12px); }
 @media(max-width:1100px) { .dataset-image-heading { gap:8px; } .dataset-image-heading h1 { font-size:16px; } .dataset-image-toolbar { gap:16px; } .dataset-image-tool-group + .dataset-image-tool-group { padding-left:16px; } }
 </style>

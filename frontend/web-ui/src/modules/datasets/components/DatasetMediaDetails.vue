@@ -2,11 +2,17 @@
   <dl class="dataset-details">
     <dt>{{ l('样本', 'Sample') }}</dt>
     <dd>{{ sample.file_name }}</dd>
+    <template v-if="media.kind !== 'point-cloud'">
+      <dt>{{ l('图像尺寸', 'Image size') }}</dt>
+      <dd>{{ sample.width }} × {{ sample.height }}</dd>
+    </template>
     <dt>{{ l('来源', 'Source') }}</dt>
     <dd>{{ media.source || l('导入资料', 'Imported data') }}</dd>
     <dt>{{ l('数据划分', 'Split') }}</dt>
     <dd>{{ sample.split }}</dd>
     <template v-if="media.kind === 'anomaly'">
+      <dt>{{ l('任务类型', 'Task type') }}</dt>
+      <dd>{{ l('异常检测', 'Anomaly detection') }}</dd>
       <dt>{{ l('图像标签', 'Image label') }}</dt>
       <dd>
         {{

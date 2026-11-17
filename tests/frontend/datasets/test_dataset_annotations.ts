@@ -3,7 +3,7 @@ import {decodeMaskRuns,paintAnnotations} from '../../../frontend/web-ui/src/modu
 import type {DatasetAnnotation,DatasetSample} from '../../../frontend/web-ui/src/modules/datasets/services/dataset-workspace.service'
 
 const annotation=(value:Partial<DatasetAnnotation>):DatasetAnnotation=>({annotation_id:'a',annotation_type:'detection',category_id:0,bbox_xywh:null,segmentation:null,keypoints:null,polygon_xy:null,is_anomalous:null,metadata:{},...value})
-function canvas(){return {save:vi.fn(),restore:vi.fn(),strokeRect:vi.fn(),fillRect:vi.fn(),measureText:()=>({width:10}),fillText:vi.fn(),beginPath:vi.fn(),closePath:vi.fn(),lineTo:vi.fn(),moveTo:vi.fn(),arc:vi.fn(),stroke:vi.fn(),fill:vi.fn()} as unknown as CanvasRenderingContext2D}
+function canvas(){return {save:vi.fn(),restore:vi.fn(),strokeRect:vi.fn(),fillRect:vi.fn(),measureText:()=>({width:10}),fillText:vi.fn(),beginPath:vi.fn(),closePath:vi.fn(),lineTo:vi.fn(),moveTo:vi.fn(),arc:vi.fn(),stroke:vi.fn(),fill:vi.fn(),setLineDash:vi.fn()} as unknown as CanvasRenderingContext2D}
 const sample=(annotations:DatasetAnnotation[]):DatasetSample=>({sample_id:'s',image_id:1,dataset_version_id:'v',file_name:'sample.png',width:3,height:2,split:'train',annotations,metadata:{}})
 describe('Dataset ground truth rendering',()=>{
  it('decodes compressed and uncompressed COCO without allocating source-size pixel arrays',()=>{
@@ -25,6 +25,34 @@ describe('Dataset ground truth rendering',()=>{
   paintAnnotations(ctx,sample([annotation({annotation_type:'classification'}),annotation({annotation_type:'obb',polygon_xy:[0,1,1,0,3,1,2,2],bbox_xywh:[0,0,3,2]})]),new Map(),30,20)
   expect(ctx.strokeRect).not.toHaveBeenCalled()
   expect(ctx.lineTo).toHaveBeenCalledWith(30,10)
+  expect(ctx.fillText).toHaveBeenCalledWith('P1', expect.any(Number), expect.any(Number))
+  expect(ctx.fillText).toHaveBeenCalledWith('P4', expect.any(Number), expect.any(Number))
+ })
+ it('renders the segmentation contour without an enclosing bounding box',()=>{
+  const ctx=canvas()
+  paintAnnotations(ctx,sample([annotation({annotation_type:'segmentation',bbox_xywh:[0,0,3,2],segmentation:[[0,0,3,0,3,2,0,2]]})]),new Map([[0,'part']]),30,20)
+  expect(ctx.strokeRect).not.toHaveBeenCalled()
+  expect(ctx.fill).toHaveBeenCalledOnce()
+  expect(ctx.stroke).toHaveBeenCalledOnce()
+ })
+ it('supports independent polygon and RLE contour and fill controls',()=>{
+  const poly=annotation({annotation_type:'segmentation',segmentation:[[0,0,3,0,3,2,0,2]]})
+  const polygonCtx=canvas()
+  paintAnnotations(polygonCtx,sample([poly]),new Map(),30,20,undefined,1,{}, {outline:false,fill:true,opacity:0.35})
+  expect(polygonCtx.fill).toHaveBeenCalledOnce(); expect(polygonCtx.stroke).not.toHaveBeenCalled()
+  const rle=annotation({annotation_type:'segmentation',segmentation:{size:[2,3],counts:[0,2,2,2]}})
+  const outlineCtx=canvas()
+  paintAnnotations(outlineCtx,sample([rle]),new Map(),30,20,undefined,1,{}, {outline:true,fill:false,opacity:0.35})
+  expect(outlineCtx.stroke).toHaveBeenCalledOnce()
+  expect(outlineCtx.fillRect).not.toHaveBeenCalledWith(0,0,10,20)
+  const solid=canvas()
+  paintAnnotations(solid,sample([annotation({annotation_type:'segmentation',segmentation:{size:[2,3],counts:[0,6]}})]),new Map(),30,20,undefined,1,{}, {outline:true,fill:false,opacity:0.35})
+  const edges=vi.mocked(solid.moveTo).mock.calls.map((start,i)=>[start,vi.mocked(solid.lineTo).mock.calls[i]])
+  expect(edges).not.toContainEqual([[10,0],[10,20]])
+  expect(edges).not.toContainEqual([[20,0],[20,20]])
+  const fillCtx=canvas()
+  paintAnnotations(fillCtx,sample([rle]),new Map(),30,20,undefined,1,{}, {outline:false,fill:true,opacity:0.5})
+  expect(fillCtx.stroke).not.toHaveBeenCalled(); expect(fillCtx.fillRect).toHaveBeenCalledWith(0,0,10,20)
  })
  it('does not plot unlabelled keypoints, differentiates occluded and visible points',()=>{
   const ctx=canvas()
@@ -32,5 +60,8 @@ describe('Dataset ground truth rendering',()=>{
   expect(ctx.arc).toHaveBeenCalledTimes(2)
   expect(ctx.stroke).toHaveBeenCalledTimes(1)
   expect(ctx.fill).toHaveBeenCalledTimes(1)
+  expect(ctx.fillText).toHaveBeenCalledWith('2', expect.any(Number), expect.any(Number))
+  expect(ctx.fillText).toHaveBeenCalledWith('3', expect.any(Number), expect.any(Number))
+  expect(ctx.strokeRect).not.toHaveBeenCalled()
  })
 })

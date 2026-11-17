@@ -1,4 +1,13 @@
-import {Color,SRGBColorSpace} from 'three'
+import {Color,Quaternion,SRGBColorSpace,Vector3} from 'three'
+
+/** 将世界坐标轴投影到相机平面，用于随视角变化的方向指示。 */
+export function projectOrientation(quaternion: Quaternion) {
+  const inverse = quaternion.clone().invert()
+  return ([['X', 1, 0, 0], ['Y', 0, 1, 0], ['Z', 0, 0, 1]] as const).map(([label, x, y, z]) => {
+    const direction = new Vector3(x, y, z).applyQuaternion(inverse)
+    return { label, x: direction.x, y: -direction.y, depth: direction.z }
+  }).sort((a, b) => a.depth - b.depth)
+}
 
 /** 显示色标和比例尺；不参与测量、过滤或持久化配方。 */
 export type CoordinateRange = { min: number; max: number }

@@ -4,9 +4,25 @@
       <dt>{{ label('样本名称', 'Sample name') }}</dt><dd>{{ sample.file_name }}</dd>
       <dt>{{ label('图像尺寸', 'Image dimensions') }}</dt><dd>{{ sample.width }} × {{ sample.height }}</dd>
       <dt>{{ label('数据划分', 'Split') }}</dt><dd>{{ sample.split }}</dd>
+      <template v-if="classification"><dt>{{ label('任务类型', 'Task type') }}</dt><dd>{{ task }}</dd></template>
       <dt>{{ label('标注来源', 'Annotation source') }}</dt><dd>{{ source }}</dd>
+      <template v-if="classification"><dt>{{ label('标签数', 'Labels') }}</dt><dd>{{ sample.annotations.length }}</dd></template>
     </dl>
-    <section class="sample-details__section">
+    <section v-if="classification" class="sample-details__section">
+      <h3>{{ label('类别目录', 'Classes') }} ({{ categories.length }})</h3>
+      <ResourceTable class="dataset-table sample-details__table sample-details__classes" :label="label('类别目录', 'Classes')">
+        <thead><tr><th class="sample-details__index">#</th><th>{{ text('classes') }}</th></tr></thead>
+        <tbody><tr v-for="(item, index) in categories" :key="item.category_id"><td>{{ index + 1 }}</td><td><span class="sample-details__dot" :style="{ background: annotationColor(item.category_id) }" /> {{ item.name }}</td></tr></tbody>
+      </ResourceTable>
+      <p v-if="!categories.length" class="dataset-muted">{{ label('暂无类别', 'No classes') }}</p>
+    </section>
+    <section v-if="classification" class="sample-details__section">
+      <h3>{{ label('当前样本标签', 'Current sample labels') }}</h3>
+      <div v-for="item in sample.annotations" :key="item.annotation_id" class="sample-details__classification-label"><span class="sample-details__dot" :style="{ background: annotationColor(item.category_id) }" />{{ category(item.category_id) }}</div>
+      <p v-if="!sample.annotations.length" class="dataset-muted">{{ text('unannotated') }}</p>
+      <p class="dataset-muted">{{ label('图像级真实标签，无模型置信度。', 'Image-level ground truth; no model confidence.') }}</p>
+    </section>
+    <section v-if="!classification" class="sample-details__section">
       <h3>{{ classification ? label('图像标签', 'Image labels') : label('对象列表', 'Objects') }} ({{ sample.annotations.length }})</h3>
       <ResourceTable class="dataset-table sample-details__table" :label="text('objects')">
         <thead><tr><th class="sample-details__index">#</th><th>{{ text('classes') }}</th><th v-if="!classification">{{ geometryHeading }}<small v-if="task === 'detection'">X / Y / {{ label('宽 / 高', 'Width / Height') }}</small></th></tr></thead>
@@ -17,7 +33,7 @@
       </ResourceTable>
       <p v-if="!sample.annotations.length" class="dataset-muted">{{ text('unannotated') }}</p>
     </section>
-    <section v-if="active" class="sample-details__section">
+    <section v-if="active && !classification" class="sample-details__section">
       <h3>{{ classification ? label('选中标签', 'Selected label') : label('选中对象', 'Selected object') }}</h3>
       <div class="sample-details__category"><span>{{ text('classes') }}</span><span class="sample-details__dot" :style="{ background: annotationColor(active.category_id) }" /><strong>{{ category(active.category_id) }}</strong></div>
       <div v-if="active.bbox_xywh && task === 'detection'" class="sample-details__coordinate-row">
@@ -27,7 +43,7 @@
         <small>{{ label('单位：px', 'Unit: px') }}</small>
         </div>
       </div>
-      <ResourceTable v-if="task === 'obb' && points.length" class="dataset-table sample-details__table" :label="label('顶点坐标', 'Vertices')">
+      <ResourceTable v-if="task === 'obb' && points.length" class="dataset-table sample-details__table sample-details__vertices" :label="label('顶点坐标', 'Vertices')">
         <thead><tr><th>{{ label('顶点', 'Vertex') }}</th><th>X (px)</th><th>Y (px)</th></tr></thead>
         <tbody><tr v-for="(point, index) in points" :key="index"><td>P{{ index + 1 }}</td><td>{{ number(point[0]) }}</td><td>{{ number(point[1]) }}</td></tr></tbody>
       </ResourceTable>
@@ -76,10 +92,15 @@ function geometry(item: DatasetAnnotation) {
 .sample-details__table :deep(th),.sample-details__table :deep(td) { padding:12px 10px; font-size:13px; }
 .sample-details__table :deep(th:first-child) { width:40px; }
 .sample-details__table :deep(th:nth-child(2)) { width:32%; }
+.sample-details__vertices :deep(th:first-child) { width:76px; }
+.sample-details__classes :deep(table) { table-layout:fixed; }
+.sample-details__classes :deep(th:first-child) { width:48px; }
+.sample-details__classes :deep(th:nth-child(2)) { width:auto; }
 .sample-details__table small { display:block; font-size:11px; font-weight:400; color:var(--am-text-muted); margin-top:4px; }
 .sample-details__object { display:flex; align-items:center; gap:8px; min-width:0; width:100%; border:0; color:inherit; background:none; padding:0; cursor:pointer; text-align:left; }
 .sample-details__object > span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sample-details__dot { display:inline-block; width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.sample-details__classification-label { display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:var(--am-radius-sm); background:var(--am-row-selected); margin-bottom:8px; }
 .sample-details__category { display:flex; align-items:center; gap:8px; font-size:14px; margin-bottom:20px; }
 .sample-details__category > span:first-child { width:92px; color:var(--am-text-muted); }
 .sample-details strong { font-weight:400; }

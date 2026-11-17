@@ -29,7 +29,7 @@
           v-if="detail && canWrite && actions.length"
           :label="text('more')"
           :items="actions"
-          @action="confirmAction = $event"
+          @action="confirmAction = $event; actionError = ''; actionUncertain = false"
         />
       </div>
     </div>
@@ -51,7 +51,7 @@
           class="dataset-record-subject"
           :title="importDetail ? sourceFileName : format"
           >{{ importDetail ? sourceFileName : format }}</strong
-        ><StatusBadge v-if="cleaned" tone="warning" :label="text('cleaned')" />
+        ><StatusBadge v-if="cleaned" tone="warning" :label="cleanupLabel" />
         <div class="dataset-actions">
           <Button
             v-if="importDetail?.status === 'failed' && canWrite"
@@ -95,11 +95,11 @@
       <div v-if="importDetail" class="record-file-meta">
         <span>{{ formatBytes(importDetail.package_size) }}</span><span>{{ label('数据格式','Format') }} {{ importFormatName }}</span>
         <span>{{ label('提交时间', 'Submitted') }} {{ datasetDate(detail.created_at) }}</span>
-        <span v-if="completedAt">{{ label('完成时间', 'Completed') }} {{ datasetDate(completedAt) }}</span>
+        <span v-if="completedAt">{{ importEndTimeLabel }} {{ datasetDate(completedAt) }}</span>
       </div>
       <InlineError
         v-if="detail.error_message && !importDetail"
-        :message="detail.error_message"
+        :message="exportErrorMessage(detail.error_message)"
       />
       <p v-if="cancelRequested && !terminal" role="status">
         {{
@@ -134,7 +134,7 @@
             /><template v-else>{{ index + 1 }}</template></span
           >
           <div><strong>{{ index + 1 }}. {{ step.label }}</strong>
-            <time v-if="step.time" :datetime="step.time" :title="datasetDate(step.time)">{{ formatSystemDateTime(step.time, 'step') }}</time>
+            <time v-if="stepTime(step, index)" :datetime="stepTime(step, index)" :title="datasetDate(stepTime(step, index))">{{ formatSystemDateTime(stepTime(step, index), 'step') }}</time>
             <small v-else>—</small>
             <small>{{ step.complete ? step.result : failedStage === index ? label('失败','Failed') : label('待处理','Pending') }}</small>
           </div>
@@ -144,6 +144,7 @@
         v-if="canWrite"
         :project-id="detail.project_id"
         :resource-id="identity"
+        @status="cleanupOperations = $event"
         @settled="load"
       />
       <div v-if="exportDetail" class="export-facts">
@@ -155,10 +156,7 @@
       </div>
       <p v-if="cleaned" class="record-warning" role="status">
         <TriangleAlert :size="17" />{{
-          label(
-            '导出文件已清理，记录仍保留。',
-            'Export files were cleaned. The record is retained.',
-          )
+          cleanupMessage
         }}
       </p>
       <div
@@ -173,7 +171,7 @@
             <dt>{{ label('文件大小','File size') }}</dt><dd>{{ formatBytes(importDetail.package_size) }}</dd>
             <dt>{{ label('数据格式','Format') }}</dt><dd>{{ importFormatName }}</dd>
             <dt>{{ label('提交时间','Submitted') }}</dt><dd>{{ datasetDate(detail.created_at) }}</dd>
-            <dt>{{ label('完成时间','Completed') }}</dt><dd>{{ datasetDate(completedAt) }}</dd>
+            <dt>{{ importEndTimeLabel }}</dt><dd>{{ datasetDate(completedAt) }}</dd>
           </dl>
         </section>
         <section v-if="importDetail" class="resource-section">
@@ -364,6 +362,7 @@
         :id="identity"
         :format="datasetFormatLabel(exportDetail.format_id)"
         :cleaned="cleaned"
+        :cleaned-label="cleanupLabel"
         :history="historicalFiles"
         :truncated="!!detail.metadata.file_list_truncated"
         :format-bytes="formatBytes"
@@ -420,7 +419,7 @@
       </p>
       <pre class="dataset-json">{{ filePreview?.content }}</pre>
     </SideDrawer>
-    <DatasetRecordConfirm v-if="confirmAction === 'cleanup' || confirmAction === 'delete'" :importing="importing" :clean="confirmAction === 'cleanup'" :name="name" :version="versionLabel" :file="importing ? sourceFileName : exportDetail?.package_file_name" :busy="busy" @confirm="performAction" @cancel="confirmAction = ''" />
+    <DatasetRecordConfirm v-if="confirmAction === 'cleanup' || confirmAction === 'delete'" :importing="importing" :clean="confirmAction === 'cleanup'" :name="name" :version="versionLabel" :file="importing ? sourceFileName : exportDetail?.package_file_name" :format="exportDetail ? datasetFormatLabel(exportDetail.format_id) : undefined" :size="exportDetail?.package_size" :busy="busy" :operation-error="actionError" :confirm-disabled="actionUncertain" @confirm="performAction" @cancel="confirmAction = ''" />
     <ConfirmDialog
       v-else-if="confirmAction"
       :title="confirmTitle"
@@ -428,6 +427,8 @@
       :confirm-label="confirmTitle"
       :cancel-label="text('cancel')"
       :busy="busy"
+      :details="actionError"
+      :confirm-disabled="actionUncertain"
       :confirm-variant="confirmAction === 'cancel' ? 'primary' : 'danger'"
       @confirm="performAction"
       @cancel="confirmAction = ''"
@@ -464,7 +465,7 @@ import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { cancelTask } from '@/modules/tasks/services/task.service'
 import { apiRequest } from '@/shared/api/http-client'
 import { ApiError } from '@/shared/api/error'
-import { submitResourceDeletion } from '@/shared/api/resource-deletion'
+import { submitResourceDeletion, type DeletionStatus } from '@/shared/api/resource-deletion'
 import {
   getDatasetImportDetail,
   getDatasetExportDetail,
@@ -496,6 +497,11 @@ const route = useRoute(),
   text = useDatasetText()
 const label = (zh: string, en: string) =>
   locale.value.startsWith('zh') ? zh : en
+function exportErrorMessage(message: string) {
+  if (/\[Errno 2\].*No such file or directory/i.test(message))
+    return label('导出失败：来源版本的文件不存在或不可访问。请检查版本资源，原始错误可在下方参数与报告中查看。', 'Export failed: a source version file is missing or inaccessible. Check the version assets; the original error is available in the report below.')
+  return message
+}
 const importing = computed(() => props.kind === 'imports'),
   identity = computed(() =>
     String(
@@ -510,6 +516,9 @@ const detail = ref<DatasetImportDetail | DatasetExportDetail | null>(null),
   error = ref(''),
   loading = ref(false),
   busy = ref(false),
+  actionError = ref(''),
+  actionUncertain = ref(false),
+  cleanupOperations = ref<DeletionStatus[] | null>(null),
   confirmAction = ref(''),
   cancelRequested = ref(false)
 const importDetail = computed(() =>
@@ -525,6 +534,13 @@ const canWrite = computed(() => session.hasScopes(['datasets:write'])),
     ),
   ),
   cleaned = computed(() => !!exportDetail.value?.metadata.files_cleaned_at)
+const cleanupPending = computed(() => cleanupOperations.value?.some(item => item.resource_kind === 'dataset-export-files' && item.resource_id === identity.value) ?? null)
+const cleanupLabel = computed(() => cleanupPending.value === true ? label('清理待完成', 'Cleanup pending') : cleanupPending.value === false ? text('cleaned') : label('文件不可下载', 'File unavailable'))
+const cleanupMessage = computed(() => cleanupPending.value === true
+  ? label('导出文件不可下载，文件清理待完成；记录仍保留。', 'Export files are unavailable; cleanup is pending. The record is retained.')
+  : cleanupPending.value === false
+    ? label('导出文件已清理，记录仍保留。', 'Export files were cleaned. The record is retained.')
+    : label('导出文件不可下载，清理状态待确认；记录仍保留。', 'Export files are unavailable; cleanup status is unknown. The record is retained.'))
 const format = computed(
   () => importDetail.value?.format_type || exportDetail.value?.format_id || '—',
 )
@@ -537,7 +553,7 @@ const sourceFileName = computed(() =>
   String(
     importDetail.value?.metadata.source_file_name ||
       importDetail.value?.metadata.original_file_name ||
-      importDetail.value?.package_path.replaceAll('\\', '/').split('/').pop() ||
+      importDetail.value?.package_path?.replaceAll('\\', '/').split('/').pop() ||
       '—',
   ),
 )
@@ -555,6 +571,10 @@ const completedAt = computed(() =>
       '',
   ),
 )
+const importEndTimeLabel = computed(() => importDetail.value?.status === 'failed'
+  ? label('失败时间', 'Failed')
+  : ['cancelled', 'canceled'].includes(importDetail.value?.status || '')
+    ? label('结束时间', 'Finished') : label('完成时间', 'Completed'))
 const splitObjects = computed(
   () =>
     (detail.value?.metadata.split_object_counts || {}) as Record<
@@ -605,7 +625,7 @@ const exportFacts = computed(() => {
     { icon: Layers, label: label('类别与划分','Classes and splits'), value: [e.category_names.length + ' ' + text('classes'), ...e.split_names.map(key => key + ' ' + (splitCounts.value[key] ?? '—'))].join(' · ') },
     { icon: Clock, label: text('created'), value: datasetDate(e.created_at) },
     { icon: Clock, label: label('完成时间','Completed'), value: datasetDate(completedAt.value) },
-    { icon: FileArchive, label: label('导出产物','Export package'), value: e.package_file_name || String(e.metadata.historical_package_name || e.metadata.package_name || (cleaned.value ? text('cleaned') : e.status === 'completed' ? text('packageOnDownload') : '—')), note: size != null ? formatBytes(size) : '' },
+    { icon: FileArchive, label: label('导出产物','Export package'), value: e.package_file_name || String(e.metadata.historical_package_name || e.metadata.package_name || (cleaned.value ? cleanupLabel.value : e.status === 'completed' ? text('packageOnDownload') : '—')), note: size != null ? formatBytes(size) : '' },
   ]
 })
 const validationRows = computed(() => [
@@ -662,6 +682,10 @@ const importSteps = computed(() => {
     },
   ]
 })
+function stepTime(step: { time: string; complete: boolean }, index: number) {
+  if (step.complete) return step.time
+  return failedStage.value === index ? completedAt.value : ''
+}
 const classNames = computed(
   () =>
     exportDetail.value?.category_names ||
@@ -830,31 +854,23 @@ async function load(background = false) {
     if (!active || request !== generation) return
     error.value = ''
     detail.value = result
-    // 名称与来源版本的读取失败不应阻止历史记录及导出文件查看。
-    try {
-      const info = await getDatasetInfo(result.project_id, result.dataset_id)
-      if (!active || request !== generation) return
-      name.value = info.display_name
-    } catch {
-      if (active && request === generation)
-        name.value ||= result.display_name || result.dataset_id
-    }
-    if (!active || request !== generation) return
+    name.value ||= result.display_name || result.dataset_id
+    // 辅助信息独立加载，慢请求不能阻塞详情的刷新状态和任务轮询。
+    void getDatasetInfo(result.project_id, result.dataset_id).then(info => {
+      if (active && request === generation) name.value = info.display_name
+    }).catch(() => { /* 保留记录中的名称。 */ })
     if (result.dataset_version_id && !workspace.value) {
-      try {
-        const data = await getDatasetWorkspace(
-          result.dataset_id,
-          result.dataset_version_id,
-        )
+      void getDatasetWorkspace(result.dataset_id, result.dataset_version_id).then(data => {
         if (active && request === generation) workspace.value = data
-      } catch {
-        /* 记录仍可查看，来源版本可能已不可用。 */
-      }
+      }).catch(() => { /* 记录仍可查看，来源版本可能已不可用。 */ })
     }
-    if (!active || request !== generation) return
   } catch (e) {
     retryable = !(e instanceof ApiError && [401, 403, 404].includes(e.status))
-    if (active && request === generation) error.value = datasetError(e)
+    if (active && request === generation) error.value = e instanceof ApiError && e.status === 404
+      ? importing.value
+        ? label('导入记录不存在或已删除。', 'The import record does not exist or has been deleted.')
+        : label('导出记录不存在或已删除。', 'The export record does not exist or has been deleted.')
+      : datasetError(e)
   } finally {
     if (active && request === generation) {
       loading.value = false
@@ -886,17 +902,19 @@ async function download() {
   }
 }
 async function performAction() {
-  if (!detail.value || busy.value || !canWrite.value) return
+  if (!detail.value || busy.value || actionUncertain.value || !canWrite.value) return
   if (confirmAction.value === 'cancel' && !session.hasScopes(['tasks:write']))
     return
   busy.value = true
   error.value = ''
+  actionError.value = ''
   try {
     if (confirmAction.value === 'cancel') {
       await cancelTask(detail.value.task_id!)
       cancelRequested.value = true
       await load()
     } else if (confirmAction.value === 'cleanup') {
+      cleanupOperations.value = null
       await submitResourceDeletion(
         'dataset-export-files',
         identity.value,
@@ -911,8 +929,10 @@ async function performAction() {
     }
     confirmAction.value = ''
   } catch (e) {
-    error.value = datasetError(e)
-    confirmAction.value = ''
+    actionUncertain.value = !(e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429)
+    actionError.value = actionUncertain.value
+      ? label('操作结果尚未确认。请关闭后刷新记录，确认状态后再操作。', 'The operation result is unknown. Close and refresh the record before taking further action.')
+      : datasetError(e)
   } finally {
     busy.value = false
   }
@@ -954,6 +974,7 @@ watch(
     filePreviewOpen.value = false
     filePreview.value = null
     cancelRequested.value = false
+    cleanupOperations.value = null
     void load()
   },
   { immediate: true },

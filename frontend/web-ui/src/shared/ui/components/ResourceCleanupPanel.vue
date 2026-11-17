@@ -17,7 +17,7 @@ import Button from './Button.vue'
 import InlineError from '../feedback/InlineError.vue'
 import { resourceDeletionMessages } from './resource-deletion-messages'
 const props = defineProps<{ projectId: string; resourceId?: string }>()
-const emit = defineEmits<{ settled: [] }>()
+const emit = defineEmits<{ settled: []; status: [operations: DeletionStatus[] | null] }>()
 const { t } = useI18n({ messages: resourceDeletionMessages })
 const operations = ref<DeletionStatus[]>([])
 const error = ref<string | null>(null)
@@ -39,10 +39,11 @@ async function load() {
     if (currentEpoch !== epoch || disposed) return
     const previousIds = new Set(operations.value.map(item => item.operation_id))
     operations.value = next
+    emit('status', next)
     error.value = null
     if ([...previousIds].some(id => !next.some(item => item.operation_id === id))) emit('settled')
   } catch (cause) {
-    if (currentEpoch === epoch && !controller.signal.aborted && !disposed) error.value = getErrorMessage(cause)
+    if (currentEpoch === epoch && !controller.signal.aborted && !disposed) { error.value = getErrorMessage(cause); emit('status', null) }
   } finally {
     if (currentEpoch === epoch && !disposed) timer = setTimeout(() => { void load() }, 2500)
   }

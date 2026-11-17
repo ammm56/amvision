@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import DatasetSampleDetails from '../../../frontend/web-ui/src/modules/datasets/components/DatasetSampleDetails.vue'
+import DatasetMediaDetails from '../../../frontend/web-ui/src/modules/datasets/components/DatasetMediaDetails.vue'
 import { annotationBounds } from '../../../frontend/web-ui/src/modules/datasets/annotations'
 const annotation = (overrides = {}) => ({ annotation_id: 'a', annotation_type: 'detection', category_id: 0, bbox_xywh: [10,20,30,40], polygon_xy: null, segmentation: null, keypoints: null, is_anomalous: null, metadata: {}, ...overrides })
 function view(task: string, item = annotation()) {
@@ -9,8 +10,14 @@ function view(task: string, item = annotation()) {
 }
 it('分类样本显示图像标签，不伪造边界框或置信度', () => {
   const w = view('classification', annotation({ annotation_type: 'classification', bbox_xywh: null }))
-  expect(w.text()).toContain('图像标签'); expect(w.text()).not.toContain('边界框'); expect(w.text()).not.toContain('置信度')
+  expect(w.text()).toContain('类别目录'); expect(w.text()).toContain('当前样本标签'); expect(w.text()).toContain('无模型置信度'); expect(w.text()).not.toContain('边界框')
   expect(w.find('.sample-details__coordinates').exists()).toBe(false); w.unmount()
+})
+it.each(['anomaly', 'connector-reference'] as const)('%s 样本信息显示实际图像尺寸', (kind) => {
+  const wrapper = mount(DatasetMediaDetails, { props: { dataset: 'd', media: { kind, id: 'm', assets: [], label: 'anomaly' }, sample: { sample_id: 's', image_id: 1, dataset_version_id: 'v1', file_name: 'part.jpg', width: 1600, height: 1200, split: 'train', metadata: {}, annotations: [] } }, global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })] } })
+  expect(wrapper.text()).toContain('1600 × 1200')
+  if (kind === 'anomaly') expect(wrapper.text()).toContain('异常检测')
+  wrapper.unmount()
 })
 it('旋转框显示原始四顶点，点击行发出真实对象 ID', async () => {
   const w = view('obb', annotation({ annotation_type: 'obb', polygon_xy: [1,2,3,4,5,6,7,8] }))

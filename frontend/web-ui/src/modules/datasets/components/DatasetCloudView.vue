@@ -52,6 +52,18 @@
       <span v-if="!media.preview_count">{{
         l('无有效点', 'No valid points')
       }}</span>
+      <div v-if="ready && color === 'height' && media.z_range" class="cloud-legend" :aria-label="l('高度色标', 'Height legend')">
+        <span>{{ l('高度', 'Height') }}<template v-if="media.unit"> ({{ media.unit }})</template></span>
+        <div class="cloud-legend__scale"><span class="cloud-legend__bar" :class="{ 'cloud-legend__bar--flat': media.z_range[0] === media.z_range[1] }" /><div><span>{{ displayNumber(media.z_range[1]) }}</span><span>{{ displayNumber(media.z_range[0]) }}</span></div></div>
+      </div>
+      <svg v-if="ready && orientation.length" class="cloud-orientation" viewBox="0 0 88 88" role="img" :aria-label="l('坐标轴方向', 'Coordinate axes')">
+        <defs><marker v-for="(color, axis) in axisColors" :id="`dataset-cloud-axis-${axis}`" :key="axis" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" :fill="color" /></marker></defs>
+        <g v-for="axis in orientation" :key="axis.label" :stroke="axisColors[axis.label]" :fill="axisColors[axis.label]">
+          <line v-if="Math.hypot(axis.x, axis.y) >= 0.15" x1="44" y1="44" :x2="44 + axis.x * 27" :y2="44 + axis.y * 27" stroke-width="2" :marker-end="`url(#dataset-cloud-axis-${axis.label})`" />
+          <circle v-if="Math.hypot(axis.x, axis.y) < 0.15" cx="44" cy="44" r="3" />
+          <text :x="44 + axis.x * 35 + (Math.hypot(axis.x, axis.y) < 0.25 ? 9 : 0)" :y="44 + axis.y * 35 + (Math.hypot(axis.x, axis.y) < 0.25 ? 9 : 0)" text-anchor="middle" dominant-baseline="central" stroke="none">{{ axis.label }}</text>
+        </g>
+      </svg>
     </div>
     <p class="cloud-caption">
       {{ media.frame }} · {{ media.unit }} · {{ media.point_count?.toLocaleString() }}
@@ -59,9 +71,6 @@
       {{ media.valid_count?.toLocaleString() }} · {{ l('无效', 'Invalid') }}
       {{ media.invalid_count?.toLocaleString() }} · {{ l('显示', 'Displayed') }}
       {{ media.preview_count?.toLocaleString() }}
-      <span class="height-scale" v-if="color === 'height' && media.z_range">
-        Z {{ media.z_range.join(' – ') }} {{ media.unit }}</span
-      >
     </p>
   </div>
 </template>
@@ -71,6 +80,7 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/shared/ui/components/Button.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { createCloudRenderer } from '@/workflows/workflow-editor/point-cloud/renderer'
+import { displayNumber, type projectOrientation } from '@/workflows/workflow-editor/point-cloud/view-presentation'
 import { reserveCpu } from '@/workflows/workflow-editor/point-cloud/preview-data'
 import { readSampleAsset, type SampleMedia } from '../sample-media'
 import type { DatasetSample } from '../services/dataset-workspace.service'
@@ -86,7 +96,9 @@ const host = ref<HTMLElement>(),
   ready = ref(false),
   size = ref(2),
   ortho = ref(false),
-  color = ref('height')
+  color = ref('height'),
+  orientation = ref<ReturnType<typeof projectOrientation>>([])
+const axisColors = { X: '#ff5555', Y: '#37e873', Z: '#68a4ff' } as const
 let scene: ReturnType<typeof createCloudRenderer> | undefined
 let controller: AbortController | undefined,
   releaseCpu: (() => void) | undefined
@@ -105,6 +117,7 @@ function release() {
   releaseCpu?.()
   releaseCpu = undefined
   ready.value = false
+  orientation.value = []
 }
 function applyColor() {
   const range = props.media.z_range,
@@ -168,9 +181,10 @@ async function load() {
         )
       },
       () => {},
+      true,
+      { range: null, coordinateColor: false, scaleChanged: () => {}, orientationChanged: axes => { orientation.value = axes } },
     )
     scene.fit('iso')
-    scene.axesVisible(true)
     scene.projection(ortho.value)
     scene.pointSize(size.value)
     applyColor()
@@ -206,12 +220,15 @@ onBeforeUnmount(release)
   inset: 45% 0;
   text-align: center;
 }
+.cloud-legend { position:absolute; z-index:1; top:14px; right:16px; display:grid; gap:8px; color:#fff; font-size:12px; text-shadow:0 1px 3px #000; pointer-events:none; }
+.cloud-legend__scale { display:flex; align-items:stretch; gap:7px; }
+.cloud-legend__bar { width:14px; height:110px; background:linear-gradient(to top, blue 0%, cyan 25%, lime 50%, yellow 75%, red 100%); }
+.cloud-legend__bar--flat { background:lime; }
+.cloud-legend__scale > div { display:flex; flex-direction:column; justify-content:space-between; }
+.cloud-orientation { position:absolute; z-index:1; left:12px; bottom:12px; width:88px; height:88px; overflow:visible; pointer-events:none; font-size:12px; font-weight:600; filter:drop-shadow(0 1px 2px #000); }
 .cloud-caption {
   color: var(--am-text-muted);
   margin: 0;
-}
-.cloud-caption span {
-  margin-inline-start: 12px;
 }
 .dataset-actions {
   flex-wrap: wrap;
@@ -224,5 +241,4 @@ onBeforeUnmount(release)
 .dataset-actions input[type='range'] {
   width: 70px;
 }
-.height-scale::before {content:"";display:inline-block;width:64px;height:6px;margin-right:6px;background:linear-gradient(90deg,blue,cyan,lime,yellow,red)}
 </style>

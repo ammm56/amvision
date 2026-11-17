@@ -19,7 +19,7 @@
         />
         <span v-if="workspace" class="dataset-task-label">{{ isMediaTask(workspace.task_type) ? text(workspace.task_type) : workspace.task_type }}</span>
       </div>
-      <div class="dataset-actions">
+      <div v-if="!unavailableStatus" class="dataset-actions">
         <ResourceMenu :label="text('more')" :items="headerActions" @action="headerAction" />
         <Button
           v-if="canWrite"
@@ -30,6 +30,12 @@
       </div>
     </div>
     <InlineError v-if="error" :message="error" />
+    <div v-if="unavailableStatus" class="dataset-version-unavailable" role="status">
+      <CircleAlert :size="32" aria-hidden="true" />
+      <strong>{{ unavailableStatus === 403 ? label('无权访问此版本', 'Access to this version is denied') : label('版本已删除或不可访问', 'Version deleted or unavailable') }}</strong>
+      <p>{{ unavailableStatus === 403 ? label('当前账号没有访问此版本的权限。', 'The current account cannot access this version.') : label('此版本可能已被删除，或当前无法访问。', 'This version may have been deleted or is unavailable.') }}</p>
+      <Button @click="router.push({ path: '/datasets', query: { tab: 'versions' } })">{{ label('返回版本列表', 'Back to versions') }}</Button>
+    </div>
     <div
       v-if="workspace"
       v-show="!viewer"
@@ -194,6 +200,8 @@
               tabindex="0"
               class="dataset-image-button"
               :aria-label="`${text('view')} ${sample.file_name}`"
+              @click.stop="showImage(sample)"
+              @dblclick.stop
               @keydown.enter.prevent="showImage(sample)"
               @keydown.space.prevent="showImage(sample)"
             >
@@ -330,16 +338,18 @@
     <DatasetMediaViewer v-if="viewer && workspace && viewerSample && isMediaTask(workspace.task_type) && sampleMedia(viewerSample)"
       :key="viewerSample.sample_id" :dataset="datasetId" :name="workspace.dataset.display_name" :version="`v${workspace.version_number}`"
       :neighbors="!viewerStandalone && samples.some(s=>s.sample_id===viewerSample?.sample_id) ? samples.slice(Math.max(0,viewerIndex-offset-3),viewerIndex-offset+4) : []" @pick="showImage($event)" :sample="viewerSample" :media="sampleMedia(viewerSample)!" :image="viewer.src" :busy="viewerBusy"
-      :previous="!viewerStandalone && viewerIndex>0" :next="!viewerStandalone && viewerIndex<total-1"
+      :previous="!viewerStandalone && viewerIndex>0" :next="!viewerStandalone && viewerIndex<total-1" :info-open="infoOpen"
       @info="showInfo(viewerSample)" @close="returnFromViewer" @previous="adjacent(-1)" @next="adjacent(1)" />
     <DatasetImageViewer v-else-if="viewer && workspace" :open="!!viewer" :image="viewer"
       :dataset-name="workspace.dataset.display_name" :version="`v${workspace.version_number}`"
       :split="viewerSample?.split || ''" :object-count="viewerSample?.annotations.length || 0"
       :annotations="viewerAnnotations" :busy="viewerBusy" :invalid="viewerInvalid"
+      :segmentation-outline="segmentationOutline" :segmentation-fill="segmentationFill" :segmentation-opacity="segmentationOpacity"
       :info-open="infoOpen" :focused-bounds="selectedAnnotation ? annotationBounds(selectedAnnotation) : null" :task="workspace.task_type"
       :has-previous="!viewerStandalone && viewerIndex > 0" :has-next="!viewerStandalone && viewerIndex < total - 1"
       @close="returnFromViewer" @close-info="infoOpen = false" @previous="adjacent(-1)" @next="adjacent(1)"
-      @info="viewerSample && showInfo(viewerSample)" @annotations="viewerAnnotations = $event; updateViewerImage()" />
+      @info="viewerSample && showInfo(viewerSample)" @annotations="viewerAnnotations = $event; updateViewerImage()"
+      @segmentation-outline="segmentationOutline = $event; refreshSegmentation()" @segmentation-fill="segmentationFill = $event; refreshSegmentation()" @segmentation-opacity="segmentationOpacity = $event; refreshSegmentation()" />
     <DatasetInfoDrawer v-if="datasetInfoMode && workspace" :info="workspace.dataset" :mode="datasetInfoMode" :editable="canWrite"
       @close="datasetInfoMode = null" @saved="saveInfo" />
 
@@ -355,6 +365,7 @@ import {
   ArrowUp,
   ArrowDown,
   Circle,
+  CircleAlert,
   Download,
   Info,
   LayoutGrid,
@@ -368,6 +379,7 @@ import {
 } from '@lucide/vue'
 import { useSessionStore } from '@/app/stores/session.store'
 import { useFeedbackStore } from '@/app/stores/feedback.store'
+import { ApiError } from '@/shared/api/error'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
@@ -434,6 +446,7 @@ const tabs = [
   workspace = ref<DatasetWorkspace | null>(null),
   samples = ref<DatasetSample[]>([]),
   loading = ref(false),
+  unavailableStatus = ref<403 | 404 | null>(null),
   error = ref(''),
   q = ref(''),
   split = ref(''),
@@ -554,6 +567,11 @@ let controller: AbortController | undefined,
 let originalMediaType = ''
 let viewerBlob: Blob | null = null,
   overlayGeneration = 0
+const segmentationOutline = ref(true), segmentationFill = ref(true), segmentationOpacity = ref(35)
+const segmentationDisplay = () => ({ outline: segmentationOutline.value, fill: segmentationFill.value, opacity: segmentationOpacity.value / 100 })
+function refreshSegmentation() {
+  if (viewerBlob && viewerSample.value) void selectViewerObject(viewerSelectedObject.value)
+}
 let pendingImage: DatasetSample | null = null
 const sampleQuery = () => ({
   q: q.value,
@@ -571,6 +589,8 @@ async function load() {
   const request = ++workspaceGeneration
   loading.value = true
   error.value = ''
+  unavailableStatus.value = null
+  let workspaceLoaded = false
   try {
     const data = await getDatasetWorkspace(
       datasetId.value,
@@ -578,6 +598,7 @@ async function load() {
       controller.signal,
     )
     if (request !== workspaceGeneration) return
+    workspaceLoaded = true
     if (
       workspace.value?.metadata.content_revision !==
       data.metadata.content_revision
@@ -606,7 +627,27 @@ async function load() {
     }
     if (route.query.sample && request === workspaceGeneration) await openLinkedSample()
   } catch (e) {
-    if (request === workspaceGeneration) error.value = datasetError(e)
+    if (request === workspaceGeneration) {
+      if (!workspaceLoaded && e instanceof ApiError && (e.status === 403 || e.status === 404)) {
+        unavailableStatus.value = e.status
+        workspace.value = null
+        samples.value = []
+        total.value = 0
+        detail.value = null
+        infoOpen.value = false
+        closeViewer()
+      } else {
+        if (workspace.value && (workspace.value.dataset_id !== datasetId.value || workspace.value.dataset_version_id !== versionId.value)) {
+          workspace.value = null
+          samples.value = []
+          total.value = 0
+          detail.value = null
+          infoOpen.value = false
+          closeViewer()
+        }
+        error.value = datasetError(e)
+      }
+    }
   } finally {
     if (request === workspaceGeneration) loading.value = false
   }
@@ -748,11 +789,14 @@ async function showImage(
       viewerController.signal,
     )
     if (request !== viewerGeneration) return
-    const annotated = isMediaTask(workspace.value!.task_type) ? {blob, invalid:0} : await annotatedImage(
+    const rawPreview = isMediaTask(workspace.value!.task_type) || workspace.value!.task_type === 'classification'
+    const annotated = rawPreview ? {blob, invalid:0} : await annotatedImage(
       blob,
       sample,
       new Map(workspace.value!.categories.map((c) => [c.category_id, c.name])),
       poseSchemas.value,
+      undefined,
+      segmentationDisplay(),
     )
     if (request !== viewerGeneration) return
     viewerBlob = blob
@@ -762,9 +806,10 @@ async function showImage(
     if (annotatedUrl) URL.revokeObjectURL(annotatedUrl)
     viewerUrl = URL.createObjectURL(blob)
     originalMediaType = blob.type
-    annotatedUrl = isMediaTask(workspace.value!.task_type) ? '' : URL.createObjectURL(annotated.blob)
+    annotatedUrl = rawPreview ? '' : URL.createObjectURL(annotated.blob)
     viewerInvalid.value = annotated.invalid
     viewerSample.value = sample
+    if (workspace.value!.task_type === 'segmentation' || workspace.value!.task_type === 'semantic_segmentation') viewerAnnotations.value = true
     viewerIndex.value =
       index ??
       offset.value +
@@ -790,6 +835,7 @@ function updateViewerImage() {
 }
 async function selectViewerObject(id: string) {
   if (!viewerBlob || !viewerSample.value || viewerBusy.value) return
+  if (workspace.value?.task_type === 'classification') { viewerSelectedObject.value = id; return }
   const request = ++overlayGeneration
   const imageRequest = viewerGeneration
   viewerSelectedObject.value = id
@@ -800,6 +846,7 @@ async function selectViewerObject(id: string) {
       new Map(workspace.value!.categories.map((c) => [c.category_id, c.name])),
       poseSchemas.value,
       id,
+      segmentationDisplay(),
     )
     if (request !== overlayGeneration || imageRequest !== viewerGeneration)
       return
@@ -948,6 +995,10 @@ function selectFiltered() {
 }
 </script>
 <style scoped>
+.dataset-version-unavailable { min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; color: var(--am-text-muted); }
+.dataset-version-unavailable svg { color: var(--am-danger-icon); }
+.dataset-version-unavailable strong { color: var(--am-text); font-size: 16px; }
+.dataset-version-unavailable p { margin: 0 0 4px; }
 .dataset-stats { display:flex; align-items:center; padding:14px 0; background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-md); }
 .dataset-stats > div { position:relative; display:grid; justify-items:center; align-content:center; row-gap:3px; min-width:max-content; flex:0 1 13%; padding:0 14px; }
 .dataset-stats > div:not(:last-child)::after { content:''; position:absolute; inset-inline-end:0; top:50%; height:30px; width:1px; transform:translateY(-50%); background:var(--am-border); }

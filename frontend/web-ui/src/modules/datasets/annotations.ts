@@ -87,6 +87,8 @@ export function decodeMaskRuns(
   return { runs, width, height }
 }
 
+export interface SegmentationDisplay { outline: boolean; fill: boolean; opacity: number }
+
 /** 绘制失败时返回对象数，让界面提示而不是冒充无目标。 */
 export function paintAnnotations(
   ctx: CanvasRenderingContext2D,
@@ -97,6 +99,7 @@ export function paintAnnotations(
   selected?: string,
   labelScale = 1,
   poseSchemas: Record<string, unknown> = {},
+  segmentationDisplay: SegmentationDisplay = { outline: true, fill: true, opacity: 0.3 },
 ): number {
   const sx = width / sample.width,
     sy = height / sample.height
@@ -133,8 +136,24 @@ export function paintAnnotations(
       )
       ctx.closePath()
       ctx.stroke()
-      x = points[0][0] * sx
-      y = points[0][1] * sy
+      points.forEach(([px, py], index) => {
+        const vertexX = px * sx, vertexY = py * sy
+        ctx.beginPath()
+        ctx.arc(vertexX, vertexY, 3.5 * labelScale, 0, Math.PI * 2)
+        ctx.fillStyle = '#ffffff'
+        ctx.fill()
+        ctx.stroke()
+        const vertexLabel = `P${index + 1}`
+        const badgeWidth = ctx.measureText(vertexLabel).width + 8 * labelScale
+        const badgeX = Math.max(0, Math.min(width - badgeWidth, vertexX - badgeWidth / 2))
+        const badgeY = Math.max(0, vertexY - 22 * labelScale)
+        ctx.fillStyle = color
+        ctx.fillRect(badgeX, badgeY, badgeWidth, 16 * labelScale)
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(vertexLabel, badgeX + 4 * labelScale, badgeY + 12 * labelScale)
+      })
+      x = (points[0][0] + points[1][0]) * sx / 2
+      y = (points[0][1] + points[1][1]) * sy / 2
     } else if (
       item.bbox_xywh?.length === 4 &&
       item.bbox_xywh.every(Number.isFinite)
@@ -147,7 +166,8 @@ export function paintAnnotations(
       }
       x = bx * sx
       y = by * sy
-      ctx.strokeRect(x, y, bw * sx, bh * sy)
+      // 分割标注以轮廓或掩膜呈现，避免同时叠加外接框遮挡区域。
+      if (!item.segmentation && item.annotation_type !== 'pose') ctx.strokeRect(x, y, bw * sx, bh * sy)
     } else if (item.annotation_type === 'detection' || item.bbox_xywh != null) {
       invalid++
       ctx.restore()
@@ -170,10 +190,10 @@ export function paintAnnotations(
           else ctx.moveTo(polygon[i] * sx, polygon[i + 1] * sy)
         }
         ctx.closePath()
-        ctx.globalAlpha = 0.25
-        ctx.fill()
+        ctx.globalAlpha = Math.min(1, Math.max(0, segmentationDisplay.opacity))
+        if (segmentationDisplay.fill) ctx.fill()
         ctx.globalAlpha = 1
-        ctx.stroke()
+        if (segmentationDisplay.outline) ctx.stroke()
       }
     } else if (item.segmentation) {
       const mask = decodeMaskRuns(item.segmentation)
@@ -181,7 +201,8 @@ export function paintAnnotations(
         invalid++
       else {
         let offset = 0
-        ctx.globalAlpha = 0.3
+        ctx.globalAlpha = Math.min(1, Math.max(0, segmentationDisplay.opacity))
+        const columns: [number, number][][] = segmentationDisplay.outline ? Array.from({ length: mask.width }, () => []) : []
         for (let i = 0; i < mask.runs.length; i++) {
           const end = offset + mask.runs[i]
           if (i % 2 && end > offset) {
@@ -189,6 +210,15 @@ export function paintAnnotations(
               row = offset % mask.height
             const lastCol = Math.floor((end - 1) / mask.height),
               lastRow = ((end - 1) % mask.height) + 1
+            if (segmentationDisplay.outline) {
+              for (let c = col; c <= lastCol; c++) {
+                const start = c === col ? row : 0, stop = c === lastCol ? lastRow : mask.height
+                const previous = columns[c].at(-1)
+                if (previous && previous[1] === start) previous[1] = stop
+                else columns[c].push([start, stop])
+              }
+            }
+            if (!segmentationDisplay.fill) { offset = end; continue }
             if (col === lastCol)
               ctx.fillRect(col * sx, row * sy, sx, (end - offset) * sy)
             else {
@@ -206,6 +236,28 @@ export function paintAnnotations(
           offset = end
         }
         ctx.globalAlpha = 1
+        if (segmentationDisplay.outline) {
+          // 仅描绘掩膜与背景的边界，不画相邻前景列之间的内部线。
+          const edge = (column: number, start: number, end: number, neighbors: [number, number][]) => {
+            let position = start
+            for (const [a, b] of neighbors) {
+              if (b <= position) continue
+              if (a >= end) break
+              if (a > position) { ctx.moveTo(column * sx, position * sy); ctx.lineTo(column * sx, Math.min(a, end) * sy) }
+              position = Math.max(position, b)
+              if (position >= end) break
+            }
+            if (position < end) { ctx.moveTo(column * sx, position * sy); ctx.lineTo(column * sx, end * sy) }
+          }
+          ctx.beginPath()
+          for (let c = 0; c < columns.length; c++) for (const [a, b] of columns[c]) {
+            ctx.moveTo(c * sx, a * sy); ctx.lineTo((c + 1) * sx, a * sy)
+            ctx.moveTo(c * sx, b * sy); ctx.lineTo((c + 1) * sx, b * sy)
+            edge(c, a, b, columns[c - 1] || [])
+            edge(c + 1, a, b, columns[c + 1] || [])
+          }
+          ctx.stroke()
+        }
       }
     }
     if (item.keypoints) {
@@ -217,6 +269,7 @@ export function paintAnnotations(
         n * 3 + 2 < points.length &&
         points[n * 3 + 2] > 0 &&
         points.slice(n * 3, n * 3 + 3).every(Number.isFinite)
+      ctx.strokeStyle = '#00c98b'
       for (const [from, to] of schema?.skeleton || []) {
         if (!valid(from - 1) || !valid(to - 1)) continue
         ctx.beginPath()
@@ -226,17 +279,25 @@ export function paintAnnotations(
       }
       for (let i = 0; i < points.length; i += 3) {
         if (!valid(i / 3)) continue
+        const pointX = points[i] * sx, pointY = points[i + 1] * sy
+        const occluded = points[i + 2] === 1
+        const pointColor = occluded ? '#ff9800' : '#00c98b'
+        ctx.strokeStyle = pointColor
+        ctx.fillStyle = pointColor
         ctx.beginPath()
-        ctx.arc(
-          points[i] * sx,
-          points[i + 1] * sy,
-          3 * labelScale,
-          0,
-          Math.PI * 2,
-        )
-        if (points[i + 2] === 2) ctx.fill()
-        else ctx.stroke()
+        ctx.arc(pointX, pointY, 5 * labelScale, 0, Math.PI * 2)
+        if (occluded) { ctx.setLineDash([3 * labelScale, 2 * labelScale]); ctx.stroke(); ctx.setLineDash([]) }
+        else ctx.fill()
+        const number = String(i / 3 + 1)
+        const badgeWidth = Math.max(16 * labelScale, ctx.measureText(number).width + 8 * labelScale)
+        const badgeX = Math.max(0, Math.min(width - badgeWidth, pointX + 5 * labelScale))
+        const badgeY = Math.max(0, pointY - 22 * labelScale)
+        ctx.fillRect(badgeX, badgeY, badgeWidth, 16 * labelScale)
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(number, badgeX + 4 * labelScale, badgeY + 12 * labelScale)
       }
+      ctx.restore()
+      continue
     }
     const labelWidth = ctx.measureText(name).width + 8 * labelScale
     const top = Math.max(0, y - 18 * labelScale),
@@ -257,6 +318,7 @@ export async function annotatedImage(
   categories: Map<number, string>,
   poseSchemas: Record<string, unknown> = {},
   selected?: string,
+  segmentationDisplay?: SegmentationDisplay,
 ) {
   const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' })
   try {
@@ -276,6 +338,7 @@ export async function annotatedImage(
       selected,
       Math.max(1, Math.max(canvas.width / 900, canvas.height / 650)),
       poseSchemas,
+      segmentationDisplay,
     )
     const result = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
