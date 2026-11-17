@@ -10,10 +10,11 @@ import { ApiError } from '../../../frontend/web-ui/src/shared/api/error'
 const route = reactive({ query: { tab: 'versions', state: '', offset: '0' } })
 const api = vi.hoisted(() => ({ listDatasetCatalog: vi.fn(), listDatasetVersionPage: vi.fn(), listDatasetRecordPage: vi.fn() }))
 const deletion = vi.hoisted(() => ({ submitResourceDeletion: vi.fn() }))
+const permissions = vi.hoisted(() => ({ canWrite: true }))
 vi.mock('../../../frontend/web-ui/src/shared/api/resource-deletion', () => deletion)
 vi.mock('../../../frontend/web-ui/src/modules/datasets/services/dataset-workspace.service', () => api)
 vi.mock('../../../frontend/web-ui/src/app/stores/project.store', () => ({ useProjectStore: () => ({ selectedProjectId: 'p' }) }))
-vi.mock('../../../frontend/web-ui/src/app/stores/session.store', () => ({ useSessionStore: () => ({ hasScopes: () => true }) }))
+vi.mock('../../../frontend/web-ui/src/app/stores/session.store', () => ({ useSessionStore: () => ({ hasScopes: () => permissions.canWrite }) }))
 vi.mock('../../../frontend/web-ui/src/app/stores/feedback.store', () => ({ useFeedbackStore: () => ({ info: vi.fn() }) }))
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({
   push: vi.fn(), replace: vi.fn(({ query }) => { Object.assign(route.query, query) }),
@@ -37,6 +38,80 @@ it('数据集为空时保留表头和导入入口，搜索无结果时允许清�
   expect(wrapper.text()).toContain('请尝试调整关键词或筛选条件')
   expect(wrapper.text()).toContain('清除筛选')
   wrapper.unmount()
+  route.query = { tab: 'versions', state: '', offset: '0' }
+})
+
+it('无可用版本的数据集可从菜单删除，确认范围并传入数据集与项目 ID', async () => {
+  route.query = { tab: 'datasets', state: '', offset: '0' }
+  api.listDatasetCatalog.mockResolvedValueOnce({ total: 1, items: [{ dataset_id: 'empty-dataset', project_id: 'p', display_name: '测试数据集', task_type: 'detection', latest_version: null }] }).mockResolvedValue({ total: 0, items: [] })
+  deletion.submitResourceDeletion.mockReset().mockResolvedValue({ state: 'committed' })
+  const wrapper = shallowMount(DatasetCatalogPage, { global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })], stubs: { ResourceTable: { template: '<table><slot /></table>' }, ConfirmDialog: { name: 'ConfirmDialog', props: ['title'], template: '<div><slot /></div>' } } } })
+  await flushPromises()
+  const menu = wrapper.getComponent({ name: 'ResourceMenu' })
+  expect(menu.props('items').find((item: { id: string }) => item.id === 'delete')).toMatchObject({ danger: true })
+  expect(menu.props('items').find((item: { id: string }) => item.id === 'export')?.disabled).toBe(true)
+  menu.vm.$emit('action', 'delete')
+  await flushPromises()
+  expect(wrapper.getComponent({ name: 'ConfirmDialog' }).props('title')).toBe('删除数据集')
+  expect(wrapper.text()).toContain('测试数据集')
+  expect(wrapper.text()).toContain('全部版本')
+  expect(wrapper.text()).toContain('关联记录和文件')
+  expect(deletion.submitResourceDeletion).not.toHaveBeenCalled()
+  wrapper.getComponent({ name: 'ConfirmDialog' }).vm.$emit('confirm')
+  await flushPromises()
+  expect(deletion.submitResourceDeletion).toHaveBeenCalledWith('dataset', 'empty-dataset', 'p')
+  expect(wrapper.text()).toContain('暂无数据集')
+  wrapper.unmount()
+  deletion.submitResourceDeletion.mockReset()
+  route.query = { tab: 'versions', state: '', offset: '0' }
+})
+
+it('数据集被外部依赖阻止时显示依赖，不能重复删除', async () => {
+  route.query = { tab: 'datasets', state: '', offset: '0' }
+  api.listDatasetCatalog.mockResolvedValue({ total: 1, items: [{ dataset_id: 'd', project_id: 'p', display_name: '测试数据集', task_type: 'detection', latest_version: null }] })
+  deletion.submitResourceDeletion.mockReset().mockRejectedValue(new ApiError(409, { message: '资源仍被使用', details: { blockers: [{ resource_kind: 'workflow', snapshot_object_key: 'workflows/demo.json' }] } }))
+  const wrapper = shallowMount(DatasetCatalogPage, { global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })], stubs: { ResourceTable: { template: '<table><slot /></table>' }, ConfirmDialog: { name: 'ConfirmDialog', props: ['title', 'showConfirm'], template: '<div><slot /></div>' } } } })
+  await flushPromises()
+  wrapper.getComponent({ name: 'ResourceMenu' }).vm.$emit('action', 'delete')
+  await flushPromises()
+  wrapper.getComponent({ name: 'ConfirmDialog' }).vm.$emit('confirm')
+  await flushPromises()
+  expect(wrapper.getComponent({ name: 'ConfirmDialog' }).props('title')).toBe('暂时无法删除数据集')
+  expect(wrapper.text()).toContain('workflows/demo.json')
+  expect(wrapper.getComponent({ name: 'ConfirmDialog' }).props('showConfirm')).toBe(false)
+  expect(wrapper.text()).toContain('测试数据集')
+  wrapper.getComponent({ name: 'ConfirmDialog' }).vm.$emit('confirm')
+  await flushPromises()
+  expect(deletion.submitResourceDeletion).toHaveBeenCalledTimes(1)
+  wrapper.unmount()
+  deletion.submitResourceDeletion.mockReset()
+  route.query = { tab: 'versions', state: '', offset: '0' }
+})
+
+it('有可用版本的数据集也提供删除入口并提示全部版本的影响', async () => {
+  route.query = { tab: 'datasets', state: '', offset: '0' }
+  api.listDatasetCatalog.mockResolvedValue({ total: 1, items: [{ dataset_id: 'd', project_id: 'p', display_name: '有版本的数据集', task_type: 'detection', latest_version: { dataset_version_id: 'v', version_number: 1, sample_count: 3, category_count: 1, split_counts: {} } }] })
+  const wrapper = shallowMount(DatasetCatalogPage, { global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })], stubs: { ResourceTable: { template: '<table><slot /></table>' }, ConfirmDialog: { name: 'ConfirmDialog', template: '<div><slot /></div>' } } } })
+  await flushPromises()
+  const menu = wrapper.getComponent({ name: 'ResourceMenu' })
+  expect(menu.props('items').find((item: { id: string }) => item.id === 'delete')).toBeDefined()
+  menu.vm.$emit('action', 'delete')
+  await flushPromises()
+  expect(wrapper.text()).toContain('全部版本')
+  expect(wrapper.text()).toContain('删除后无法恢复')
+  wrapper.unmount()
+  route.query = { tab: 'versions', state: '', offset: '0' }
+})
+
+it('无写入权限时数据集菜单不提供删除', async () => {
+  route.query = { tab: 'datasets', state: '', offset: '0' }
+  permissions.canWrite = false
+  api.listDatasetCatalog.mockResolvedValue({ total: 1, items: [{ dataset_id: 'd', project_id: 'p', display_name: '只读数据集', task_type: 'detection', latest_version: null }] })
+  const wrapper = shallowMount(DatasetCatalogPage, { global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })], stubs: { ResourceTable: { template: '<table><slot /></table>' } } } })
+  await flushPromises()
+  expect(wrapper.getComponent({ name: 'ResourceMenu' }).props('items').map((item: { id: string }) => item.id)).toEqual(['info'])
+  wrapper.unmount()
+  permissions.canWrite = true
   route.query = { tab: 'versions', state: '', offset: '0' }
 })
 

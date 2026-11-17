@@ -250,6 +250,18 @@
       @saved="afterSaved"
     />
     <DatasetRecordConfirm v-if="removal && ('dataset_import_id' in removal || 'dataset_export_id' in removal)" :importing="'dataset_import_id' in removal" :clean="cleanupOnly" :name="rowName(removal)" :version="removal.version_number ? 'v'+removal.version_number : undefined" :file="'dataset_import_id' in removal ? removal.source_file_name : removal.package_file_name" :format="'dataset_export_id' in removal ? datasetFormatLabel(removal.format_id) : undefined" :size="'dataset_export_id' in removal ? removal.package_size : undefined" :busy="deleting" :operation-error="removalError" :confirm-disabled="removalUncertain" @confirm="remove" @cancel="removal = null" />
+    <ConfirmDialog v-else-if="removal && isDataset(removal)" size="medium" :title="removalBlockers.length ? label('暂时无法删除数据集', 'Dataset cannot be deleted') : label('删除数据集', 'Delete dataset')" :confirm-label="label('删除数据集', 'Delete dataset')" :cancel-label="removalBlockers.length ? label('关闭', 'Close') : text('cancel')" :busy="deleting" :show-confirm="!removalError" @confirm="remove" @cancel="removal = null">
+      <template #title-icon><TriangleAlert v-if="removalBlockers.length" :size="20" class="version-blocked-icon" aria-hidden="true" /><Trash2 v-else :size="20" class="version-delete-icon" aria-hidden="true" /></template>
+      <div class="version-delete-subject"><Database :size="26" /><strong>{{ rowName(removal) }}</strong></div>
+      <template v-if="removalBlockers.length">
+        <p class="version-blocked-message" role="alert">{{ label('此数据集仍被其他资源使用，请先处理引用关系。', 'This dataset is still used by other resources. Resolve the references first.') }}</p>
+        <ResourceTable class="dataset-table version-delete-table" :label="label('引用资源', 'References')"><thead><tr><th>{{ label('类型', 'Type') }}</th><th>{{ label('资源', 'Resource') }}</th><th>{{ label('状态', 'Status') }}</th></tr></thead><tbody><tr v-for="(blocker, index) in removalBlockers" :key="index"><td>{{ blocker.kind }}</td><td>{{ blocker.id }}</td><td>{{ blocker.state }}</td></tr></tbody></ResourceTable>
+      </template>
+      <template v-else>
+        <InlineError v-if="removalError" :message="removalError" />
+        <p>{{ label('将删除全部版本、关联记录和文件，删除后无法恢复。', 'All versions, associated records, and files will be deleted. This cannot be undone.') }}</p>
+      </template>
+    </ConfirmDialog>
     <ConfirmDialog v-else-if="removal && isVersion(removal)" size="medium" :title="removalBlockers.length ? label('暂时无法删除版本', 'Version cannot be deleted') : label('删除数据集版本', 'Delete dataset version')" :confirm-label="label('删除版本', 'Delete version')" :cancel-label="removalBlockers.length ? label('关闭', 'Close') : text('cancel')" :busy="deleting" :show-confirm="!removalError" @confirm="remove" @cancel="removal = null">
       <template #title-icon><TriangleAlert v-if="removalBlockers.length" :size="20" class="version-blocked-icon" aria-hidden="true" /><Trash2 v-else :size="20" class="version-delete-icon" aria-hidden="true" /></template>
       <div class="version-delete-subject"><Database :size="26" /><strong>{{ rowName(removal) }} · v{{ removal.version_number }}</strong></div>
@@ -560,6 +572,7 @@ function menu(row: Row) {
               icon: Download,
               disabled: !row.latest_version,
             },
+            { id: 'delete', label: text('remove'), icon: Trash2, danger: true },
           ]
         : []),
     ]
@@ -654,11 +667,14 @@ const deleteMessage = computed(() =>
 )
 async function remove() {
   if (!canWrite.value || !removal.value || deleting.value || removalUncertain.value) return
+  if (removalError.value && (isDataset(removal.value) || isVersion(removal.value))) return
   deleting.value = true
   removalError.value = ''
   try {
     const row = removal.value
-    if (isVersion(row))
+    if (isDataset(row))
+      await submitResourceDeletion('dataset', row.dataset_id, row.project_id)
+    else if (isVersion(row))
       await submitResourceDeletion(
         'dataset-version',
         row.dataset_version_id,
