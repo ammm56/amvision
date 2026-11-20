@@ -23,7 +23,7 @@ describe('project model catalog', () => {
 
   it('shows an error rather than an empty state when the request fails and retries', async () => {
     list.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ items: [model], total: 1 })
-    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1' }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
+    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1' }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain('加载失败')
     expect(wrapper.text()).not.toContain('当前项目还没有模型版本')
@@ -36,13 +36,30 @@ describe('project model catalog', () => {
     let resolveFirst!: (value: { items: typeof model[]; total: number }) => void
     list.mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve }))
       .mockResolvedValueOnce({ items: [], total: 0 })
-    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1' }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
+    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1' }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
     await wrapper.setProps({ projectId: 'p2' })
     await flushPromises()
     resolveFirst({ items: [model], total: 1 })
     await flushPromises()
     expect(wrapper.text()).not.toContain('example')
     expect(wrapper.text()).toContain('当前项目还没有模型版本')
+  })
+
+  it('shows each registered runtime format as a labeled icon', async () => {
+    list.mockResolvedValueOnce({ items: [{
+      ...model,
+      available_versions: [{ model_version_id: 'v1', source_kind: 'training-output', file_ids: [], metadata: {}, checkpoint_storage_uri: 'models/best.pt' }],
+      build_formats: ['onnx', 'onnx-optimized', 'openvino-ir', 'tensorrt-engine', 'rknn', 'onnx'],
+    }], total: 1 })
+    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1' }, global: { stubs: { SideDrawer: true, RouterLink: true } } })
+    await flushPromises()
+    const formats = wrapper.get('.runtime-formats')
+    expect(formats.text()).toBe('')
+    expect(formats.findAll('[role="img"]').map(icon => icon.attributes('title'))).toEqual([
+      'PyTorch', 'ONNX', 'ONNX optimized', 'OpenVINO', 'TensorRT', 'RKNN',
+    ])
+    expect(wrapper.get('.model-catalog__toolbar').find('button').text()).toBe('基础模型')
+    wrapper.unmount()
   })
 
   it('retains a filtered snapshot through refresh and disconnect, then reloads it on reconnect', async () => {
@@ -53,7 +70,7 @@ describe('project model catalog', () => {
         .mockResolvedValueOnce({ items: [model], total: 1 })
         .mockReturnValueOnce(new Promise((_, reject) => { fail = reject }))
         .mockResolvedValueOnce({ items: [{ ...model, model_name: 'example-reconnected' }], total: 1 })
-      const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1', canEdit: true, canTrain: true }, global: { stubs: { SideDrawer: true, ResourceMenu: true, RouterLink: true } } })
+      const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', canEdit: true, canTrain: true }, global: { stubs: { SideDrawer: true, ResourceMenu: true, RouterLink: true } } })
       await flushPromises()
       await wrapper.get('input').setValue('example')
       await vi.advanceTimersByTimeAsync(250)
@@ -80,7 +97,7 @@ describe('project model catalog', () => {
       .mockRejectedValueOnce(new ApiError(0, { message: 'offline' }))
       .mockResolvedValueOnce({ items: [{ ...model, model_name: 'page-two' }], total: 22 })
       .mockRejectedValueOnce(new ApiError(403, { message: 'denied' }))
-    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1' }, global: { stubs: { SideDrawer: true, RouterLink: true } } })
+    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1' }, global: { stubs: { SideDrawer: true, RouterLink: true } } })
     const button = (label: string) => wrapper.findAll('button').find(item => item.text() === label)!
     await flushPromises()
     await button('下一页').trigger('click')
@@ -112,7 +129,7 @@ describe('project model catalog', () => {
         { model_build_id: 'b2', source_model_version_id: 'v2', build_format: 'openvino', runtime_backend: 'openvino', runtime_precision: 'fp16', file_ids: [], metadata: {}, files: [] },
       ],
     })
-    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1', canConvert: true, canDeploy: true }, global: { stubs: { SideDrawer: { template: '<div><slot /><slot name="footer" /></div>' } } } })
+    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', canConvert: true, canDeploy: true }, global: { stubs: { SideDrawer: { template: '<div><slot /><slot name="footer" /></div>' } } } })
     await flushPromises()
     expect(wrapper.get('.model-catalog__table td:nth-child(3)').text()).toBe('v2')
     await wrapper.findAll('button').find(button => button.text() === '查看')!.trigger('click')
@@ -136,7 +153,7 @@ describe('project model catalog', () => {
     vi.useFakeTimers()
     try {
       list.mockResolvedValueOnce({ items: [model], total: 1 }).mockResolvedValueOnce({ items: [], total: 0 })
-      const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1' }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
+      const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1' }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
       await flushPromises()
       await wrapper.find('input').setValue('missing')
       await vi.advanceTimersByTimeAsync(250)
@@ -150,7 +167,7 @@ describe('project model catalog', () => {
 
   it('refreshes after returning to an initially empty project', async () => {
     list.mockResolvedValueOnce({ items: [], total: 0 }).mockResolvedValueOnce({ items: [model], total: 1 })
-    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1', active: true }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
+    const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', active: true }, global: { stubs: { SideDrawer: true, ProjectSwitcher: true, RouterLink: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain('当前项目还没有模型版本')
     await wrapper.setProps({ active: false })
@@ -169,7 +186,7 @@ describe('project model catalog', () => {
         versions: [{ model_version_id: 'v1', version_number: 2, source_kind: 'training-output', file_ids: [], metadata: {}, files: [] }], builds: [],
       })
       vi.mocked(listModelVersionReferences).mockResolvedValueOnce({ items: [{ deployment_id: 'dep1', display_name: '产线 A', model_build_id: null, build_format: null, runtime_backend: 'pytorch', runtime_states: { sync: 'running', async: 'stopped' } }], total: 1 }).mockResolvedValue({ items: [], total: 0 })
-      const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1', projectName: 'P1' }, global: { stubs: { SideDrawer: { template: '<div><slot name="header-leading" /><slot /><slot name="footer" /></div>' }, RouterLink: { props: ['to'], template: '<a><slot /></a>' } } } })
+      const wrapper = mount(ProjectModelCatalog, { props: { projectId: 'p1' }, global: { stubs: { SideDrawer: { template: '<div><slot name="header-leading" /><slot /><slot name="footer" /></div>' }, RouterLink: { props: ['to'], template: '<a><slot /></a>' } } } })
       await flushPromises()
       await wrapper.findAll('button').find(button => button.text() === '查看')!.trigger('click')
       await flushPromises()

@@ -21,7 +21,7 @@ import { additionalEvaluationKinds, type AdditionalEvaluationKind } from '../ser
 import DetectionEvaluationPanel from './DetectionEvaluationPanel.vue'
 import AdditionalEvaluationPanel from './AdditionalEvaluationPanel.vue'
 
-const props = defineProps<{ projectId: string; projectName: string; zh: boolean; canWrite: boolean }>()
+const props = defineProps<{ projectId: string; zh: boolean; canWrite: boolean }>()
 const emit = defineEmits<{ focusMode: [active: boolean] }>()
 const focusMode = ref(false)
 function setFocusMode(active: boolean): void {

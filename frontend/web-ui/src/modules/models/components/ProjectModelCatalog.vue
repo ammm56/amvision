@@ -1,18 +1,16 @@
 <template>
   <section class="model-catalog" aria-label="模型版本">
-    <div class="model-catalog__toolbar">
-      <ProjectSwitcher v-if="initialEmpty" class="model-catalog__project-switch" :aria-label="zh ? '切换项目' : 'Switch project'" />
-      <strong v-else class="model-catalog__project">{{ projectName }}</strong>
-      <Button class="model-catalog__base-models" variant="ghost" @click="$emit('open-base-models')"><Database :size="17" />{{ zh ? '基础模型' : 'Base models' }}</Button>
-      <span v-if="initialEmpty" class="model-catalog__hint"><CircleHelp :size="16" aria-hidden="true" />{{ zh ? '基础模型是平台预置资源，不计入当前项目模型版本。' : 'Base models are not counted as project models.' }}</span>
-      <div v-if="!initialEmpty" class="model-catalog__search"><Search :size="16" aria-hidden="true" /><input v-model.trim="search" :placeholder="zh ? '搜索模型名称' : 'Search models'" :aria-label="zh ? '搜索模型名称' : 'Search models'" />
-        <Button v-if="search" variant="ghost" size="sm" icon-only :aria-label="zh ? '清除搜索关键词' : 'Clear search term'" @click="search = ''"><X :size="15" /></Button>
-      </div>
+    <ModelListToolbar class="model-catalog__toolbar" :zh="zh" :search="initialEmpty ? undefined : search" :search-label="zh ? '搜索模型名称' : 'Search models'"
+      @update:search="search = $event.trim()" @open-base-models="$emit('open-base-models')">
+      <template v-if="initialEmpty" #leading>
+        <ProjectSwitcher class="model-catalog__project-switch" :aria-label="zh ? '切换项目' : 'Switch project'" />
+        <span class="model-catalog__hint"><CircleHelp :size="16" aria-hidden="true" />{{ zh ? '基础模型是平台预置资源，不计入当前项目模型版本。' : 'Base models are not counted as project models.' }}</span>
+      </template>
       <div v-if="!initialEmpty" class="model-catalog__filter"><span>{{ zh ? '任务类型' : 'Task type' }}</span>
         <Select :model-value="taskType" :options="taskOptions" :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="updateTaskType($event)" />
       </div>
       <Button v-if="!initialEmpty" :loading="loading" @click="load"><RefreshCw v-if="!loading" :size="16" />{{ zh ? '刷新' : 'Refresh' }}</Button>
-    </div>
+    </ModelListToolbar>
     <div v-if="!canEdit && !canTrain" class="model-catalog__notice model-catalog__notice--warning" role="status">
       <LockKeyhole :size="17" aria-hidden="true" /><div><strong>{{ zh ? '只读访问' : 'Read-only access' }}</strong>
         <p>{{ zh ? '可以查看模型和版本详情。当前账号无权创建训练或编辑、删除模型。' : 'You can view model details. This account cannot create training, edit models, or delete them.' }}</p></div>
@@ -52,7 +50,8 @@
           <tr v-for="model in items" :key="model.model_id" :class="{ 'is-selected': selected?.model_id === model.model_id }">
             <td :title="displayName(model)"><strong>{{ displayName(model) }}</strong></td><td>{{ model.task_type }}</td>
             <td :title="latestVersionLabel(model, false)">{{ latestVersionLabel(model, true) }}</td>
-            <td>{{ sources(model) }}</td><td :title="formats(model)">{{ formats(model) }}</td>
+            <td>{{ sources(model) }}</td>
+            <td><ModelRuntimeFormats :formats="formats(model)" :fallback-label="model.build_count ? (zh ? `${model.build_count} 个产物` : `${model.build_count} builds`) : undefined" /></td>
             <td><div class="model-catalog__actions"><button class="model-catalog__link" type="button" @click="openDetail(model)">{{ zh ? '查看' : 'View' }}</button><ResourceMenu v-if="canEdit && !error" :label="zh ? '更多操作' : 'More actions'" :items="[{ id: 'edit', label: zh ? '编辑' : 'Edit', icon: Pencil }]" @action="editing = model" /></div></td>
           </tr>
           <tr v-if="!items.length"><td colspan="6" class="model-catalog__empty">
@@ -101,7 +100,7 @@
           </template>
         </template>
         <ModelPackageExport v-else-if="exportView && activeVersion" :project-id="projectId" :name="displayName(detail)" :task-type="detail.task_type" :version="activeVersion" :builds="versionBuilds" :zh="zh" @back="exportView = false" />
-        <ModelBuildDetail v-else-if="artifactView && activeVersion" ref="artifactDetail" footer-actions :build="selectedBuild" :version="activeVersion" :model-id="detail.model_id" :project-id="projectId" :model-name="displayName(detail)" />
+        <ModelBuildDetail v-else-if="artifactView && activeVersion" ref="artifactDetail" drawer :build="selectedBuild" :version="activeVersion" :model-id="detail.model_id" :project-id="projectId" :model-name="displayName(detail)" />
         <template v-else>
         <h2 class="model-detail__name">{{ displayName(detail) }}</h2>
         <div v-if="detail.versions.length" class="model-detail__version"><span>{{ zh ? '版本' : 'Version' }}</span>
@@ -187,11 +186,10 @@
         </div>
         </template>
       </template>
-      <template v-if="versionActionsVisible || referenceView || artifactView" #footer>
+      <template v-if="referenceView || (artifactView ? selectedBuild : versionActionsVisible)" #footer>
         <Button v-if="referenceView" class="model-reference__close" @click="selected = null">{{ zh ? '关闭' : 'Close' }}</Button>
         <div v-else-if="artifactView" class="model-artifact__actions">
-          <Button v-if="artifactDetail?.singleFile" :disabled="!artifactDetail.filesPresent" :loading="!!artifactDetail.downloading" @click="artifactDetail.downloadSingle()"><Download :size="16" />{{ zh ? '下载文件' : 'Download file' }}</Button>
-          <Button v-if="selectedBuild" variant="primary" :disabled="!artifactDetail?.filesPresent || !canDeployVersion" @click="deployArtifact"><Package :size="16" />{{ zh ? '创建部署（使用此产物）' : 'Create deployment with this artifact' }}</Button>
+          <Button v-if="selectedBuild" variant="primary" :disabled="!artifactDetail?.filesPresent || !canDeployVersion" @click="deployArtifact"><Package :size="16" />{{ zh ? '创建部署' : 'Create deployment' }}</Button>
         </div>
         <div v-else class="model-detail__footer">
           <p v-if="launchError" class="model-detail__action-error" role="alert">{{ launchError }}</p>
@@ -222,12 +220,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ProjectSwitcher from '@/modules/projects/components/ProjectSwitcher.vue'
-import { ArrowLeft, ChevronRight, CircleAlert, CircleCheck, CircleHelp, CirclePlay, CircleStop, Database, Download, Eye, FileText, List, LockKeyhole, Package, Pencil, Plus, RefreshCw, Rocket, Search, Trash2, Upload, WifiOff, X } from '@lucide/vue'
+import { ArrowLeft, ChevronRight, CircleAlert, CircleCheck, CircleHelp, CirclePlay, CircleStop, Database, Download, Eye, FileText, List, LockKeyhole, Package, Pencil, Plus, RefreshCw, Rocket, Search, Trash2, Upload, WifiOff } from '@lucide/vue'
 import Button from '@/shared/ui/components/Button.vue'
 import Select from '@/shared/ui/components/Select.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import ModelBuildDetail from './ModelBuildDetail.vue'
+import ModelRuntimeFormats from './ModelRuntimeFormats.vue'
+import ModelListToolbar from './ModelListToolbar.vue'
 import ModelBuildDeleteDialog from './ModelBuildDeleteDialog.vue'
 import ModelPresentationEditor from './ModelPresentationEditor.vue'
 import ModelVersionDeleteDialog from './ModelVersionDeleteDialog.vue'
@@ -243,7 +243,7 @@ import { conversionSourceIssue } from '../conversion-source-support'
 import { isModelVersionTaskType, type ModelVersionAction } from '../model-version-action'
 import { downloadProjectModelFile, getProjectModelFileStatus, getModelTrainingTaskDetail, getProjectModelCatalogDetail, getProjectModelVersionSource, listModelVersionReferences, listProjectModelCatalog, type ModelDeploymentReference, type ModelTaskType, type ModelTrainingTaskDetail, type PlatformBaseModelBuild, type PlatformBaseModelDetail, type PlatformBaseModelSummary, type ProjectModelCatalogItem, type ProjectModelVersionSource } from '../services/model.service'
 
-const props = withDefaults(defineProps<{ projectId: string; projectName: string; principalKey?: string; active?: boolean; canEdit?: boolean; canTrain?: boolean; canConvert?: boolean; canDeploy?: boolean; launchingConversion?: boolean; launchError?: string; openModelId?: string; openVersionId?: string; requestedTaskType?: string }>(), { active: true, canEdit: false })
+const props = withDefaults(defineProps<{ projectId: string; principalKey?: string; active?: boolean; canEdit?: boolean; canTrain?: boolean; canConvert?: boolean; canDeploy?: boolean; launchingConversion?: boolean; launchError?: string; openModelId?: string; openVersionId?: string; requestedTaskType?: string }>(), { active: true, canEdit: false })
 const emit = defineEmits<{ 'open-base-models': []; 'create-training': []; 'import-model-package': []; 'empty-state': [empty: boolean]; 'create-conversion': [source: ModelVersionAction]; 'create-deployment': [source: ModelVersionAction]; 'version-change': [versionId: string]; 'version-deleted': [versionId: string]; 'change-task-type': [task: string] }>()
 const { locale } = useI18n()
 const zh = computed(() => locale.value.startsWith('zh'))
@@ -534,11 +534,11 @@ function sources(model: PlatformBaseModelSummary): string {
   const names = [...new Set(model.available_versions.map(version => sourceName(version.source_kind)))]
   return names.length ? names.join(' / ') : '—'
 }
-function formats(model: ProjectModelCatalogItem): string {
-  const names = new Set<string>()
-  if (model.available_versions.some(version => /\.(pt|pth)$/i.test(version.checkpoint_storage_uri ?? ''))) names.add('PyTorch')
-  for (const format of model.build_formats ?? []) names.add(({ 'onnx': 'ONNX', 'onnx-optimized': 'ONNX optimized', 'openvino-ir': 'OpenVINO', 'tensorrt-engine': 'TensorRT' } as Record<string, string>)[format] ?? format)
-  return [...names].join(' · ') || (model.build_count ? (zh.value ? `${model.build_count} 个产物` : `${model.build_count} builds`) : '—')
+function formats(model: ProjectModelCatalogItem): string[] {
+  const formats = new Set<string>()
+  if (model.available_versions.some(version => /\.(pt|pth)$/i.test(version.checkpoint_storage_uri ?? ''))) formats.add('pytorch')
+  for (const format of model.build_formats ?? []) formats.add(format)
+  return [...formats]
 }
 async function openDetail(model: PlatformBaseModelSummary): Promise<void> {
   selected.value = model; detail.value = null; selectedVersionId.value = ''; detailError.value = false
@@ -703,12 +703,9 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 </script>
 
 <style scoped>
-.model-catalog__toolbar { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin:0 0 16px; }
-.model-catalog__project { font-size:18px; white-space:nowrap; }
+.model-catalog__toolbar { margin:0 0 16px; }
 .model-catalog__project-switch { min-width:0; max-width:min(42vw, 210px); }
 .model-catalog__project-switch :deep(.ui-select__button) { border-color:transparent; background:transparent; font-size:16px; font-weight:650; }
-.model-catalog__base-models { color:var(--am-action-primary-strong); }
-.model-catalog__project-switch + .model-catalog__base-models,.model-catalog__project + .model-catalog__base-models { border-inline-start:1px solid var(--am-border); border-radius:0; padding-inline-start:16px; }
 .model-catalog__hint { display:flex; align-items:center; gap:8px; color:var(--am-text-muted); }
 .model-catalog__hint svg { flex:none; }
 .model-catalog__initial-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:clamp(350px, 63dvh, 610px); padding:24px 16px; text-align:center; color:var(--am-text-muted); }
@@ -717,9 +714,6 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 .model-catalog__initial-empty p { margin:0; }
 .model-catalog__empty-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin-top:24px; }
 .model-catalog__empty-actions :deep(.ui-button) { min-width:146px; }
-.model-catalog__search { display:flex; align-items:center; gap:8px; flex:1 1 240px; min-width:180px; padding:0 12px; border:1px solid var(--am-border); background:var(--am-surface-raised); border-radius:6px; }
-.model-catalog__search input { flex:1; min-width:0; min-height:40px; background:transparent; border:0; outline:0; color:var(--am-text); }
-.model-catalog__search:focus-within { border-color:var(--am-border-strong); }
 .model-catalog__filter { display:flex; align-items:center; gap:10px; white-space:nowrap; }
 .model-catalog__filter :deep(.ui-select) { width:140px; }
 .model-catalog__table { border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface-raised); overflow:auto; }
@@ -742,8 +736,6 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 .model-catalog__no-results strong { color:var(--am-text-strong); }
 .model-detail__actions .ui-button:disabled { background:var(--am-surface-muted); border-color:var(--am-border); color:var(--am-text-muted); }
 @media (max-width:1120px) {
-  .model-catalog__toolbar { gap:12px; }
-  .model-catalog__search { flex-basis:185px; min-width:148px; }
   .model-catalog__filter :deep(.ui-select) { width:112px; }
 }
 .model-detail__name { margin:0 0 18px; font-size:20px; }

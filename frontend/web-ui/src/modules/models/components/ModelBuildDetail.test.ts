@@ -53,6 +53,34 @@ describe('ModelBuildDetail', () => {
     expect(downloadProjectModelFile).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p1', modelId: 'm1', versionId: 'version-1', fileId: 'file-1' }))
   })
 
+  it('shows checksum on the path action and retries a failed lazy lookup', async () => {
+    const status = vi.mocked(getProjectModelFileStatus)
+    status.mockClear()
+    status.mockResolvedValueOnce({ file_id: 'file-1', state: 'present', size_bytes: 10 })
+      .mockRejectedValueOnce(new Error('checksum unavailable'))
+      .mockResolvedValueOnce({ file_id: 'file-1', state: 'present', size_bytes: 10, sha256: 'a'.repeat(64) })
+    const wrapper = mount(ModelBuildDetail, { props: { build, version, modelName: 'part detector', modelId: 'm1', projectId: 'p1', drawer: true },
+      attachTo: document.body, global: { plugins: [i18n] } })
+    const popup = () => document.querySelector('.model-build-detail__checksum')
+    try {
+      await flushPromises()
+      expect(status).toHaveBeenCalledTimes(1)
+      const checksum = wrapper.get('button[aria-label="查看 SHA256"]')
+      const path = wrapper.get('.model-build-detail__path')
+      expect(path.findAll('button').map(button => button.attributes('aria-label'))).toEqual(['查看 SHA256', '复制文件路径'])
+      expect(wrapper.get('.model-build-detail__file').text()).toContain('下载')
+      await checksum.trigger('pointermove', { pointerType: 'mouse' })
+      await vi.waitFor(() => expect(popup()?.textContent).toContain('读取失败'))
+      await checksum.trigger('click')
+      await vi.waitFor(() => expect(popup()?.querySelector('code')?.textContent).toBe('a'.repeat(64)))
+      expect(status).toHaveBeenLastCalledWith(expect.objectContaining({ fileId: 'file-1', includeSha256: true }))
+      await checksum.trigger('keydown', { key: 'Escape' })
+      expect(popup()).toBeNull()
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('checks original version files without inventing a build or precision', async () => {
     const original = { ...version, files: [{ ...build.files[0], model_build_id: null, model_version_id: 'version-1', logical_name: 'best.pt', storage_uri: 'models/best.pt', file_type: 'checkpoint' }] }
     const wrapper = mount(ModelBuildDetail, { props: { version: original, modelName: 'part detector', modelId: 'm1', projectId: 'p1' }, global: { plugins: [i18n] } })

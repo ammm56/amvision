@@ -14,7 +14,6 @@
       v-show="activeTab === 'versions' && !trainingWizardOpen && !packageImportOpen"
       :active="activeTab === 'versions' && !trainingWizardOpen && !packageImportOpen"
       :project-id="selectedProjectId"
-      :project-name="projectStore.selectedProject?.display_name || selectedProjectId"
       :principal-key="submissionPrincipal"
       :can-edit="canWriteModels"
       :can-train="canWriteTasks"
@@ -174,7 +173,6 @@
       :loading="trainingList.loading.value"
       :load-error="trainingList.error.value"
       :updated-at="trainingList.updatedAt.value"
-      :project-name="projectStore.selectedProject?.display_name || selectedProjectId"
       :dataset-names="trainingDatasetNames"
       :version-names="modelVersionNames"
       :can-reuse="canWriteTasks && sessionStore.hasScopes(['models:read', 'tasks:read'])"
@@ -193,7 +191,6 @@
       :loading="conversionList.loading.value"
       :load-error="conversionList.error.value"
       :updated-at="conversionList.updatedAt.value"
-      :project-name="projectStore.selectedProject?.display_name || selectedProjectId"
       :source-names="conversionSourceNames"
       :can-reuse="canWriteModels && canWriteTasks && sessionStore.hasScopes(['models:read', 'tasks:read'])"
       @change-task-type="setTaskType"
@@ -204,7 +201,7 @@
 
     <ModelPackageRecords v-if="canWriteModels && ((activeTab === 'conversion' && !conversionWizardOpen) || packageImportOpen)" v-model:import-open="packageImportOpen" v-model:export-records-open="packageExportRecordsOpen" :project-id="selectedProjectId" :project-name="projectStore.selectedProject?.display_name || selectedProjectId" :zh="zh" :version-names="modelVersionNames" @create-import="startPackageImport" />
     <ImportedModelAssets v-if="activeTab === 'conversion' && !conversionWizardOpen && !packageImportOpen && canWriteModels" :project-id="selectedProjectId" />
-    <ModelEvaluationPanel v-if="activeTab === 'evaluation'" :project-id="selectedProjectId" :project-name="projectStore.selectedProject?.display_name || selectedProjectId" :can-write="canWriteTasks && sessionStore.hasScopes(['datasets:read'])" :zh="zh" @focus-mode="evaluationFocusMode = $event" />
+    <ModelEvaluationPanel v-if="activeTab === 'evaluation'" :project-id="selectedProjectId" :can-write="canWriteTasks && sessionStore.hasScopes(['datasets:read'])" :zh="zh" @focus-mode="evaluationFocusMode = $event" />
 
     <PlatformBaseModelPickerDialog
       :open="baseModelPickerOpen"

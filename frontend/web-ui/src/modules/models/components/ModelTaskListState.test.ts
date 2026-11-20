@@ -38,7 +38,7 @@ it('filters training tasks by name and keeps pagination within the filtered resu
   }))
   const wrapper = shallowMount(TrainingTaskList, {
     props: { selectedTaskType: 'detection', trainingTasks: tasks as never },
-    global: { stubs: { RouterLink: RouterLinkStub } },
+    global: { stubs: { RouterLink: RouterLinkStub, ModelListToolbar: false } },
   })
   expect(wrapper.findAll('tbody tr')).toHaveLength(20)
   await wrapper.find('input').setValue('Task 23')
@@ -57,7 +57,7 @@ it('filters conversion tasks and exposes their detail action', async () => {
   }))
   const wrapper = shallowMount(ConversionTaskList, {
     props: { selectedTaskType: 'detection', conversionTasks: tasks as never },
-    global: { stubs: { RouterLink: RouterLinkStub } },
+    global: { stubs: { RouterLink: RouterLinkStub, ModelListToolbar: false } },
   })
   expect(wrapper.findAll('tbody tr')).toHaveLength(20)
   await wrapper.find('input').setValue('Conversion 23')

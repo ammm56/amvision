@@ -1,6 +1,6 @@
 <template>
   <section class="model-build-detail">
-    <Button v-if="!footerActions" variant="ghost" size="sm" @click="$emit('back')"><ArrowLeft :size="15" />{{ zh ? '返回版本' : 'Back to version' }}</Button>
+    <Button v-if="!drawer" variant="ghost" size="sm" @click="$emit('back')"><ArrowLeft :size="15" />{{ zh ? '返回版本' : 'Back to version' }}</Button>
     <h2>{{ build ? `${formatName(build.build_format)} (${build.runtime_precision.toUpperCase()})` : (zh ? '原始模型文件' : 'Original model files') }}</h2>
     <p class="model-build-detail__subtitle">{{ modelName }} · {{ modelVersionDisplayName(version) }}</p>
     <h3>{{ zh ? '基本信息' : 'Information' }}</h3>
@@ -13,28 +13,37 @@
       </div>
       <div v-if="!files.length"><dt>{{ zh ? '文件状态' : 'File status' }}</dt><dd>{{ zh ? '暂无文件记录' : 'No file records' }}</dd></div>
       <template v-for="file in files" :key="file.key">
-        <div class="model-build-detail__file"><dt>{{ zh ? '文件状态' : 'File status' }}</dt><dd>
+        <div><dt>{{ zh ? '文件状态' : 'File status' }}</dt><dd class="model-build-detail__line model-build-detail__file">
           <span v-if="files.length > 1" class="model-build-detail__filename">{{ file.name }}</span>
           <span class="model-build-detail__line" :class="fileStates[file.key]?.state">
             <CircleCheck v-if="fileStates[file.key]?.state === 'present'" :size="16" aria-hidden="true" />
             <CircleAlert v-else-if="fileStates[file.key]" :size="16" aria-hidden="true" />
             {{ statusText(file.key) }}
-            <Button v-if="fileStates[file.key] && fileStates[file.key].state !== 'present'" variant="ghost" size="sm" @click="checkFiles">{{ zh ? '重试' : 'Retry' }}</Button>
-            <Button v-if="fileStates[file.key]?.state === 'present' && (!footerActions || files.length > 1)" variant="ghost" size="sm" :loading="downloading === file.key" :disabled="!!downloading" @click="downloadFile(file)"><Download :size="14" />{{ zh ? '下载' : 'Download' }}</Button>
           </span>
+          <Button v-if="fileStates[file.key]?.state === 'present'" variant="ghost" size="sm" :loading="downloading === file.key" :disabled="!!downloading" @click="downloadFile(file)"><Download :size="14" />{{ zh ? '下载' : 'Download' }}</Button>
+          <Button v-else-if="fileStates[file.key]" variant="ghost" size="sm" @click="checkFiles">{{ zh ? '重试' : 'Retry' }}</Button>
         </dd></div>
         <div><dt>{{ zh ? '相对路径' : 'Relative path' }}</dt><dd class="model-build-detail__line model-build-detail__path">
-          <span>{{ file.path }}</span>
+          <span class="model-build-detail__path-text">{{ file.path }}</span>
+          <TooltipProvider v-if="fileStates[file.key]?.state === 'present' || checksumOpenKey === file.key" :delay-duration="200">
+            <TooltipRoot :open="checksumOpenKey === file.key" disable-closing-trigger @update:open="setChecksumOpen(file, $event)">
+              <TooltipTrigger as-child>
+                <Button variant="ghost" size="sm" icon-only :aria-label="zh ? '查看 SHA256' : 'View SHA256'"
+                  @click="setChecksumOpen(file, true)" @keydown.esc="dismissChecksum($event, file.key)"><ShieldCheck :size="15" /></Button>
+              </TooltipTrigger>
+              <TooltipPortal>
+                <TooltipContent side="top" align="end" :side-offset="6" :collision-padding="10" :style="{ zIndex: 'var(--am-z-tooltip)' }">
+                  <span class="model-build-detail__checksum">
+                    <strong>SHA256</strong>
+                    <code v-if="checksums[file.key] && checksums[file.key] !== 'failed'">{{ checksums[file.key] }}</code>
+                    <span v-else-if="checksums[file.key] === 'failed'">{{ zh ? '读取失败，重新悬停或点击重试。' : 'Could not read the hash. Hover again or click to retry.' }}</span>
+                    <span v-else>{{ zh ? '正在读取…' : 'Reading…' }}</span>
+                  </span>
+                </TooltipContent>
+              </TooltipPortal>
+            </TooltipRoot>
+          </TooltipProvider>
           <Button variant="ghost" size="sm" icon-only :aria-label="zh ? '复制文件路径' : 'Copy file path'" @click="copyPath(file.path)"><Copy :size="14" /></Button>
-        </dd></div>
-        <div><dt>SHA256</dt><dd>
-          <details v-if="fileStates[file.key]?.state === 'present'" @toggle="($event.target as HTMLDetailsElement).open && loadChecksum(file)">
-            <summary>{{ zh ? '查看 SHA256' : 'View SHA256' }}</summary>
-            <code v-if="checksums[file.key] && checksums[file.key] !== 'failed'">{{ checksums[file.key] }}</code>
-            <span v-else-if="checksums[file.key] === 'failed'" role="status">{{ zh ? '读取失败' : 'Could not read hash' }} <Button variant="ghost" size="sm" @click="loadChecksum(file)">{{ zh ? '重试' : 'Retry' }}</Button></span>
-            <span v-else role="status">{{ zh ? '正在读取…' : 'Reading…' }}</span>
-          </details>
-          <span v-else>—</span>
         </dd></div>
       </template>
     </dl>
@@ -65,12 +74,13 @@ import { modelBuildValidation, saveProjectModelDownload } from '../model-artifac
 import { modelVersionDisplayName } from '../model-display-name'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, CircleAlert, CircleCheck, Copy, Download } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, CircleCheck, Copy, Download, ShieldCheck } from '@lucide/vue'
+import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from 'reka-ui'
 import Button from '@/shared/ui/components/Button.vue'
 import { ApiError } from '@/shared/api/error'
 import { downloadProjectModelFile, getProjectModelFileStatus, type ModelFileStatus, type PlatformBaseModelBuild, type PlatformBaseModelVersionDetail } from '../services/model.service'
 
-const props = defineProps<{ build?: PlatformBaseModelBuild | null; version: PlatformBaseModelVersionDetail; modelName: string; modelId: string; projectId: string; footerActions?: boolean }>()
+const props = defineProps<{ build?: PlatformBaseModelBuild | null; version: PlatformBaseModelVersionDetail; modelName: string; modelId: string; projectId: string; drawer?: boolean }>()
 defineEmits<{ back: [] }>()
 const { locale } = useI18n()
 const zh = computed(() => locale.value.startsWith('zh'))
@@ -86,6 +96,7 @@ const files = computed<ArtifactFile[]>(() => {
 })
 const fileStates = ref<Record<string, ModelFileStatus | { state: 'request-error' }>>({})
 const checksums = ref<Record<string, string>>({})
+const checksumOpenKey = ref('')
 let pendingChecksums = new Set<string>()
 let checkRequest: AbortController | undefined
 let downloadRequest: AbortController | undefined
@@ -106,6 +117,7 @@ async function checkFiles(): Promise<void> {
   const request = new AbortController()
   checkRequest = request
   fileStates.value = {}
+  checksumOpenKey.value = ''
   pendingChecksums = new Set()
   checksums.value = {}
   await Promise.all(files.value.map(async file => {
@@ -139,6 +151,20 @@ async function loadChecksum(file: ArtifactFile): Promise<void> {
     if (!request.signal.aborted) checksums.value[file.key] = 'failed'
   } finally { pending.delete(file.key) }
 }
+function setChecksumOpen(file: ArtifactFile, open: boolean): void {
+  if (open && fileStates.value[file.key]?.state === 'present') {
+    checksumOpenKey.value = file.key
+    void loadChecksum(file)
+  } else if (!open && checksumOpenKey.value === file.key) {
+    checksumOpenKey.value = ''
+  }
+}
+function dismissChecksum(event: KeyboardEvent, fileKey: string): void {
+  if (checksumOpenKey.value !== fileKey) return
+  event.stopPropagation()
+  event.preventDefault()
+  checksumOpenKey.value = ''
+}
 async function copyPath(path: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(path)
@@ -160,8 +186,7 @@ async function downloadFile(file: ArtifactFile): Promise<void> {
     if (error instanceof ApiError && error.status === 404) void checkFiles()
   } finally { if (!request.signal.aborted) downloading.value = '' }
 }
-function downloadSingle(): void { if (singleFile.value) void downloadFile(files.value[0]) }
-defineExpose({ singleFile, filesPresent, downloading, downloadSingle })
+defineExpose({ filesPresent })
 watch(() => [props.projectId, props.modelId, props.version.model_version_id, props.build?.model_build_id], () => {
   downloadRequest?.abort()
   downloading.value = ''; downloadError.value = false; copyMessage.value = ''; void checkFiles()
@@ -227,11 +252,11 @@ const contractEntries = computed(() => [
 .model-build-detail__line :is(svg,button) { flex:none; }
 .model-build-detail__line:is(.present,.success) { color:var(--am-success-text); }
 .model-build-detail__line:is(.missing,.unavailable,.request-error) { color:var(--am-danger-text); }
-.model-build-detail__filename { display:block; margin-bottom:4px; }
-.model-build-detail__path span { flex:1; min-width:0; }
+.model-build-detail__file, .model-build-detail__path { gap:4px 8px; }
+.model-build-detail__file > span:not(.model-build-detail__filename) { flex:none; }
+.model-build-detail__filename, .model-build-detail__path-text { flex:1; min-width:0; overflow-wrap:anywhere; }
 .model-build-detail__path { flex-wrap:nowrap; }
-.model-build-detail details summary { cursor:pointer; }
-.model-build-detail code { display:block; margin-top:6px; overflow-wrap:anywhere; }
+.model-build-detail__checksum { display:grid; gap:4px; max-width:min(480px, calc(100vw - 24px)); padding:8px 10px; border:1px solid var(--am-border-strong); border-radius:6px; background:var(--am-surface-raised); color:var(--am-text); box-shadow:var(--am-shadow-modal); font-size:12px; overflow-wrap:anywhere; }
 .model-build-detail__error { color:var(--am-danger-text); }
 .model-build-detail dl { margin:0; }
 .model-build-detail dl div { display:grid; grid-template-columns:minmax(96px, 30%) minmax(0, 1fr); border:1px solid var(--am-border); border-bottom:0; }

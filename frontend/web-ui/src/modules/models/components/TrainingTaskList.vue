@@ -1,15 +1,11 @@
 <template>
   <section class="model-task-list training-list">
-    <div class="model-task-list__toolbar">
-      <div class="model-task-list__project">
-        <h2>{{ projectName || t('modelOps.trainingHistoryTitle') }}</h2>
-        <Button v-if="projectName" variant="ghost" @click="$emit('open-base-models')"><Database :size="16" />{{ zh ? '基础模型' : 'Base models' }}</Button>
-      </div>
-      <label class="model-task-list__search"><Search :size="16" aria-hidden="true" /><input :value="search" @input="setSearch(($event.target as HTMLInputElement).value)" :aria-label="zh ? '搜索任务名称' : 'Search tasks'" :placeholder="zh ? '搜索任务名称' : 'Search tasks'" /></label>
+    <ModelListToolbar class="model-task-list__toolbar" :zh="zh" :search="search" :search-label="zh ? '搜索任务名称' : 'Search tasks'"
+      @update:search="setSearch" @open-base-models="$emit('open-base-models')">
       <label><span>{{ zh ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions || []" :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="$emit('change-task-type', String($event))" /></label>
       <label><span>{{ zh ? '状态' : 'Status' }}</span><SelectField :model-value="status" @update:model-value="setStatus(String($event))" :options="statusOptions" :aria-label="zh ? '状态' : 'Status'" /></label>
-      <Button v-if="projectName" :loading="loading" @click="$emit('refresh')"><RefreshCw :size="16" />{{ t('common.refresh') }}</Button>
-    </div>
+      <Button :loading="loading" @click="$emit('refresh')"><RefreshCw v-if="!loading" :size="16" />{{ t('common.refresh') }}</Button>
+    </ModelListToolbar>
     <p v-if="trainingTasks.length >= 100" class="training-list__hint">{{ zh ? '当前最多加载 100 条任务，筛选在已加载的任务内进行。' : 'At most 100 tasks are loaded; filters apply to those tasks.' }}</p>
     <p v-if="trainingTasks.length && loadError" class="training-list__hint" role="status">{{ zh ? '刷新失败，当前显示上次加载的任务。' : 'Refresh failed; showing the last loaded tasks.' }} <template v-if="updatedAt">{{ zh ? '最后更新：' : 'Last updated: ' }}{{ formatSystemDateTime(updatedAt, 'minutes') }}</template></p>
     <p v-if="!trainingTasks.length && loading" role="status">{{ t('modelOps.messages.loadingTasks') }}</p>
@@ -74,7 +70,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { useModelTaskListNavigation } from '../model-task-navigation'
 import { isDeletedTrainingVersion } from '../model-version-action'
 import { useI18n } from 'vue-i18n'
-import { Activity, Copy, Database, RefreshCw, Search } from '@lucide/vue'
+import { Activity, Copy, RefreshCw } from '@lucide/vue'
 
 import type { ModelTaskType, ModelTrainingTaskSummary } from '../services/model.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -83,6 +79,7 @@ import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { normalizeTaskState } from '@/modules/tasks/task-state'
 import Button from '@/shared/ui/components/Button.vue'
+import ModelListToolbar from './ModelListToolbar.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import ModelListPagination from './ModelListPagination.vue'
@@ -94,7 +91,6 @@ const props = defineProps<{
   loadError?: boolean
   updatedAt?: string
   taskTypeOptions?: Array<{ label: string; value: string }>
-  projectName?: string
   datasetNames?: Map<string, string>
   versionNames?: Map<string, string>
   canReuse?: boolean

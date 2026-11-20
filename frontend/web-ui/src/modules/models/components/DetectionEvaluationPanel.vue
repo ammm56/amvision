@@ -2,7 +2,7 @@
   <section class="evaluation-panel">
     <header v-show="!step && (!compareOpen || conflicts.length)" ref="listToolbar" class="evaluation-list-tools">
       <div class="evaluation-toolbar">
-        <h2>{{ projectName || (zh ? '评估任务' : 'Evaluation tasks') }}</h2>
+        <h2>{{ zh ? '评估任务' : 'Evaluation tasks' }}</h2>
         <div>
           <Button :loading="loading" @click="load"><RefreshCw :size="16" />{{ zh ? '刷新' : 'Refresh' }}</Button>
           <Button v-if="canWrite" variant="primary" @click="openWizard()"><Plus :size="16" />{{ zh ? '创建评估' : 'Create evaluation' }}</Button>
@@ -238,7 +238,7 @@ import { formatSmallModelNumber } from '../model-number-format'
 import { listDeploymentSourceModels, type DeploymentSourceModelSummary } from '../services/model.service'
 import { createDetectionEvaluation, getDetectionEvaluation, getDetectionEvaluationReport, listDetectionEvaluations, previewDetectionEvaluation, type DetectionEvaluationInput, type DetectionEvaluationPreview, type DetectionEvaluationTask } from '../services/model-evaluation.service'
 
-const props = defineProps<{ projectId: string; projectName: string; zh: boolean; canWrite: boolean }>()
+const props = defineProps<{ projectId: string; zh: boolean; canWrite: boolean }>()
 const emit = defineEmits<{ focusMode: [active: boolean] }>()
 const router = useRouter()
 const route = useRoute()
