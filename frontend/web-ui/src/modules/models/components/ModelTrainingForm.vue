@@ -39,13 +39,11 @@
           <template v-if="trainingSelectedModelSummary">
             <div class="model-picker-summary__top">
               <div class="model-picker-summary__identity">
-                <strong>{{ trainingSelectedModelSummary.model_name }}</strong>
-                <span>{{ trainingSelectedModelSummary.model_id }}</span>
+                <strong>{{ modelDisplayName(trainingSelectedModelSummary) }}</strong>
               </div>
               <div class="model-picker-summary__chips">
-                <span class="model-picker-chip">{{ trainingSelectedModelSummary.model_type }}</span>
                 <span class="model-picker-chip">
-                  {{ t('modelOps.columns.scale') }} · {{ trainingSelectedModelSummary.model_scale }}
+                  {{ t('modelOps.picker.modelScaleTitle') }} · {{ trainingSelectedModelSummary.model_scale }}
                 </span>
               </div>
             </div>
@@ -126,7 +124,7 @@
       <section v-if="step === 3" class="training-parameter-section field field--wide training-initialization">
         <h3>{{ locale.startsWith('zh') ? '初始化方式' : 'Initialization' }}</h3>
         <label class="training-choice"><input type="radio" name="training-initialization" :checked="!warmStartModelVersionId" @change="$emit('clear-training-warm-start')" /><span><strong>{{ locale.startsWith('zh') ? '从头训练' : 'Train from scratch' }}</strong><small>{{ locale.startsWith('zh') ? '使用随机初始化的模型权重。' : 'Start with randomly initialized weights.' }}</small></span></label>
-        <div class="training-choice" :class="{ 'is-selected': !!warmStartModelVersionId }"><input type="radio" name="training-initialization" :aria-label="locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights'" :disabled="loading || !trainingTaskSupportsWarmStart" :checked="!!warmStartModelVersionId" @click.prevent="$emit('open-base-model-picker')" /><span><strong>{{ locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights' }}</strong><small>{{ warmStartLabel || (locale.startsWith('zh') ? '选择可用的基础模型或项目版本。' : 'Choose available model weights.') }}</small><Button type="button" size="sm" variant="secondary" :disabled="loading || !trainingTaskSupportsWarmStart" @click="$emit('open-base-model-picker')">{{ locale.startsWith('zh') ? '选择权重' : 'Choose weights' }}</Button></span></div>
+        <div class="training-choice" :class="{ 'is-selected': !!warmStartModelVersionId }"><input type="radio" name="training-initialization" :aria-label="locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights'" :disabled="loading || !trainingTaskSupportsWarmStart" :checked="!!warmStartModelVersionId" @click.prevent="$emit('open-training-weight-picker')" /><span><strong>{{ locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights' }}</strong><small>{{ warmStartLabel || (locale.startsWith('zh') ? '选择可用的基础模型或项目版本。' : 'Choose available model weights.') }}</small><Button type="button" size="sm" variant="secondary" :disabled="loading || !trainingTaskSupportsWarmStart" @click="$emit('open-training-weight-picker')">{{ locale.startsWith('zh') ? '选择权重' : 'Choose weights' }}</Button></span></div>
         <p class="training-wizard__hint">{{ locale.startsWith('zh') ? '权重初始化不会恢复优化器状态或训练进度。' : 'Initializing weights does not resume optimizer state or training progress.' }}</p>
         <div class="training-choice"><span><strong>{{ locale.startsWith('zh') ? '恢复中断任务' : 'Resume an interrupted task' }}</strong><small>{{ locale.startsWith('zh') ? '暂停或失败的任务可在任务详情中检查 checkpoint 并恢复；已取消的任务不能恢复。' : 'Paused or failed tasks can be resumed from their detail page after checking the checkpoint; cancelled tasks cannot be resumed.' }}</small><Button type="button" size="sm" variant="secondary" @click="$emit('view-training-tasks')">{{ locale.startsWith('zh') ? '查看训练任务' : 'View training tasks' }}</Button></span></div>
       </section>
@@ -428,6 +426,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotice.vue'
 import TrainingTaskRules from './TrainingTaskRules.vue'
 import TrainingPreflightResults from './TrainingPreflightResults.vue'
+import { modelDisplayName } from '../model-display-name'
 
 type SelectValue = string | number | boolean | null
 type UpdateNumberEvent =
@@ -497,6 +496,7 @@ const emit = defineEmits<{
   cancel: []
   'change-task-type': [value: string]
   'open-base-model-picker': []
+  'open-training-weight-picker': []
   'open-training-dataset-export-picker': []
   'clear-training-warm-start': []
   'update:outputModelName': [value: string]

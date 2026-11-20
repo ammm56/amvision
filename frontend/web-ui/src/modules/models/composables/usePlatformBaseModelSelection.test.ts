@@ -34,6 +34,7 @@ function version(
     metadata: {},
     checkpoint_file_id: hasCheckpoint ? `${modelVersionId}-checkpoint` : null,
     checkpoint_storage_uri: hasCheckpoint ? `task-runs/${modelVersionId}/best.pt` : null,
+    checkpoint_state: hasCheckpoint ? 'present' : 'missing',
   }
 }
 
@@ -132,15 +133,17 @@ describe('usePlatformBaseModelSelection', () => {
     expect(selection.selectedModelDerivedTrainingVersions.value).toEqual([
       {
         model_version_id: firstGenerationId,
-        source_kind: 'training-output',
         title: 'yolo11-s-pcbpetslot3570-20260803193223',
         subtitle: 'v1',
+        checkpoint_storage_uri: `task-runs/${firstGenerationId}/best.pt`,
+        checkpoint_state: 'present',
       },
       {
         model_version_id: secondGenerationId,
-        source_kind: 'training-output',
         title: 'yolo11-s-pcbpetslot4570-20260804092556',
         subtitle: 'v1',
+        checkpoint_storage_uri: `task-runs/${secondGenerationId}/best.pt`,
+        checkpoint_state: 'present',
       },
     ])
   })

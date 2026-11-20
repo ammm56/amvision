@@ -1,20 +1,22 @@
 <template>
-  <div v-if="open" class="model-picker-shell__backdrop" @click="$emit('close')">
+  <div v-if="open" class="model-picker-shell__backdrop" :style="{ zIndex: order, background: covered ? 'transparent' : undefined }" @click.self="close">
     <div
+      ref="dialog"
       class="model-picker-shell"
-      :class="{ 'is-compact': compact }"
+      :class="{ 'is-compact': compact, 'has-footer': $slots.footer }"
       role="dialog"
       aria-modal="true"
       :aria-label="title"
-      @click.stop
-      @keydown.esc.prevent="$emit('close')"
+      tabindex="-1"
+      @keydown.esc.stop.prevent="close"
+      @keydown.tab="trapFocus"
     >
       <header class="model-picker-shell__header">
         <div>
           <h2>{{ title }}</h2>
           <p v-if="description" class="model-picker-shell__description">{{ description }}</p>
         </div>
-        <button type="button" class="model-picker-shell__close" :title="closeLabel" :aria-label="closeLabel" @click="$emit('close')">
+        <button type="button" class="model-picker-shell__close" :title="closeLabel" :aria-label="closeLabel" @click="close">
           <X :size="16" />
         </button>
       </header>
@@ -46,17 +48,22 @@
           </section>
         </div>
       </div>
+      <footer v-if="$slots.footer" class="model-picker-shell__footer">
+        <slot name="footer" />
+      </footer>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { LoaderCircle, X } from '@lucide/vue'
+import { ref, watch } from 'vue'
 import { useTranslation } from '@/platform/i18n'
+import { useModalLayer } from './modal-layer'
 
 const { t } = useTranslation()
 
-defineProps<{
+const props = defineProps<{
   open: boolean
   loading: boolean
   compact?: boolean
@@ -71,13 +78,26 @@ defineProps<{
   detailTitle: string
 }>()
 
-defineEmits<{ close: []; 'change-task-type': [taskType: string] }>()
+const emit = defineEmits<{ close: []; 'change-task-type': [taskType: string] }>()
+const dialog = ref<HTMLElement | null>(null)
+const { activate, deactivate, trapFocus, isTop, order, covered } = useModalLayer(dialog)
+
+function close(): void {
+  if (isTop()) emit('close')
+}
+
+watch(() => props.open, open => {
+  if (open) void activate()
+  else deactivate()
+}, { immediate: true })
 </script>
 
 <style scoped>
 .model-picker-shell__backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 18px; background: var(--am-overlay); }
 .model-picker-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; width: min(1120px, calc(100vw - 36px)); height: min(820px, calc(100vh - 36px)); padding: 16px; border: 1px solid var(--am-border); border-radius: 10px; background: var(--am-surface); box-shadow: var(--am-shadow-modal); }
 .model-picker-shell.is-compact { height: min(680px, calc(100vh - 36px)); }
+.model-picker-shell.has-footer { grid-template-rows: auto minmax(0, 1fr) auto; }
+.model-picker-shell__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding-block-start: 12px; border-top: 1px solid var(--am-border); }
 .model-picker-shell__header, .model-picker-shell__toolbar, .model-picker-shell__section-heading, .model-picker-shell__heading-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .model-picker-shell__header { align-items: flex-start; }
 .model-picker-shell__content { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-height: 0; }
@@ -98,8 +118,8 @@ defineEmits<{ close: []; 'change-task-type': [taskType: string] }>()
 @media (max-width: 960px) {
   .model-picker-shell,
   .model-picker-shell.is-compact {
-    width: min(100%, calc(100vw - 24px));
-    height: min(820px, calc(100vh - 24px));
+    width: min(100%, calc(100vw - 36px));
+    height: min(820px, calc(100vh - 36px));
     overflow: hidden;
   }
 

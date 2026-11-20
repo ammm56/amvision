@@ -90,7 +90,8 @@
         @cancel="closeTrainingWizard"
         @view-training-tasks="activeTab = 'training'; closeTrainingWizard()"
         @change-task-type="setTaskType"
-        @open-base-model-picker="openBaseModelPicker"
+        @open-base-model-picker="openTrainingBaseModelPicker"
+        @open-training-weight-picker="openTrainingWeightPicker"
         @open-training-dataset-export-picker="openTrainingDatasetExportPicker"
         @clear-training-warm-start="clearTrainingWarmStart"
         @update:output-model-name="outputModelName = $event"
@@ -211,32 +212,28 @@
       :list-error="errorMessage"
       :detail-loading="selectedModelDetailLoading"
       :detail-error="selectedModelDetailError"
+      :weights-only="basePickerWeightsOnly"
+      :allow-weights="trainingTaskSupportsWarmStart"
       :retry-label="zh ? '重试' : 'Retry'"
-      :title="t('modelOps.picker.trainingTitle')"
+      :title="basePickerWeightsOnly ? (zh ? '选择初始化权重' : 'Choose initialization weights') : t('modelOps.picker.trainingTitle')"
       :close-label="t('modelOps.picker.close')"
-      :task-type-options="taskTypeOptions"
+      :task-type-label="t('modelOps.fields.taskType')"
+      :task-type-options="basePickerTaskTypeOptions"
       :selected-task-type="selectedTaskType"
       :model-list-title="t('modelOps.picker.modelSelectionTitle')"
       :model-name-label="t('modelOps.picker.modelNameTitle')"
       :detail-title="t('modelOps.picker.detailTitle')"
       :detail-loading-label="t('modelOps.picker.detailLoading')"
-      :current-selection-label="t('modelOps.picker.currentSelectionTitle')"
-      :version-selection-label="t('modelOps.picker.trainingVersionSelectionTitle')"
-      :versions-title="t('modelOps.availableVersionsTitle')"
       :extra-versions-title="t('modelOps.picker.projectTrainingVersionsTitle')"
       :scale-label="t('modelOps.picker.modelScaleTitle')"
-      :apply-model-label="t('modelOps.picker.applyModel')"
-      :apply-training-version-label="t('modelOps.picker.selectTrainingVersion')"
+      :apply-model-label="basePickerWeightsOnly ? (zh ? '使用所选权重' : 'Use selected weights') : t('modelOps.picker.applyModel')"
       :empty-title="t('modelOps.emptyModelsTitle')"
-      :empty-description="t('modelOps.emptyModelsDescription')"
       :detail-empty-title="t('modelOps.picker.detailEmptyTitle')"
-      :detail-empty-description="t('modelOps.picker.detailEmptyDescription')"
-      :empty-versions-title="t('modelOps.picker.emptyVersionsTitle')"
-      :empty-versions-description="t('modelOps.picker.emptyVersionsDescription')"
-      :models="baseModels"
+      :models="basePickerModels"
       :selected-model-id="selectedModelBrowseId || null"
       :selected-model-detail="selectedModelDetail"
       :extra-versions="selectedModelDerivedTrainingVersions"
+      :applied-model-id="trainingSelectedModelSummary?.model_id"
       :selected-version-id="warmStartModelVersionId"
       @close="closeCatalogBaseModelPicker"
       @change-task-type="setTaskType"
@@ -350,6 +347,7 @@ import { buildTrainingDeviceOptions } from '../training-parameter-support'
 import { conversionSourceIssue } from '../conversion-source-support'
 import { conversionRecord, readConversionInt8Samples, readConversionInt8Settings, readConversionTarget } from '../conversion-task-presentation'
 import { modelDisplayName, modelVersionDisplayName, readCatalogVersionNames } from '../model-display-name'
+import { evaluationTypes } from '../model-evaluation-types'
 import type { ModelVersionAction } from '../model-version-action'
 
 type SelectValue = string | number | boolean | null
@@ -446,6 +444,7 @@ function resetTrainingCopy(): void {
 onBeforeUnmount(() => { trainingCopyRequest?.abort(); conversionCopyRequest?.abort() })
 const catalogEmpty = ref(false)
 const basePickerFromCatalog = ref(false)
+const basePickerWeightsOnly = ref(false)
 const modelTabs = computed(() => [
   { id: 'versions', label: zh.value ? '模型版本' : 'Model versions' },
   { id: 'training', label: zh.value ? '训练任务' : 'Training' },
@@ -543,6 +542,9 @@ const taskTypeOptions = computed(() => {
   })
   return supportedOptions.length > 0 ? supportedOptions : defaultTaskTypeOptions
 })
+const basePickerTaskTypeOptions = computed(() => taskTypeOptions.value
+  .filter(option => basePickerFromCatalog.value || option.value === selectedTaskType.value)
+  .map(({ value }) => ({ value, label: evaluationTypes[value][zh.value ? 0 : 1] })))
 
 const {
   training: trainingList,
@@ -1207,11 +1209,15 @@ async function refreshPage(): Promise<boolean> {
 }
 
 const trainingDatasetTitle = ref('')
+const basePickerModels = computed(() => {
+  const model = trainingSelectedModelSummary.value
+  return basePickerWeightsOnly.value && model ? [model] : baseModels.value
+})
 const trainingWarmStartLabel = computed(() => {
   const id = warmStartModelVersionId.value
   const model = [...projectSourceModels.value, ...baseModels.value].find(item => item.available_versions.some(version => version.model_version_id === id))
   const version = model?.available_versions.find(item => item.model_version_id === id)
-  return model && version ? `${modelDisplayName(model)} · ${modelVersionDisplayName(version)}` : ''
+  return model && version ? `${modelDisplayName(model)} · ${modelVersionDisplayName(version, true)}` : ''
 })
 function syncTrainingDatasetName(name: string): void {
   trainingDatasetTitle.value = name
@@ -1238,8 +1244,19 @@ function applyTrainingVersion(payload: {
 }
 
 function openCatalogBaseModels(): void {
+  basePickerWeightsOnly.value = false
   basePickerFromCatalog.value = true
-  openBaseModelPicker()
+  void openBaseModelPicker()
+}
+
+function openTrainingBaseModelPicker(): void {
+  basePickerWeightsOnly.value = false
+  void openBaseModelPicker()
+}
+
+function openTrainingWeightPicker(): void {
+  basePickerWeightsOnly.value = true
+  void openBaseModelPicker()
 }
 
 function closeCatalogBaseModelPicker(): void {

@@ -124,7 +124,7 @@ describe('training wizard', () => {
     await wrapper.find('form').trigger('submit')
     const radio = wrapper.find('input[aria-label="使用权重初始化"]')
     await radio.trigger('click')
-    expect(wrapper.emitted('open-base-model-picker')).toHaveLength(1)
+    expect(wrapper.emitted('open-training-weight-picker')).toHaveLength(1)
     expect((radio.element as HTMLInputElement).checked).toBe(false)
   })
 

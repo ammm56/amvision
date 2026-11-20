@@ -6,13 +6,15 @@ import {
   type DeploymentSourceModelSummary,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
+  type PlatformBaseModelVersionSummary,
 } from '../services/model.service'
 
 export interface PlatformBaseModelVersionListItem {
   model_version_id: string
-  source_kind: string
   title: string
   subtitle: string
+  checkpoint_storage_uri: string
+  checkpoint_state: PlatformBaseModelVersionSummary['checkpoint_state']
 }
 
 interface ResetPlatformBaseModelSelectionOptions {
@@ -82,9 +84,10 @@ export function usePlatformBaseModelSelection(options: {
         seenVersionIds.add(modelVersionId)
         matchedVersions.push({
           model_version_id: modelVersionId,
-          source_kind: version.source_kind || 'project-training-output',
           title: modelDisplayName(sourceModel),
           subtitle: modelVersionDisplayName(version, true),
+          checkpoint_storage_uri: version.checkpoint_storage_uri,
+          checkpoint_state: version.checkpoint_state,
         })
       }
     }
@@ -121,7 +124,7 @@ export function usePlatformBaseModelSelection(options: {
     }
     const preferred = trainingSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id
     const available = (model: PlatformBaseModelSummary) => model.available_versions.some(version => version.checkpoint_state === 'present')
-    const preferredModelId = options.baseModels.value.find(model => model.model_id === preferred && available(model))?.model_id
+    const preferredModelId = options.baseModels.value.find(model => model.model_id === preferred)?.model_id
       || options.baseModels.value.find(available)?.model_id || options.baseModels.value[0].model_id
     if (preferredModelId && selectedModelDetail.value?.model_id !== preferredModelId) {
       await selectBaseModel(preferredModelId)
