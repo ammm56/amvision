@@ -463,12 +463,12 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { cancelTask } from '@/modules/tasks/services/task.service'
-import { apiRequest } from '@/shared/api/http-client'
 import { ApiError } from '@/shared/api/error'
 import { submitResourceDeletion, type DeletionStatus } from '@/shared/api/resource-deletion'
 import {
   getDatasetImportDetail,
   getDatasetExportDetail,
+  getDatasetExportText,
   downloadDatasetExport,
   deleteDatasetImport,
   deleteDatasetExport,
@@ -947,13 +947,7 @@ async function openFile(file: DatasetFile) {
   fileError.value = ''
   const request = ++fileGeneration
   try {
-    const data = await apiRequest<{
-      path: string
-      content: string
-      truncated: boolean
-    }>(`/datasets/exports/${identity.value}/file-text`, {
-      query: { path: file.path },
-    })
+    const data = await getDatasetExportText(identity.value, file.path)
     if (active && request === fileGeneration) {
       filePreview.value = data
       filePreviewOpen.value = true
