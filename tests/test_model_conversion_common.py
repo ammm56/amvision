@@ -57,10 +57,11 @@ def test_model_conversion_common_resolves_precision_options() -> None:
     assert resolve_openvino_ir_build_precision({"openvino_ir_precision": "FP16"}) == "fp16"
     assert resolve_tensorrt_engine_build_precision({}) == "fp32"
     assert resolve_tensorrt_engine_build_precision({"tensorrt_engine_precision": "FP16"}) == "fp16"
+    assert resolve_tensorrt_engine_build_precision({"tensorrt_engine_precision": "INT8"}) == "int8"
     with pytest.raises(InvalidRequestError):
         resolve_openvino_ir_build_precision({"openvino_ir_precision": "int8"})
     with pytest.raises(InvalidRequestError):
-        resolve_tensorrt_engine_build_precision({"tensorrt_engine_precision": "int8"})
+        resolve_tensorrt_engine_build_precision({"tensorrt_engine_precision": "fp64"})
 
 
 def test_model_conversion_common_builds_output_base_name() -> None:

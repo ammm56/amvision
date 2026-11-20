@@ -172,6 +172,44 @@ def validate_tensorrt_engine_against_onnx(
         "target_runtime": "tensorrt",
         "executed": True,
     }
+    if summary["passed"] is not True and contract is None and summary["finite"] is True:
+        absolute = float(summary["absolute_tolerance"])
+        relative = float(summary["relative_tolerance"])
+        failures = []
+        for name, source_array, target_array in zip(output_names, source_outputs, target_outputs, strict=True):
+            if not source_array.size:
+                continue
+            difference = np.abs(source_array.astype(np.float64) - target_array.astype(np.float64))
+            allowed = absolute + relative * np.abs(target_array.astype(np.float64))
+            excess = difference - allowed
+            index = tuple(int(part) for part in np.unravel_index(excess.argmax(), excess.shape))
+            if excess[index] <= 0:
+                continue
+            failures.append({
+                "input_shape": list(image.shape),
+                "input_dtype": str(image.dtype),
+                "output_name": name,
+                "output_shape": list(source_array.shape),
+                "output_dtype": str(source_array.dtype),
+                "index": list(index),
+                "source_value": float(source_array[index]),
+                "target_value": float(target_array[index]),
+                "absolute_error": float(difference[index]),
+                "allowed_error": float(allowed[index]),
+                "max_error": float(difference.max()),
+                "mean_error": float(difference.mean()),
+            })
+        if failures:
+            summary["numeric_validation"] = {
+                "source_runtime": "ONNX Runtime (CPU)",
+                "target_runtime": f"TensorRT {build_precision.upper()}",
+                "input_kind": "generated_tensor",
+                "rule": "absolute_relative_tolerance",
+                "check_count": len(output_names),
+                "absolute_tolerance": absolute,
+                "relative_tolerance": relative,
+                "failures": failures,
+            }
     if summary["passed"] is not True:
         raise ServiceConfigurationError(
             "TensorRT runtime smoke 数值一致性校验失败", details=summary

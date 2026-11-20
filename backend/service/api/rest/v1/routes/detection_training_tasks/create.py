@@ -8,11 +8,13 @@ from fastapi import APIRouter, Depends, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
+from backend.service.api.rest.v1.routes.model_submissions import track_model_submission
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.rest.v1.routes.training_execution_schemas import (
     merge_training_execution_options,
 )
 from backend.service.application.errors import ResourceNotFoundError
+from backend.service.application.models.training.submission_checks import check_output_model_identity
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 
@@ -32,6 +34,7 @@ detection_training_create_router = APIRouter()
     "/detection/training-tasks",
     response_model=DetectionTrainingTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_detection_training_task(
     body: DetectionTrainingTaskCreateRequestBody,
@@ -48,6 +51,10 @@ def create_detection_training_task(
         )
     model_type = _normalize_detection_training_model_type(body.model_type)
 
+    check_output_model_identity(
+        session_factory=session_factory, project_id=body.project_id, task_type="detection",
+        model_type=body.model_type, model_scale=body.model_scale, output_model_name=body.output_model_name,
+    )
     service_cls, request_cls = _resolve_detection_training_service_and_request(
         model_type
     )

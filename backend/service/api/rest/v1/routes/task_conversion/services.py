@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
+from backend.service.api.rest.v1.routes.model_submissions import track_model_submission
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -91,6 +92,7 @@ def create_task_conversion_router(
         f"/{route_segment}/conversion-tasks",
         response_model=TaskConversionTaskSubmissionResponse,
         status_code=status.HTTP_202_ACCEPTED,
+        dependencies=[Depends(track_model_submission)],
         operation_id=f"create_{task_type}_conversion_task",
     )
     def create_conversion_task(
@@ -309,13 +311,15 @@ def submit_task_conversion_task(
     if entry.request_includes_task_type:
         request_kwargs["task_type"] = task_type
     service_cls, request_cls = entry.resolve_types()
+    submit_options = {"created_by": principal.principal_id, "display_name": body.display_name}
+    if not entry.request_includes_task_type:
+        submit_options["expected_task_type"] = task_type
     submission = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     ).submit_conversion_task(
         request_cls(**request_kwargs),
-        created_by=principal.principal_id,
-        display_name=body.display_name,
+        **submit_options,
     )
     return TaskConversionTaskSubmissionResponse(
         task_id=submission.task_id,

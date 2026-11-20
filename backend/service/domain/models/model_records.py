@@ -7,7 +7,7 @@ from typing import Literal
 
 
 # 最小支持的模型版本来源类型。
-ModelVersionSourceKind = Literal["pretrained-reference", "training-output", "deployment-import"]
+ModelVersionSourceKind = Literal["pretrained-reference", "training-output", "deployment-import", "model-package-import"]
 ModelScopeKind = Literal["project", "platform-base"]
 
 PROJECT_MODEL_SCOPE: ModelScopeKind = "project"
@@ -53,6 +53,7 @@ class ModelVersion:
     - training_task_id：关联的训练任务 id。
     - parent_version_id：父 ModelVersion id。
     - file_ids：关联的文件 id 列表。
+    - version_number：模型内的稳定显示序号，由持久化层分配。
     - metadata：附加元数据。
     """
 
@@ -64,6 +65,7 @@ class ModelVersion:
     parent_version_id: str | None = None
     file_ids: tuple[str, ...] = ()
     metadata: dict[str, object] = field(default_factory=dict)
+    version_number: int | None = None
 
 
 @dataclass(frozen=True)

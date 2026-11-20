@@ -150,6 +150,8 @@ def _resolve_detection_evaluation_output_file_object_key(
 ) -> str | None:
     """解析评估输出文件当前可用的 object key。"""
 
+    if task.state == "cancelled":
+        return None
     result = dict(task.result)
     metadata = dict(task.metadata)
     spec = _DETECTION_EVALUATION_OUTPUT_FILE_SPECS[file_name]

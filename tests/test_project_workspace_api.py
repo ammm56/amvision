@@ -367,6 +367,7 @@ def test_workspace_permissions_activity_pagination_and_partial_summary(
                         model_version_id="test-model-version",
                         model_id="test-model",
                         source_kind="import",
+                        version_number=1,
                         metadata_json={},
                     )
                 )

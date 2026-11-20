@@ -14,7 +14,9 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import (
+    InvalidRequestError,
     PermissionDeniedError,
+    ResourceInUseError,
     ResourceNotFoundError,
 )
 from backend.service.application.project_access import require_explicit_project_access
@@ -42,9 +44,12 @@ class ResourceDeletionRequest(BaseModel):
         "dataset-import",
         "dataset-export",
         "dataset-export-files",
+        "model-version",
+        "model-build",
     ]
     resource_id: str = Field(min_length=1, max_length=128)
     project_id: str = Field(min_length=1, max_length=128)
+    expected_revision: str | None = Field(default=None, max_length=128)
 
 
 class ResourceDeletionStatus(BaseModel):
@@ -102,14 +107,23 @@ def submit_resource_deletion(
 ) -> ResourceDeletionStatus:
     """提交数据库删除，物理清理由现有 dataset-export Worker 中的清理消费者完成。"""
     _authorize(principal, body.kind, body.project_id)
-    operation_id = ResourceDeletionService(
-        session_factory=factory, dataset_storage=storage, queue_backend=queue
-    ).delete(
-        kind=body.kind,
-        resource_id=body.resource_id,
-        project_id=body.project_id,
-        asynchronous=True,
-    )
+    if body.kind in {"model-version", "model-build"} and not body.expected_revision:
+        raise InvalidRequestError("删除模型资源前需要重新检查删除范围")
+    try:
+        operation_id = ResourceDeletionService(
+            session_factory=factory, dataset_storage=storage, queue_backend=queue
+        ).delete(
+            kind=body.kind,
+            resource_id=body.resource_id,
+            project_id=body.project_id,
+            expected_revision=body.expected_revision,
+            asynchronous=True,
+        )
+    except ResourceInUseError as error:
+        if body.kind not in {"model-version", "model-build"}:
+            raise
+        # 依赖可能属于其他项目；只公开原因，不返回未经授权的资源清单。
+        raise ResourceInUseError(error.message) from error
     return get_resource_deletion(operation_id, principal, factory)
 
 
@@ -138,6 +152,25 @@ def list_resource_deletions(
             continue
         visible.append(_status(operation))
     return visible
+
+
+@resource_deletions_router.get("/preview")
+def preview_resource_deletion(
+    kind: Literal["model-version", "model-build"], resource_id: str, project_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> dict:
+    """只读检查删除范围；真正删除时再次检查依赖和 revision。"""
+    _authorize(principal, kind, project_id)
+    try:
+        preview = ResourceDeletionService(session_factory=factory, dataset_storage=storage).preview(
+            kind=kind, resource_id=resource_id, project_id=project_id,
+        )
+        return {"blocked": False, **preview}
+    except ResourceInUseError as error:
+        # 不暴露其他项目的引用身份；当前项目的直接部署由独立的授权接口列出。
+        return {"blocked": True, "reason": error.message}
 
 
 @resource_deletions_router.get("/{operation_id}", response_model=ResourceDeletionStatus)

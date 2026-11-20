@@ -1,4 +1,5 @@
-import { ref, type ComputedRef, type Ref } from 'vue'
+import { ref, watch, type ComputedRef, type Ref } from 'vue'
+import { ApiError } from '@/shared/api/error'
 
 import {
   listModelConversionTasks,
@@ -11,64 +12,58 @@ import {
 export function useModelTaskLists(
   selectedTaskType: Ref<ModelTaskType>,
   selectedProjectId: ComputedRef<string>,
+  principalKey?: ComputedRef<string>,
 ) {
-  const trainingTasks = ref<ModelTrainingTaskSummary[]>([])
-  const conversionTasks = ref<ModelConversionTaskSummary[]>([])
-  let trainingRequestSerial = 0
-  let conversionRequestSerial = 0
+  const training = taskList<ModelTrainingTaskSummary>(listModelTrainingTasks)
+  const conversion = taskList<ModelConversionTaskSummary>(listModelConversionTasks)
 
-  async function refreshTrainingTasks(): Promise<void> {
-    const requestSerial = ++trainingRequestSerial
-    const taskType = selectedTaskType.value
-    const projectId = selectedProjectId.value
-    const tasks = await listModelTrainingTasks(taskType, projectId)
-    if (
-      requestSerial === trainingRequestSerial
-      && selectedTaskType.value === taskType
-      && selectedProjectId.value === projectId
-    ) {
-      trainingTasks.value = tasks
+  function taskList<T>(fetchList: (taskType: ModelTaskType, projectId: string) => Promise<T[]>) {
+    const items = ref<T[]>([]) as Ref<T[]>
+    const loading = ref(false)
+    const error = ref(false)
+    const updatedAt = ref<string>()
+    let serial = 0
+    watch([selectedTaskType, selectedProjectId, () => principalKey?.value], () => {
+      serial++
+      items.value = []
+      loading.value = false
+      error.value = false
+      updatedAt.value = undefined
+    }, { flush: 'sync' })
+    async function refresh(): Promise<void> {
+      const request = ++serial
+      const taskType = selectedTaskType.value
+      const projectId = selectedProjectId.value
+      if (!projectId) return
+      loading.value = true
+      error.value = false
+      try {
+        const rows = await fetchList(taskType, projectId)
+        if (request === serial) { items.value = rows; updatedAt.value = new Date().toISOString() }
+      } catch (cause) {
+        if (request === serial) {
+          error.value = true
+          if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) {
+            items.value = []; updatedAt.value = undefined
+          }
+        }
+        throw cause
+      } finally { if (request === serial) loading.value = false }
     }
-  }
-
-  async function refreshConversionTasks(): Promise<void> {
-    const requestSerial = ++conversionRequestSerial
-    const taskType = selectedTaskType.value
-    const projectId = selectedProjectId.value
-    const tasks = await listModelConversionTasks(taskType, projectId)
-    if (
-      requestSerial === conversionRequestSerial
-      && selectedTaskType.value === taskType
-      && selectedProjectId.value === projectId
-    ) {
-      conversionTasks.value = tasks
-    }
+    return { items, loading, error, updatedAt, refresh }
   }
 
   async function refreshTaskLists(): Promise<void> {
-    const trainingSerial = ++trainingRequestSerial
-    const conversionSerial = ++conversionRequestSerial
-    const taskType = selectedTaskType.value
-    const projectId = selectedProjectId.value
-    const [training, conversion] = await Promise.all([
-      listModelTrainingTasks(taskType, projectId),
-      listModelConversionTasks(taskType, projectId),
-    ])
-    const selectionStillCurrent = selectedTaskType.value === taskType
-      && selectedProjectId.value === projectId
-    if (selectionStillCurrent && trainingSerial === trainingRequestSerial) {
-      trainingTasks.value = training
-    }
-    if (selectionStillCurrent && conversionSerial === conversionRequestSerial) {
-      conversionTasks.value = conversion
-    }
+    await Promise.allSettled([training.refresh(), conversion.refresh()])
   }
 
   return {
-    trainingTasks,
-    conversionTasks,
-    refreshTrainingTasks,
-    refreshConversionTasks,
+    training,
+    conversion,
+    trainingTasks: training.items,
+    conversionTasks: conversion.items,
+    refreshTrainingTasks: training.refresh,
+    refreshConversionTasks: conversion.refresh,
     refreshTaskLists,
   }
 }

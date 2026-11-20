@@ -10,6 +10,18 @@ from backend.service.domain.models.model_records import Model, ModelBuild, Model
 class ModelRepository(Protocol):
     """描述 Model、ModelVersion、ModelBuild 的持久化边界。"""
 
+    def update_project_presentation(self, *, project_id: str, model_id: str, expected_revision: int, metadata: dict[str, object]) -> bool:
+        """原子更新展示信息；版本变化或对象不存在时返回 False。"""
+        ...
+
+    def list_project_catalog(
+        self, *, project_id: str, task_type: str | None, query: str | None,
+        offset: int, limit: int,
+    ) -> tuple[tuple[Model, ...], int]:
+        """按项目、任务和名称分页读取项目模型，并返回筛选后的总数。"""
+
+        ...
+
     def list_models(
         self,
         *,

@@ -1,5 +1,5 @@
 <template>
-  <div class="task-progress" :class="{ 'task-progress--compact': compact }">
+  <div class="task-progress" :class="{ 'task-progress--compact': compact, 'task-progress--failed': failed }">
     <div v-if="!compact || label" class="task-progress__header">
       <span v-if="label">{{ label }}</span>
       <strong v-if="!indeterminate || normalizedPercent !== null">{{ percentText }}</strong>
@@ -10,6 +10,7 @@
       role="progressbar"
       :aria-label="ariaLabel || label"
       :aria-valuenow="normalizedPercent ?? undefined"
+      :aria-valuetext="valueText || undefined"
       aria-valuemin="0"
       aria-valuemax="100"
     >
@@ -29,6 +30,8 @@ const props = withDefaults(
     ariaLabel?: string
     compact?: boolean
     indeterminate?: boolean
+    failed?: boolean
+    valueText?: string
   }>(),
   {
     label: '',
@@ -41,7 +44,7 @@ const normalizedPercent = computed(() => {
   if (typeof props.percent !== 'number' || !Number.isFinite(props.percent)) return null
   return Math.min(100, Math.max(0, props.percent))
 })
-const percentText = computed(() => normalizedPercent.value === null ? '-' : `${normalizedPercent.value.toFixed(props.compact ? 0 : 1)}%`)
+const percentText = computed(() => props.valueText || (normalizedPercent.value === null ? '-' : `${normalizedPercent.value.toFixed(props.compact ? 0 : 1)}%`))
 </script>
 
 <style scoped>
@@ -83,6 +86,9 @@ const percentText = computed(() => normalizedPercent.value === null ? '-' : `${n
   border-radius: inherit;
   background: var(--am-progress-fill);
   transition: width 160ms ease;
+}
+.task-progress--failed .task-progress__track span {
+  background: var(--am-danger-icon);
 }
 .task-progress__track.is-indeterminate span {
   width: 28% !important;

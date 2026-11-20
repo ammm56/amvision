@@ -105,6 +105,7 @@ class ResourceDeletionRepository:
 
     def delete_records(self, references: list[ResourceRef], *, project_id: str) -> None:
         """按外键顺序删除业务聚合和精确关联 Outbox。"""
+        removed_tasks = {ref.resource_id for ref in references if ref.kind == "task"}
         for reference in references:
             if reference.kind == "dataset-export-files":
                 row = self.session.get(DatasetExportRecord, reference.resource_id)
@@ -153,6 +154,8 @@ class ResourceDeletionRepository:
                     continue
                 row = self.session.get(RESOURCE_TABLES[kind], reference.resource_id)
                 if row is not None:
+                    if kind == "model-version" and row.training_task_id and row.training_task_id not in removed_tasks:
+                        self._mark_removed_training_version(row, project_id)
                     if kind == "dataset-import" and row.dataset_version_id:
                         version = self.session.get(
                             DatasetVersionRecord, row.dataset_version_id
@@ -179,6 +182,19 @@ class ResourceDeletionRepository:
                 dataset = self.session.get(DatasetRecord, (project_id, ref.resource_id))
                 if dataset is not None:
                     self.session.delete(dataset)
+
+    def _mark_removed_training_version(self, version: ModelVersionRecord, project_id: str) -> None:
+        """在同一事务标记历史训练的输出，保留原始任务结果和文件。"""
+
+        task = self.session.get(TaskRecordEntity, version.training_task_id, with_for_update=True)
+        if task is None or task.project_id != project_id:
+            return
+        metadata = dict(task.metadata_json or {})
+        previous = metadata.get("deleted_model_version_ids")
+        ids = [item for item in previous if isinstance(item, str)] if isinstance(previous, list) else []
+        if version.model_version_id not in ids:
+            metadata["deleted_model_version_ids"] = [*ids, version.model_version_id]
+            task.metadata_json = metadata
 
     def save(self, operation: ResourceDeletionOperation) -> None:
         """保存可恢复状态，提交状态与业务删除使用同一事务。"""

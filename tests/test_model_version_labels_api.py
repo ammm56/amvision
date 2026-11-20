@@ -21,6 +21,7 @@ from backend.service.application.models.registry.yolo26_model_service import (
 from backend.service.application.models.catalog.rfdetr import (
     SqlAlchemyRfdetrModelService,
 )
+from backend.service.infrastructure.persistence.model_orm import ModelVersionRecord
 from tests.api_test_support import build_test_headers, create_api_test_context
 
 
@@ -67,10 +68,27 @@ def test_versions_expose_their_own_label_files(tmp_path: Path) -> None:
             for versions in (model["available_versions"], detail["versions"]):
                 by_id = {item["model_version_id"]: item for item in versions}
                 for index, version_id in enumerate(ids):
+                    assert by_id[version_id]["version_number"] == index + 1
                     assert by_id[version_id]["labels_file_id"] == f"labels-{index}"
                     assert (
                         by_id[version_id]["labels_storage_uri"] == f"labels-{index}.txt"
                     )
+        service.update_project_presentation(
+            project_id="project-1", model_id=model["model_id"], display_name="托盘分类 YOLO11-s",
+            description="", expected_revision=0,
+        )
+        with context.session_factory.create_session() as session:
+            session.delete(session.get(ModelVersionRecord, ids[-1]))
+            session.commit()
+        added_id = service.register_training_output(TrainingOutputRegistration(
+            project_id="project-1", training_task_id="training-2", model_name="托盘分类 YOLO11-s",
+            model_scale="s", task_type="classification", dataset_version_id="dataset-2",
+            checkpoint_file_id="ckpt-2", checkpoint_file_uri="best-2.pt",
+            metadata={"input_size": {"width": 224, "height": 224}, "category_names": ["ok", "ng"]},
+        ))
+        added = service.get_model_version(added_id)
+        assert added.model_id == model["model_id"]
+        assert added.version_number == 3
     finally:
         context.session_factory.engine.dispose()
 

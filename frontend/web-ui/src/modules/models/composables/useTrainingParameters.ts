@@ -1,6 +1,7 @@
 import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 
 import type {
+  ModelTrainingTaskDetail,
   ModelTaskType,
   PlatformBaseModelDetail,
   TrainingParameterSchemaItem,
@@ -16,6 +17,10 @@ import {
 
 type SelectValue = string | number | boolean | null
 
+export function savedTrainingText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 function selectValueToString(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')
 }
@@ -28,27 +33,6 @@ function resolveOptimizerLearningRate(optimizer: string): string {
   return ['adam', 'adamw', 'nadam', 'radam'].includes(normalizeText(optimizer))
     ? '0.001'
     : '0.01'
-}
-
-function normalizeModelNameSegment(value: string | null | undefined): string {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-function buildModelNameTimestamp(date = new Date()): string {
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-    pad(date.getHours()),
-    pad(date.getMinutes()),
-    pad(date.getSeconds()),
-  ].join('')
 }
 
 function alignPositiveDimension(value: number, divisor: number): number {
@@ -82,6 +66,7 @@ export function useTrainingParameters(options: {
   translate: (key: string, params?: Record<string, string>) => string
 }) {
   const outputModelName = ref('')
+  const trainingRecipeId = ref('default')
   const lastSuggestedOutputModelName = ref('')
   const maxEpochs = ref(100)
   const batchMode = ref<'auto' | 'fixed'>('auto')
@@ -102,6 +87,61 @@ export function useTrainingParameters(options: {
   const trainingDisplayName = ref('')
   const trainingModelParameterValues = reactive<TrainingParameterValues>({})
   const trainingAugmentationEnabled = ref(true)
+
+  function applySavedTrainingParameters(task: ModelTrainingTaskDetail, device: string): () => void {
+    const restore: (() => void)[] = []
+    function apply<T>(field: Ref<T>, value: T): void {
+      const original = field.value
+      restore.push(() => { field.value = original })
+      field.value = value
+    }
+    function number(value: unknown, fallback: number): number {
+      return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+    }
+    const spec = task.task_spec
+    const extra = spec.extra_options as Record<string, unknown> | undefined ?? {}
+    const input = spec.input_size as { width?: number; height?: number } | null | undefined
+    const originalParameters = { ...trainingModelParameterValues }
+    restore.push(() => Object.assign(trainingModelParameterValues, originalParameters))
+    apply(outputModelName, savedTrainingText(spec.output_model_name) || task.output_model_name || '')
+    apply(trainingDisplayName, '')
+    apply(trainingRecipeId, savedTrainingText(spec.recipe_id) || task.recipe_id || 'default')
+    apply(maxEpochs, number(spec.max_epochs, maxEpochs.value))
+    apply(inputWidth, number(input?.width, inputWidth.value))
+    apply(inputHeight, number(input?.height, inputHeight.value))
+    apply(batchMode, extra.batch_mode === 'fixed' || (extra.batch_mode !== 'auto' && number(spec.batch_size, 0) > 0) ? 'fixed' : 'auto')
+    apply(batchSize, number(spec.batch_size, batchSize.value) > 0 ? number(spec.batch_size, batchSize.value) : batchSize.value)
+    apply(batchTargetMemoryFraction, number(extra.batch_target_memory_fraction, batchTargetMemoryFraction.value))
+    apply(batchMinimumSize, number(extra.batch_minimum_size, batchMinimumSize.value))
+    apply(batchMaximumSize, typeof extra.batch_maximum_size === 'number' ? extra.batch_maximum_size : undefined)
+    apply(batchRecoverOnOom, typeof extra.batch_recover_on_oom === 'boolean' ? extra.batch_recover_on_oom : batchRecoverOnOom.value)
+    apply(batchMaxOomRetries, number(extra.batch_oom_max_retries, batchMaxOomRetries.value))
+    const precision = savedTrainingText(spec.precision) || task.precision
+    const legacyAmp = precision === 'fp32' ? 'disabled' : precision === 'fp16' || precision === 'bf16' ? 'enabled' : 'auto'
+    apply(ampMode, extra.amp_mode === 'enabled' || extra.amp_mode === 'disabled' || extra.amp_mode === 'auto' ? extra.amp_mode : legacyAmp)
+    const dtype = extra.amp_dtype ?? precision
+    apply(ampDtype, dtype === 'fp16' || dtype === 'bf16' ? dtype : 'auto')
+    apply(checkpointInterval, number(extra.checkpoint_interval, checkpointInterval.value))
+    apply(checkpointKeepPeriodic, number(extra.checkpoint_keep_periodic, checkpointKeepPeriodic.value))
+    apply(evaluationInterval, number(spec.evaluation_interval ?? extra.evaluation_interval ?? task.evaluation_interval, evaluationInterval.value))
+    apply(trainingDevice, device)
+    apply(trainingAugmentationEnabled, extra.disable_augmentation !== true)
+
+    const parameters = { ...extra }
+    for (const key of ['mosaic_scale', 'mixup_scale']) {
+      const range = extra[key]
+      if (!Array.isArray(range) || range.length !== 2) continue
+      parameters[`${key}_min`] ??= range[0]
+      parameters[`${key}_max`] ??= range[1]
+    }
+    for (const key of Object.keys(trainingModelParameterValues)) {
+      const value = parameters[key]
+      if (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value)) {
+        trainingModelParameterValues[key] = String(value)
+      }
+    }
+    return () => restore.forEach(reset => reset())
+  }
 
   const trainingTaskSupportsWarmStart = computed(
     () => supportsTrainingWarmStart(options.selectedTaskType.value),
@@ -139,20 +179,26 @@ export function useTrainingParameters(options: {
 
   function buildSuggestedOutputModelName(
     model: Pick<PlatformBaseModelDetail, 'model_name' | 'model_type' | 'model_scale'>,
+    datasetName: string,
   ): string {
-    const modelName = normalizeModelNameSegment(model.model_name || model.model_type) || 'model'
-    const modelScale = normalizeModelNameSegment(model.model_scale) || 'default'
-    return `${modelName}-${modelScale}-${buildModelNameTimestamp()}`
+    const family = (model.model_type || model.model_name).trim().toUpperCase()
+    const scales: Record<string, string> = { nano: 'n', small: 's', medium: 'm', large: 'l', 'extra-large': 'x' }
+    const scale = model.model_scale.trim()
+    const variant = scale ? `${family}-${scales[scale] ?? scale}` : family
+    const dataset = datasetName.trim().replace(/^dataset-([\w-]+)[-_]\d{8,}$/i, '$1')
+    const title = /^dataset-(?:export-)?[a-f0-9]{12,}$/i.test(dataset) ? '' : dataset
+    return [title.slice(0, 80), variant].filter(Boolean).join(' ').slice(0, 128)
   }
 
   function syncSuggestedOutputModelName(
     model: Pick<PlatformBaseModelDetail, 'model_name' | 'model_type' | 'model_scale'>,
+    datasetName = '',
   ): void {
     const currentValue = outputModelName.value.trim()
     if (currentValue && currentValue !== lastSuggestedOutputModelName.value) {
       return
     }
-    const nextValue = buildSuggestedOutputModelName(model)
+    const nextValue = buildSuggestedOutputModelName(model, datasetName)
     outputModelName.value = nextValue
     lastSuggestedOutputModelName.value = nextValue
   }
@@ -219,7 +265,8 @@ export function useTrainingParameters(options: {
       options.resolvedTrainingModelType,
       options.trainingParameterSchema,
     ],
-    ([taskType, modelType, parameterSchema]) => {
+    ([taskType, modelType, parameterSchema], [previousTaskType, previousModelType, previousSchema]) => {
+      const sameModel = taskType === previousTaskType && modelType === previousModelType && Boolean(previousSchema && parameterSchema)
       const defaultValues = modelType && parameterSchema
         ? getDefaultTrainingModelParameterValues(taskType, modelType, parameterSchema)
         : {}
@@ -230,16 +277,20 @@ export function useTrainingParameters(options: {
         }
       }
       for (const [key, value] of Object.entries(defaultValues)) {
-        trainingModelParameterValues[key] = value
+        if (!sameModel || !(key in trainingModelParameterValues)) trainingModelParameterValues[key] = value
       }
-      evaluationInterval.value = getDefaultTrainingEvaluationInterval(taskType, modelType)
-      trainingAugmentationEnabled.value = true
+      if (!sameModel) {
+        evaluationInterval.value = getDefaultTrainingEvaluationInterval(taskType, modelType)
+        trainingAugmentationEnabled.value = true
+      }
     },
     { immediate: true },
   )
 
   return {
     outputModelName,
+    trainingRecipeId,
+    applySavedTrainingParameters,
     maxEpochs,
     batchMode,
     batchSize,

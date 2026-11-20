@@ -171,6 +171,8 @@ def _run_segmentation_evaluation_with_session(
 
         image_width = int(result.image_width)
         image_height = int(result.image_height)
+        gt_mask_start = len(gt_mask_items)
+        pred_mask_start = len(pred_mask_items)
         for ann in gt_annotations:
             bbox = ann.get("bbox")
             category_id = int(ann.get("category_id", 0))
@@ -228,6 +230,8 @@ def _run_segmentation_evaluation_with_session(
                 "gt_count": len(gt_annotations),
                 "pred_count": len(result.instances),
                 "latency_ms": result.latency_ms,
+                "ground_truth": gt_mask_items[gt_mask_start:],
+                "predictions": pred_mask_items[pred_mask_start:],
             }
         )
 

@@ -4,25 +4,46 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from errno import ENOSPC
+from logging import getLogger
+from stat import S_ISREG
 from time import monotonic
+from typing import Literal
 from uuid import uuid4
+from zipfile import BadZipFile
 
 from filelock import FileLock, Timeout
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from backend.contracts.deployments.model_package import ImportOptions, ModelDeploymentPackage, TransferLimits
+from backend.contracts.models.model_package import ModelPackage, ModelPackageExportOptions, ModelPackageImportOptions
 from backend.service.application.deployments.package_import import content_hash, plan_import, register_import
 from backend.service.application.deployments.package_manifest import compile_deployment_package
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import InvalidRequestError, ResourceConflictError, ResourceNotFoundError
+from backend.service.application.models.registry.model_package import (
+    compile_model_package, plan_model_package_import, register_model_package, verify_model_package_files,
+)
 from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.application.workflows.lifecycle_resource_keys import build_project_mutation_lifecycle_resource_key
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.model_package_archive import file_digest, read_package, write_package
+from backend.service.infrastructure.object_store.model_package_archive import PackageIntegrityError, file_digest, read_package, write_package
 from backend.service.infrastructure.persistence.model_transfer_repository import ImportedModelArtifactRecord
+
+
+_logger = getLogger(__name__)
 
 
 class TransferCancelled(Exception):
     """仅用于尚未提交的操作协作取消。"""
+
+
+class ModelPackageCheckError(InvalidRequestError):
+    """独立导入检查阻止，保留已知失败阶段而不暴露系统路径。"""
+
+    def __init__(self, phase: str, code: str, message: str, member: str | None = None) -> None:
+        """记录可公开的检查阶段、类别和归档成员。"""
+        super().__init__(message, details={"phase": phase, "code": code, "member": member})
 
 
 class ModelDeploymentTransferService:
@@ -44,11 +65,13 @@ class ModelDeploymentTransferService:
         finally:
             unit.close()
 
-    def get(self, operation_id: str, project_id: str | None = None) -> dict:
+    def get(self, operation_id: str, project_id: str | None = None, *, standalone: bool | None = None) -> dict:
         """回读操作；调用方仍需校验 Project 权限。"""
         with self.unit() as unit:
             row = unit.model_transfers.get(operation_id)
             if row is None or (project_id is not None and row.project_id != project_id):
+                raise ResourceNotFoundError("传递操作不存在")
+            if standalone is not None and bool(row.payload_json.get("standalone")) != standalone:
                 raise ResourceNotFoundError("传递操作不存在")
             return {"operation_id": row.operation_id, "project_id": row.project_id, "direction": row.direction, "state": row.state, "created_at": row.created_at, "updated_at": row.updated_at, **row.payload_json}
 
@@ -64,6 +87,28 @@ class ModelDeploymentTransferService:
         project = normalize_queue_path_component(operation["project_id"], field_name="project_id")
         op = normalize_queue_path_component(operation["operation_id"], field_name="operation_id")
         return f"projects/{project}/model-deployment-transfers/{op}"
+
+    def export_zip_state(self, operation: dict) -> Literal["available", "cleaned", "missing", "unavailable"] | None:
+        """独立 ZIP 的可用性与任务终态分开；读取时只校验文件类型和登记大小。"""
+        if operation["direction"] != "export":
+            return None
+        if operation["state"] == "expired" or operation.get("file_cleaned_at"):
+            return "cleaned"
+        if operation["state"] != "completed":
+            return None
+        try:
+            path = self.storage.resolve_deletion_path(f"{self.root(operation)}/package.zip")
+            info = path.stat()
+        except FileNotFoundError:
+            return "missing"
+        except (OSError, InvalidRequestError):
+            return "unavailable"
+        if not S_ISREG(info.st_mode) or info.st_size <= 0:
+            return "unavailable"
+        size = operation.get("total_bytes")
+        if size is not None and size != info.st_size:
+            return "unavailable"
+        return "available"
 
     def update(self, operation_id: str, state: str | None = None, **values) -> dict:
         """保留并发取消标记，整体替换 JSON。"""
@@ -89,7 +134,7 @@ class ModelDeploymentTransferService:
                     instance = unit.deployments.get_deployment_instance(deployment_id)
                     if instance is None or instance.project_id != project_id:
                         raise ResourceNotFoundError("找不到当前项目的部署实例")
-                existing = next((op for op in reversed(self.list(project_id)) if op["direction"] == "export" and op.get("deployment_id") == deployment_id), None)
+                existing = next((op for op in reversed(self.list(project_id)) if not op.get("standalone") and op["direction"] == "export" and op.get("deployment_id") == deployment_id), None)
                 if existing:
                     with ProjectMutationAdmissionService(self.factory).operation(project_id=project_id, mutation_kind="model-transfer-create", resource_id=existing["operation_id"]):
                         with self._state_lock(existing["operation_id"]):
@@ -100,6 +145,26 @@ class ModelDeploymentTransferService:
                             return self.update(existing["operation_id"], "pending_export", progress_bytes=0, total_bytes=None, error=None, cancel_requested=False, actor=actor)
                 return self._create(project_id, direction, deployment_id=deployment_id, actor=actor)
         return self._create(project_id, direction, deployment_id=deployment_id, actor=actor)
+
+    def create_standalone(self, project_id: str, *, export_options: ModelPackageExportOptions | None = None, actor: str | None = None) -> dict:
+        """独立模型包共用后台消费者，不依赖部署或运行时配置。"""
+        op_id = f"model-package-transfer-{uuid4().hex}"
+        with ProjectMutationAdmissionService(self.factory).operation(project_id=project_id, mutation_kind="model-transfer-create", resource_id=op_id):
+            with self.unit() as unit:
+                if export_options:
+                    version = unit.models.get_model_version(export_options.model_version_id)
+                    model = unit.models.get_model(version.model_id) if version else None
+                    if model is None or model.project_id != project_id:
+                        raise ResourceNotFoundError("找不到当前项目的模型版本")
+                unit.model_transfers.save(
+                    operation_id=op_id, project_id=project_id,
+                    direction="export" if export_options else "import",
+                    state="pending_export" if export_options else "uploading",
+                    payload={"standalone": True, "actor": actor, "progress_bytes": 0,
+                             "export_options": export_options.model_dump() if export_options else None},
+                )
+                unit.commit()
+        return self.get(op_id)
 
     def _export_registry_lock(self, project_id: str):
         """串行登记与到期清理，避免并发请求创建多个相同实例导出。"""
@@ -126,15 +191,24 @@ class ModelDeploymentTransferService:
         """上传完成后让 worker 分析。"""
         return self.update(operation_id, "pending_analysis")
 
-    def analyze(self, operation_id: str, options: ImportOptions) -> dict:
+    def analyze(self, operation_id: str, options: ImportOptions | ModelPackageImportOptions) -> dict:
         """目标设置更改需要重新分析，不在请求中做大文件哈希。"""
         with self._state_lock(operation_id):
             op = self.get(operation_id)
             if op.get("dismissed") or op["state"] not in {"ready", "needs_attention", "failed"} or not op.get("manifest") or op.get("prepared_paths"):
                 raise InvalidRequestError("当前阶段不能修改导入设置")
-            return self.update(operation_id, "pending_analysis", options=options.model_dump(), cancel_requested=False, error=None)
+            if op.get("standalone") and not self.staged_package_available(op):
+                raise InvalidRequestError("上传暂存包已清理，请重新上传")
+            return self.update(
+                operation_id, "pending_analysis", options=options.model_dump(), cancel_requested=False,
+                error=None, import_stage=None, failure_code=None, import_check=None, idempotency_key=None,
+            )
 
-    def commit(self, operation_id: str, options: ImportOptions) -> dict:
+    def staged_package_available(self, op: dict) -> bool:
+        """检查现有暂存包是否可用于重新分析。"""
+        return self.storage.resolve(f"{self.root(op)}/package.zip").is_file()
+
+    def commit(self, operation_id: str, options: ImportOptions | ModelPackageImportOptions) -> dict:
         """只接受有效分析版本；重复提交回读已有结果。"""
         with self._state_lock(operation_id):
             op = self.get(operation_id)
@@ -148,7 +222,7 @@ class ModelDeploymentTransferService:
         """提交开始后不假装取消，返回当前真实状态。"""
         with self._state_lock(operation_id):
             op = self.get(operation_id)
-            if op["state"] in {"importing", "completed"}:
+            if op.get("dismissed") or op["state"] in {"importing", "completed"}:
                 raise InvalidRequestError("已经进入提交阶段，请查看当前结果")
             return self.update(operation_id, cancel_requested=True)
 
@@ -160,6 +234,36 @@ class ModelDeploymentTransferService:
                 raise InvalidRequestError("只能清除已结束且无需恢复的失败导入记录")
             if not op.get("dismissed"):
                 self.update(operation_id, dismissed=True)
+
+    def dismiss_standalone_import(self, operation_id: str, project_id: str) -> None:
+        """清除终态导入记录和暂存包，保留已登记模型、下载文件及短期回执。"""
+        op = self.get(operation_id, project_id, standalone=True)
+        def eligible(row: dict) -> bool:
+            """拒绝隐藏仍在运行或需要回滚的操作。"""
+            return row["direction"] == "import" and row["state"] in {"completed", "failed", "cancelled", "expired"} and not row.get("prepared_paths")
+        if not eligible(op):
+            raise InvalidRequestError("只能删除已结束且无需恢复的导入记录")
+        if op.get("dismissed"):
+            return
+        root = self.root(op)
+        lock_path = self.storage.resolve(f"{root}/worker.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with (
+                FileLock(str(lock_path), timeout=0),
+                ProjectMutationAdmissionService(self.factory).operation(
+                    project_id=project_id, mutation_kind="model-transfer-dismiss", resource_id=operation_id
+                ),
+                self._state_lock(operation_id),
+            ):
+                op = self.get(operation_id, project_id, standalone=True)
+                if not eligible(op):
+                    raise InvalidRequestError("只能删除已结束且无需恢复的导入记录")
+                for filename in ("unpacked", "package.zip", "package.writing"):
+                    self._remove(f"{root}/{filename}")
+                self.update(operation_id, dismissed=True, cancel_requested=False)
+        except (Timeout, OSError) as error:
+            raise ResourceConflictError("导入暂存文件暂不可清理，请重试") from error
 
     def _remove(self, key: str) -> None:
         """仅清理已计算的受管路径。"""
@@ -206,14 +310,23 @@ class ModelDeploymentTransferService:
                         if op.get("cancel_requested"):
                             raise TransferCancelled()
                         if op["direction"] == "export":
-                            self._export(op)
+                            if op.get("standalone"):
+                                self._export_standalone(op)
+                            else:
+                                self._export(op)
                         elif op["state"] in {"pending_import", "importing"}:
                             # 不同包可能创建同一模型目录；文件移动/回滚必须按目标项目串行。
                             project_lock = self.storage.resolve(f"projects/{op['project_id']}/model-deployment-transfers/import.lock")
                             with FileLock(str(project_lock), timeout=30):
-                                self._import(op)
+                                if op.get("standalone"):
+                                    self._import_standalone(op)
+                                else:
+                                    self._import(op)
                         else:
-                            self._analyze(op)
+                            if op.get("standalone"):
+                                self._analyze_standalone(op)
+                            else:
+                                self._analyze(op)
                     except TransferCancelled:
                         self.update(operation_id, "cancelled", cancel_requested=False)
                         self._remove(f"{root}/unpacked")
@@ -222,8 +335,34 @@ class ModelDeploymentTransferService:
                         if self.get(operation_id)["state"] == "completed":
                             self.update(operation_id, cleanup_error=str(error)[:1600])
                         else:
-                            recovering = bool(self.get(operation_id).get("prepared_paths"))
-                            self.update(operation_id, "importing" if recovering else "failed", error=str(error)[:1600])
+                            current = self.get(operation_id)
+                            recovering = bool(current.get("prepared_paths"))
+                            details = {"error": str(error)[:1600]}
+                            if current.get("standalone") and current["direction"] == "export":
+                                # 对前端公开业务原因，系统异常及本地路径仅记入 Worker 日志。
+                                if isinstance(error, (InvalidRequestError, ResourceNotFoundError)):
+                                    details = {"error": error.message, "export_failure_code": "source_invalid"}
+                                else:
+                                    _logger.exception("模型包导出失败：%s", operation_id)
+                                    storage_full = isinstance(error, OSError) and (
+                                        error.errno == ENOSPC or getattr(error, "winerror", None) == 112
+                                    )
+                                    details = {
+                                        "error": "存储空间不足，无法生成模型包" if storage_full else "模型包生成失败，请检查源文件和存储后重试",
+                                        "export_failure_code": "storage_full" if storage_full else "export_failed",
+                                    }
+                            if current.get("standalone") and current.get("import_stage"):
+                                storage_full = isinstance(error, OSError) and (
+                                    error.errno == ENOSPC or getattr(error, "winerror", None) == 112
+                                )
+                                details["failure_code"] = "storage_full" if storage_full else "import_failed"
+                            elif current.get("standalone") and current["direction"] == "import":
+                                if isinstance(error, ModelPackageCheckError):
+                                    details = {"error": error.message, "import_check": {**error.details, "message": error.message}}
+                                else:
+                                    _logger.exception("模型包检查失败：%s", operation_id)
+                                    details = {"error": "模型包检查未完成，请检查存储后重试"}
+                            self.update(operation_id, "importing" if recovering else "failed", **details)
                             self._remove(f"{root}/unpacked")
                 return True
         except Timeout:
@@ -245,7 +384,7 @@ class ModelDeploymentTransferService:
         """新包可用后回收旧实现的重复 ZIP；下载占用时留待下次处理。"""
         with self._export_registry_lock(current["project_id"]):
             for old in self.list(current["project_id"]):
-                if old["direction"] != "export" or old.get("deployment_id") != current["deployment_id"] or old["created_at"] >= current["created_at"]:
+                if old.get("standalone") or old["direction"] != "export" or old.get("deployment_id") != current["deployment_id"] or old["created_at"] >= current["created_at"]:
                     continue
                 root = self.root(old)
                 lock_path = self.storage.resolve(f"{root}/worker.lock")
@@ -258,6 +397,119 @@ class ModelDeploymentTransferService:
                             self.update(old["operation_id"], "expired", cancel_requested=False)
                 except (Timeout, OSError):
                     continue
+
+    def _export_standalone(self, op: dict) -> None:
+        """流式生成独立 ZIP，并在文件校验完成后公开下载。"""
+        op_id, root = op["operation_id"], self.root(op)
+        self.update(op_id, "exporting")
+        options = ModelPackageExportOptions.model_validate(op["export_options"])
+        progress = self._progress(op_id)
+        with self.unit() as unit:
+            package, sources = compile_model_package(unit, self.storage, op["project_id"], options, progress)
+        verify_model_package_files(package, sources)
+        destination = self.storage.resolve(f"{root}/package.zip")
+        write_package(destination, package, sources, progress)
+        digest, size = file_digest(destination)
+        self.update(op_id, "completed", manifest=package.model_dump(), file_name=options.file_name,
+                    total_bytes=size, progress_bytes=size, archive_sha256=digest,
+                    export_completed_at=datetime.now(timezone.utc).isoformat())
+
+    def _read_standalone(self, op: dict) -> ModelPackage:
+        """重新核对源归档和所有文件，暂存始终归属当前操作。"""
+        root = self.root(op)
+        self._remove(f"{root}/unpacked")
+        try:
+            package = read_package(
+                self.storage.resolve(f"{root}/package.zip"), self.storage.resolve(f"{root}/unpacked"),
+                self.limits, self._progress(op["operation_id"]), manifest_type=ModelPackage,
+            )
+        except PackageIntegrityError as error:
+            message = "ZIP 条目完整性校验失败" if error.reason == "crc" else "文件与清单中的 SHA-256 不一致"
+            raise ModelPackageCheckError("archive", error.reason, message, error.member) from error
+        except (ValidationError, KeyError) as error:
+            raise ModelPackageCheckError("archive", "manifest", "模型包清单格式不支持或内容缺失") from error
+        except BadZipFile as error:
+            raise ModelPackageCheckError("archive", "invalid_zip", "ZIP 文件损坏，无法读取模型包") from error
+        except (ValueError, NotImplementedError) as error:
+            raise ModelPackageCheckError("archive", "invalid_archive", "ZIP 文件路径、大小或内容不符合模型包规则") from error
+        try:
+            verify_model_package_files(package, {
+                item.key: self.storage.resolve(f"{root}/unpacked/{item.owner}/{item.path}") for item in package.files
+            })
+        except InvalidRequestError as error:
+            raise ModelPackageCheckError("model", "invalid_model", error.message) from error
+        except Exception as error:
+            _logger.exception("模型包结构无法读取")
+            raise ModelPackageCheckError("model", "unreadable_model", "模型文件结构无法读取") from error
+        return package
+
+    def _analyze_standalone(self, op: dict) -> None:
+        """完整检查 ZIP 后验证目标选择，冲突保持可修改。"""
+        op_id = op["operation_id"]
+        self.update(op_id, "analyzing")
+        package = self._read_standalone(op)
+        options = ModelPackageImportOptions.model_validate(op.get("options", {}))
+        with self.unit() as unit:
+            plan = plan_model_package_import(unit, self.factory, package, op["project_id"], options, op.get("plan", {}).get("mapping"))
+        revision = content_hash({"package": package.model_dump(), "plan": plan, "options": options.model_dump()})
+        size = sum(item.byte_size for item in package.files)
+        self.update(op_id, "ready" if plan["can_import"] else "needs_attention", manifest=package.model_dump(),
+                    options=options.model_dump(), plan=plan, analysis_revision=revision, error=None,
+                    progress_bytes=size, total_bytes=size)
+
+    def _import_standalone(self, op: dict) -> None:
+        """回读已分析包，在新目录登记全部文件或回收未提交文件。"""
+        op_id, root = op["operation_id"], self.root(op)
+        if op.get("prepared_paths"):
+            for path in op["prepared_paths"]:
+                self._remove(path)
+            self.update(op_id, prepared_paths=[])
+        self.update(op_id, import_stage="package_check")
+        package = self._read_standalone(op)
+        options = ModelPackageImportOptions.model_validate(op.get("options", {}))
+        with self.unit() as unit:
+            plan = plan_model_package_import(unit, self.factory, package, op["project_id"], options, op["plan"]["mapping"])
+        if plan != op["plan"] or package.model_dump() != op["manifest"]:
+            self.update(op_id, "needs_attention", error="模型包或目标已有变化，请重新检查", plan=plan)
+            return
+        prefix = f"projects/{op['project_id']}/models/imported"
+        ids = plan["mapping"]
+        prefixes = {"version": f"{prefix}/versions/{ids['version']}", **{
+            str(index): f"{prefix}/builds/{build_id}" for index, build_id in enumerate(ids["builds"])
+        }}
+        if any(self.storage.resolve(path).exists() for path in prefixes.values()):
+            raise InvalidRequestError("导入目录已存在")
+        with self._state_lock(op_id):
+            if self.get(op_id).get("cancel_requested"):
+                raise TransferCancelled()
+            self.update(op_id, "importing", prepared_paths=list(prefixes.values()), import_stage="file_write")
+        try:
+            for owner, path in prefixes.items():
+                suffix = "version" if owner == "version" else f"build/{owner}"
+                source = f"{root}/unpacked/{suffix}"
+                self.storage.resolve(source).mkdir(parents=True, exist_ok=True)
+                self.storage.move_tree(source, f"{path}/files")
+            self.update(op_id, import_stage="registration")
+            with self.unit() as unit:
+                current_plan = plan_model_package_import(unit, self.factory, package, op["project_id"], options, ids)
+                if current_plan != plan:
+                    raise InvalidRequestError("目标模型已变化，请重新检查")
+                result = register_model_package(unit, package, op["project_id"], plan, options, prefixes)
+                row = unit.model_transfers.get(op_id)
+                unit.model_transfers.save(
+                    operation_id=op_id, project_id=op["project_id"], direction="import", state="completed",
+                    payload={**row.payload_json, "prepared_paths": [], "result": result, "error": None,
+                             "registered_at": datetime.now(timezone.utc).isoformat()},
+                )
+                unit.commit()
+        except Exception:
+            if self.get(op_id)["state"] != "completed":
+                for path in prefixes.values():
+                    self._remove(path)
+                self.update(op_id, prepared_paths=[])
+            raise
+        self._remove(f"{root}/unpacked")
+        self._remove(f"{root}/package.zip")
 
     def _analyze(self, op: dict) -> None:
         """每次重新分析文件，防止已校验暂存被修改后提交。"""
@@ -337,12 +589,26 @@ class ModelDeploymentTransferService:
     def maintenance(self) -> None:
         """短期文件到期清理；未完成提交清单不能被 TTL 删除。"""
         now = datetime.now(timezone.utc)
+
+        def operation_age(op: dict) -> timedelta:
+            """独立导出从生成完成计算保留期，清理 ZIP 不推迟删除回执。"""
+            stamp = op.get("export_completed_at") or op["updated_at"]
+            return now - datetime.fromisoformat(stamp)
+
+        def keep_files(op: dict, age: timedelta) -> bool:
+            """正常保留期内及已清理、尚未到回执期限时都跳过文件操作。"""
+            if op.get("cleanup_error"):
+                return False
+            return age < timedelta(hours=self.limits.temporary_retention_hours) or (
+                bool(op.get("file_cleaned_at")) and age < timedelta(days=self.limits.receipt_retention_days)
+            )
+
         for op in self.list():
             if op["state"] in {"pending_export", "exporting", "pending_analysis", "analyzing", "pending_import", "importing"} or op.get("prepared_paths"):
                 continue
-            age = now - datetime.fromisoformat(op["updated_at"])
+            age = operation_age(op)
             root = self.root(op)
-            if not op.get("cleanup_error") and age < timedelta(hours=self.limits.temporary_retention_hours):
+            if keep_files(op, age):
                 continue
             lock_path = self.storage.resolve(f"{root}/worker.lock")
             lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -351,10 +617,10 @@ class ModelDeploymentTransferService:
                     with FileLock(str(lock_path), timeout=0):
                         # 等锁期间可能重新导出；不能按旧列表状态清理新操作。
                         op = self.get(op["operation_id"])
-                        age = now - datetime.fromisoformat(op["updated_at"])
+                        age = operation_age(op)
                         if op["state"] in {"pending_export", "exporting", "pending_analysis", "analyzing", "pending_import", "importing"} or op.get("prepared_paths"):
                             continue
-                        if not op.get("cleanup_error") and age < timedelta(hours=self.limits.temporary_retention_hours):
+                        if keep_files(op, age):
                             continue
                         self._remove(f"{root}/unpacked")
                         self._remove(f"{root}/package.zip")
@@ -364,6 +630,9 @@ class ModelDeploymentTransferService:
                         if age >= timedelta(days=self.limits.receipt_retention_days):
                             # 文件锁释放后才能删除 Windows 的锁文件；目录删除失败则保留回执重试。
                             pass
+                        elif op.get("standalone") and op["direction"] == "export" and op["state"] == "completed":
+                            self.update(op["operation_id"], file_cleaned_at=now.isoformat(),
+                                        export_completed_at=op.get("export_completed_at") or op["updated_at"])
                         elif op["state"] not in {"completed", "failed", "cancelled", "expired"} or (op["direction"] == "export" and op["state"] == "completed"):
                             self.update(op["operation_id"], "expired")
                     if age >= timedelta(days=self.limits.receipt_retention_days):

@@ -1,3 +1,4 @@
+import { modelDisplayName, modelVersionDisplayName } from '../model-display-name'
 import { computed, ref, type Ref } from 'vue'
 
 import {
@@ -21,12 +22,12 @@ interface ResetPlatformBaseModelSelectionOptions {
 export function usePlatformBaseModelSelection(options: {
   baseModels: Ref<PlatformBaseModelSummary[]>
   sourceModels: Ref<DeploymentSourceModelSummary[]>
-  onError: (message: string) => void
   detailFailedMessage: () => string
 }) {
   const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
   const selectedModelBrowseId = ref('')
   const selectedModelDetailLoading = ref(false)
+  const selectedModelDetailError = ref('')
   const baseModelPickerOpen = ref(false)
   const trainingSelectedModelId = ref('')
   const warmStartModelVersionId = ref('')
@@ -82,8 +83,8 @@ export function usePlatformBaseModelSelection(options: {
         matchedVersions.push({
           model_version_id: modelVersionId,
           source_kind: version.source_kind || 'project-training-output',
-          title: sourceModel.model_name.trim() || modelVersionId,
-          subtitle: modelVersionId,
+          title: modelDisplayName(sourceModel),
+          subtitle: modelVersionDisplayName(version, true),
         })
       }
     }
@@ -96,6 +97,7 @@ export function usePlatformBaseModelSelection(options: {
     selectedModelBrowseId.value = modelId
     selectedModelDetailLoading.value = true
     selectedModelDetail.value = null
+    selectedModelDetailError.value = ''
     try {
       const detail = await getPlatformBaseModelDetail(modelId)
       if (requestSerial === detailRequestSerial && selectedModelBrowseId.value === modelId) {
@@ -103,7 +105,7 @@ export function usePlatformBaseModelSelection(options: {
       }
     } catch (error) {
       if (requestSerial === detailRequestSerial) {
-        options.onError(error instanceof Error ? error.message : options.detailFailedMessage())
+        selectedModelDetailError.value = error instanceof Error ? error.message : options.detailFailedMessage()
       }
     } finally {
       if (requestSerial === detailRequestSerial) {
@@ -117,7 +119,10 @@ export function usePlatformBaseModelSelection(options: {
     if (options.baseModels.value.length === 0) {
       return
     }
-    const preferredModelId = trainingSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
+    const preferred = trainingSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id
+    const available = (model: PlatformBaseModelSummary) => model.available_versions.some(version => version.checkpoint_state === 'present')
+    const preferredModelId = options.baseModels.value.find(model => model.model_id === preferred && available(model))?.model_id
+      || options.baseModels.value.find(available)?.model_id || options.baseModels.value[0].model_id
     if (preferredModelId && selectedModelDetail.value?.model_id !== preferredModelId) {
       await selectBaseModel(preferredModelId)
     }
@@ -127,13 +132,13 @@ export function usePlatformBaseModelSelection(options: {
     baseModelPickerOpen.value = false
   }
 
-  function applyTrainingModelSelection(model: PlatformBaseModelDetail): void {
+  function applyTrainingModelSelection(model: PlatformBaseModelSummary): void {
     trainingSelectedModelId.value = model.model_id
     warmStartModelVersionId.value = ''
   }
 
   function applyTrainingVersionSelection(payload: {
-    model: PlatformBaseModelDetail
+    model: PlatformBaseModelSummary
     modelVersionId: string
   }): void {
     trainingSelectedModelId.value = payload.model.model_id
@@ -149,6 +154,7 @@ export function usePlatformBaseModelSelection(options: {
     selectedModelDetail.value = null
     selectedModelBrowseId.value = ''
     selectedModelDetailLoading.value = false
+    selectedModelDetailError.value = ''
     if (options.keepPickerOpen !== true) {
       baseModelPickerOpen.value = false
     }
@@ -165,6 +171,7 @@ export function usePlatformBaseModelSelection(options: {
       selectedModelBrowseId.value = ''
       selectedModelDetail.value = null
       selectedModelDetailLoading.value = false
+      selectedModelDetailError.value = ''
     }
     if (!options.baseModels.value.some((model) => model.model_id === trainingSelectedModelId.value)) {
       trainingSelectedModelId.value = ''
@@ -176,6 +183,7 @@ export function usePlatformBaseModelSelection(options: {
     selectedModelDetail,
     selectedModelBrowseId,
     selectedModelDetailLoading,
+    selectedModelDetailError,
     baseModelPickerOpen,
     trainingSelectedModelId,
     warmStartModelVersionId,

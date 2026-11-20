@@ -243,6 +243,7 @@ def test_training_and_independent_pose_metrics_share_actual_pipeline(
         dataset_storage=storage,
         score_threshold=0.001,
         output_prefix="evaluation",
+        split_name="val",
         samples=[
             {
                 "image_path": "image.png",
@@ -261,3 +262,5 @@ def test_training_and_independent_pose_metrics_share_actual_pipeline(
     for metric in ("bbox_map50", "bbox_map50_95", "oks_ap50", "oks_ap50_95"):
         assert abs(train[metric] - getattr(result, metric)) < 1e-6
     assert result.oks_ap50 == pytest.approx(0 if outside else 1)
+    assert result.report_payload["split_name"] == "val"
+    assert result.samples_payload[0]["ground_truth"][0]["keypoints"] == keypoints

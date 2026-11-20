@@ -17,6 +17,10 @@ IMAGE_PIXEL_FORMAT_RGB24 = "rgb24"
 IMAGE_PIXEL_FORMAT_GRAY8 = "gray8"
 
 
+class ImageDecodeError(InvalidRequestError):
+    """编码图片为空或无法解码，调用方可按单个输入处理。"""
+
+
 @dataclass(frozen=True)
 class ImagePayloadMetadata:
     """描述 image-ref payload 中和图片内存布局相关的字段。"""
@@ -209,7 +213,7 @@ def decode_image_bytes_to_matrix(
         details: dict[str, object] = {"reason": "empty_bytes"}
         if transport_kind is not None:
             details["transport_kind"] = transport_kind
-        raise InvalidRequestError(error_message, details=details)
+        raise ImageDecodeError(error_message, details=details)
     if _is_raw_media_type(metadata.media_type):
         return _decode_raw_image_bytes_to_matrix(
             cv2_module=cv2_module,
@@ -232,7 +236,7 @@ def decode_image_bytes_to_matrix(
         }
         if transport_kind is not None:
             details["transport_kind"] = transport_kind
-        raise InvalidRequestError(error_message, details=details)
+        raise ImageDecodeError(error_message, details=details)
     return image_matrix
 
 

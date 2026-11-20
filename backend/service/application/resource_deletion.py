@@ -221,6 +221,7 @@ class ResourceDeletionService:
             "revision": self._revision(plan),
             "deleted_models": deleted,
             "retained_models": retained,
+            "has_file_cleanup": bool(plan.paths),
         }
 
     def recover(self) -> dict[str, int]:

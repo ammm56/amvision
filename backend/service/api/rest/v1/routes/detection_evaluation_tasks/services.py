@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.detection_evaluation_tasks.outputs import (
+    _DETECTION_EVALUATION_OUTPUT_FILE_ORDER,
     DetectionEvaluationOutputFileSummaryResponse,
     DetectionEvaluationReportResponse,
-    _DETECTION_EVALUATION_OUTPUT_FILE_ORDER,
     _build_detection_evaluation_output_file_summary_response,
     _read_detection_evaluation_report,
 )
@@ -20,18 +20,30 @@ from backend.service.api.rest.v1.routes.detection_evaluation_tasks.responses imp
 from backend.service.api.rest.v1.routes.detection_evaluation_tasks.schemas import (
     DetectionEvaluationTaskCreateRequestBody,
 )
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.application.model_type_support import (
     require_optional_supported_platform_model_type,
     require_supported_platform_model_type,
 )
+from backend.service.application.models.evaluation.detection_evaluation_artifacts import (
+    failed_sample_images_key,
+)
 from backend.service.application.project_access import require_explicit_project_access
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
+from backend.service.application.tasks.task_service import (
+    SqlAlchemyTaskService,
+    TaskQueryFilters,
+)
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
-from backend.service.domain.models.platform_model_support import normalize_platform_model_type
+from backend.service.domain.models.platform_model_support import (
+    normalize_platform_model_type,
+)
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 DETECTION_EVALUATION_TASK_KIND = "detection-evaluation"
 
@@ -60,26 +72,10 @@ def create_detection_evaluation_task_response(
         visible_project_ids=principal.project_ids,
         project_id=body.project_id,
     )
-    model_type = _normalize_detection_evaluation_model_type(body.model_type)
-    service_cls, request_cls = _load_detection_evaluation_service_types()
-    service = service_cls(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
+    service, request = _build_detection_evaluation_request(body, session_factory, dataset_storage)
+    model_type = request.model_type
     submission = service.submit_evaluation_task(
-        request_cls(
-            project_id=body.project_id,
-            model_type=model_type,
-            model_version_id=body.model_version_id,
-            dataset_export_id=body.dataset_export_id,
-            dataset_export_manifest_key=body.dataset_export_manifest_key,
-            score_threshold=body.score_threshold,
-            nms_threshold=body.nms_threshold,
-            save_result_package=body.save_result_package,
-            extra_options=dict(body.extra_options),
-        ),
-        created_by=principal.principal_id,
-        display_name=body.display_name,
+        request, created_by=principal.principal_id, display_name=body.display_name,
     )
     return DetectionEvaluationTaskSubmissionResponse(
         task_id=submission.task_id,
@@ -95,6 +91,34 @@ def create_detection_evaluation_task_response(
     )
 
 
+def _build_detection_evaluation_request(body, session_factory, dataset_storage):
+    """使提交与预检使用同一个请求转换。"""
+    model_type = _normalize_detection_evaluation_model_type(body.model_type)
+    service_cls, request_cls = _load_detection_evaluation_service_types()
+    service = service_cls(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    return service, request_cls(
+            project_id=body.project_id,
+            model_type=model_type,
+            model_version_id=body.model_version_id,
+            dataset_export_id=body.dataset_export_id,
+            dataset_export_manifest_key=body.dataset_export_manifest_key,
+            score_threshold=body.score_threshold,
+            nms_threshold=body.nms_threshold,
+            save_result_package=body.save_result_package,
+            extra_options=dict(body.extra_options),
+    )
+
+
+def preview_detection_evaluation(body, principal, session_factory, dataset_storage) -> dict:
+    """无副作用地检查所选评估来源。"""
+    require_explicit_project_access(visible_project_ids=principal.project_ids, project_id=body.project_id)
+    service, request = _build_detection_evaluation_request(body, session_factory, dataset_storage)
+    return service.preview_evaluation_task(request)
+
+
 def list_detection_evaluation_task_responses(
     *,
     principal: AuthenticatedPrincipal,
@@ -106,6 +130,7 @@ def list_detection_evaluation_task_responses(
     dataset_export_id: str | None,
     dataset_export_manifest_key: str | None,
     model_version_id: str | None,
+    offset: int,
     limit: int,
 ) -> list[DetectionEvaluationTaskSummaryResponse]:
     """按公开筛选条件列出 detection 评估任务响应。"""
@@ -122,7 +147,7 @@ def list_detection_evaluation_task_responses(
                     task_kind=DETECTION_EVALUATION_TASK_KIND,
                     state=state,
                     created_by=created_by,
-                    limit=limit,
+                    limit=None,
                 )
             )
         )
@@ -143,7 +168,7 @@ def list_detection_evaluation_task_responses(
             task,
             model_type=_resolve_detection_evaluation_model_type_from_task(task),
         )
-        for task in visible_tasks[:limit]
+        for task in visible_tasks[offset : offset + limit]
     ]
 
 
@@ -210,6 +235,35 @@ def list_detection_evaluation_output_file_responses(
         )
         for file_name in _DETECTION_EVALUATION_OUTPUT_FILE_ORDER
     ]
+
+
+def read_evaluation_sample_snapshot(
+    task_id: str, principal: AuthenticatedPrincipal, session_factory: SessionFactory, storage: LocalDatasetStorage,
+    *, failed_index: int | None = None,
+) -> tuple[object, list[dict]]:
+    """从已授权评估的正式输出读取样本快照。"""
+    from backend.service.api.rest.v1.routes.detection_evaluation_tasks.outputs import (
+        _resolve_detection_evaluation_output_file_object_key,
+    )
+
+    task = _require_visible_detection_evaluation_task(
+        principal=principal, task_id=task_id, session_factory=session_factory, include_events=False,
+    ).task
+    key = _resolve_detection_evaluation_output_file_object_key(task=task, file_name="detections")
+    if not key or not storage.resolve_deletion_path(key).is_file():
+        raise ResourceNotFoundError("评估样本快照尚不可用")
+    payload = storage.read_json(key)
+    if not isinstance(payload, list):
+        raise InvalidRequestError("评估样本快照格式不正确")
+    samples = [item for item in payload if isinstance(item, dict) and type(item.get("image_index")) is int]
+    if failed_index is not None and not any(item["image_index"] == failed_index for item in samples):
+        index_key = failed_sample_images_key(key)
+        if storage.resolve_deletion_path(index_key).is_file():
+            failed_images = storage.read_json(index_key)
+            image_key = failed_images.get(str(failed_index)) if isinstance(failed_images, dict) else None
+            if isinstance(image_key, str) and image_key:
+                samples.append({"image_index": failed_index, "image_path": image_key})
+    return task, samples
 
 
 def _normalize_detection_evaluation_model_type(model_type: str) -> str:

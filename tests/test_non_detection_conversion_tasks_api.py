@@ -49,6 +49,39 @@ def test_create_list_detail_and_pending_result_for_non_detection_conversion_task
 
     try:
         with context.client:
+            if task_segment == "classification" and model_type == "yolov8":
+                wrong_task_body = {"project_id": "project-1", "model_type": model_type,
+                                   "source_model_version_id": source_model_version_id}
+                wrong_task_preview = context.client.post(
+                    "/api/v1/models/detection/conversion-tasks/preview", headers=_build_headers(),
+                    json={**wrong_task_body, "target": "onnx"},
+                )
+                wrong_task_submit = context.client.post(
+                    "/api/v1/models/detection/conversion-tasks/onnx", headers=_build_headers(),
+                    json=wrong_task_body,
+                )
+                wrong_model_preview = context.client.post(
+                    "/api/v1/models/classification/conversion-tasks/preview", headers=_build_headers(),
+                    json={**wrong_task_body, "model_type": "yolo11", "target": "onnx"},
+                )
+                wrong_model_submit = context.client.post(
+                    "/api/v1/models/classification/conversion-tasks", headers=_build_headers(),
+                    json={**wrong_task_body, "model_type": "yolo11", "target_formats": ["onnx"]},
+                )
+                assert [wrong_task_preview.status_code, wrong_task_submit.status_code,
+                        wrong_model_preview.status_code, wrong_model_submit.status_code] == [400] * 4
+                assert context.client.get("/api/v1/models/detection/conversion-tasks?project_id=project-1", headers=_build_headers()).json() == []
+            preview = context.client.post(
+                f"/api/v1/models/{task_segment}/conversion-tasks/preview",
+                headers=_build_headers(),
+                json={"project_id": "project-1", "model_type": model_type,
+                      "source_model_version_id": source_model_version_id, "target": "onnx"},
+            )
+            assert preview.status_code == 200, preview.text
+            assert preview.json()["task_type"] == task_segment
+            assert preview.json()["steps"]
+            before = context.client.get(f"/api/v1/models/{task_segment}/conversion-tasks?project_id=project-1", headers=_build_headers())
+            assert before.json() == []
             create_response = context.client.post(
                 f"/api/v1/models/{task_segment}/conversion-tasks",
                 headers=_build_headers(),

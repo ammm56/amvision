@@ -1,4 +1,5 @@
 const zh = {
+  modelPackageOrigin: '模型包导入',
   resourceType: '资源类型', source: '来源 ID', target: '目标 ID', modelVersion: '模型版本', modelBuild: '模型构建', deployment: '部署实例', size: '大小', origin: '来源', actions: '操作',
   execution: '执行配置', lifecycle: '预热与保活', backendOptions: '后端参数', performanceGoal: '性能目标', keepWarm: '保持设备活跃', keepWarmInterval: '保活间隔（秒）', warmupCount: '预热次数', warmupSize: '预热尺寸', performanceHint: '性能模式', threads: '线程数', streams: '流数', backendKind: '后端类型', executionScope: '执行范围', overflowPolicy: '满载策略', isolationLevel: '隔离级别', coreType: '调度核心类型', hyperThreading: '超线程', cpuPinning: 'CPU 绑核',
   selectFile: '选择部署包', preparing: '正在准备', clear: '清除',
@@ -6,6 +7,7 @@ const zh = {
   uploading: '上传中', pending_export: '等待导出', exporting: '导出中', pending_analysis: '等待分析', analyzing: '分析中', ready: '待导入', needs_attention: '需要处理', pending_import: '等待导入', importing: '导入中', completed: '已完成', failed: '失败', cancelled: '已取消', expired: '已过期',
 }
 const en: Record<keyof typeof zh, string> = {
+  modelPackageOrigin: 'Model package import',
   resourceType: 'Resource type', source: 'Source ID', target: 'Target ID', modelVersion: 'Model version', modelBuild: 'Model build', deployment: 'Deployment', size: 'Size', origin: 'Source', actions: 'Actions',
   execution: 'Execution', lifecycle: 'Warmup and keep-alive', backendOptions: 'Backend options', performanceGoal: 'Performance goal', keepWarm: 'Keep device active', keepWarmInterval: 'Keep-alive interval (seconds)', warmupCount: 'Warmup runs', warmupSize: 'Warmup size', performanceHint: 'Performance mode', threads: 'Threads', streams: 'Streams', backendKind: 'Backend type', executionScope: 'Execution scope', overflowPolicy: 'Capacity policy', isolationLevel: 'Isolation level', coreType: 'Scheduling core type', hyperThreading: 'Hyper-threading', cpuPinning: 'CPU pinning',
   selectFile: 'Choose deployment package', preparing: 'Preparing', clear: 'Clear',

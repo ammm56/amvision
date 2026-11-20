@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import io
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from threading import Event, Thread
 
@@ -15,6 +17,8 @@ import backend.service.application.models.training.yolox_detection_task_service 
 from backend.contracts.datasets.exports.coco_detection_export import (
     COCO_DETECTION_DATASET_FORMAT,
 )
+from backend.service.domain.files.model_file import ModelFile
+from backend.service.domain.models.model_records import Model, ModelVersion
 from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
 )
@@ -109,6 +113,109 @@ def _training_execution(
         "amp": amp,
         "validation": {"interval_epochs": evaluation_interval},
     }
+
+
+def test_training_preflight_checks_live_export_without_creating_task(tmp_path: Path) -> None:
+    """核对可读导出通过预检，缺失清单或项目串用阻止预检。"""
+    client, factory, storage, _queue = _create_test_client(tmp_path)
+    key = "projects/project-1/datasets/dataset-1/exports/preview/manifest.json"
+    export = _seed_completed_dataset_export(
+        session_factory=factory, dataset_storage=storage,
+        dataset_export_id="preview-export", manifest_object_key=key,
+    )
+    with factory.create_session() as session:
+        unit = SqlAlchemyUnitOfWork(session)
+        unit.dataset_exports.save_dataset_export(replace(export, split_names=("train", "val")))
+        unit.commit()
+    url = "/api/v1/models/detection/training-tasks"
+    headers = _build_training_headers()
+    body = {
+        "project_id": "project-1", "model_type": "yolox", "model_scale": "s",
+        "dataset_export_id": export.dataset_export_id, "dataset_export_manifest_key": key,
+        "recipe_id": "yolox-default", "output_model_name": "preview-output",
+    }
+    try:
+        with client:
+            response = client.post(f"{url}/preview", headers=headers, json=body)
+            assert response.status_code == 200, response.text
+            assert response.json()["dataset_export_id"] == export.dataset_export_id
+            assert client.get(url, headers=headers, params={"project_id": "project-1"}).json() == []
+            with factory.create_session() as session:
+                unit = SqlAlchemyUnitOfWork(session)
+                unit.models.save_model(Model(
+                    model_id="existing-family", project_id="project-1", model_name="taken-output",
+                    model_type="yolo11", task_type="detection", model_scale="s",
+                ))
+                unit.commit()
+            conflict = {**body, "output_model_name": "taken-output"}
+            for request_path in (url, f"{url}/preview"):
+                rejected = client.post(request_path, headers=headers, json=conflict)
+                assert rejected.status_code == 400, rejected.text
+                assert rejected.json()["error"]["details"]["existing_model_type"] == "yolo11"
+            assert client.get(url, headers=headers, params={"project_id": "project-1"}).json() == []
+            assert client.post(f"{url}/preview", headers=headers, json={**body, "dataset_export_manifest_key": "incorrect"}).status_code == 400
+            storage.resolve(key).unlink()
+            assert client.post(f"{url}/preview", headers=headers, json=body).status_code == 400
+    finally:
+        factory.engine.dispose()
+
+
+def test_training_preflight_reports_independent_failures_and_clears_after_repair(tmp_path: Path) -> None:
+    """在隔离导出中同时发现缺失标注文件与登记摘要不匹配，并验证修复后通过。"""
+    client, factory, storage, _queue = _create_test_client(tmp_path)
+    prefix = "projects/project-1/datasets/dataset-1/exports/qa"
+    key = f"{prefix}/manifest.json"
+    export = _seed_completed_dataset_export(
+        session_factory=factory, dataset_storage=storage,
+        dataset_export_id="qa-export", manifest_object_key=key,
+    )
+    checkpoint_key = "projects/project-1/models/qa/initial.pt"
+    registered_content = b"registered checkpoint"
+    storage.write_bytes(checkpoint_key, b"modified checkpoint")
+    with factory.create_session() as session:
+        unit = SqlAlchemyUnitOfWork(session)
+        unit.dataset_exports.save_dataset_export(replace(export, split_names=("train", "val")))
+        unit.models.save_model(Model("qa-source", "project-1", "qa-source", "yolox", "detection", "s"))
+        unit.models.save_model_version(ModelVersion("qa-initial", "qa-source", "training-output"))
+        unit.model_files.save_model_file(ModelFile(
+            file_id="qa-file", project_id="project-1", model_id="qa-source", model_version_id="qa-initial",
+            file_type=YOLOX_CHECKPOINT_FILE, logical_name="initial.pt", storage_uri=checkpoint_key,
+            metadata={"sha256": sha256(registered_content).hexdigest()},
+        ))
+        unit.commit()
+    missing = storage.resolve(f"{prefix}/annotations/instances_val.json")
+    original_annotation = missing.read_bytes()
+    missing.unlink()
+    url = "/api/v1/models/detection/training-tasks"
+    headers = _build_training_headers()
+    body = {
+        "project_id": "project-1", "model_type": "yolox", "model_scale": "s",
+        "dataset_export_id": export.dataset_export_id, "dataset_export_manifest_key": key,
+        "recipe_id": "yolox-default", "output_model_name": "qa-training",
+        "warm_start_model_version_id": "qa-initial",
+    }
+    try:
+        with client:
+            response = client.post(f"{url}/preview", headers=headers, json=body)
+            assert response.status_code == 400, response.text
+            checks = {item["check"]: item for item in response.json()["error"]["details"]["checks"]}
+            assert checks["dataset_export"]["status"] == "failed"
+            assert checks["dataset_export"]["missing_files"] == ["annotations/instances_val.json"]
+            assert checks["initialization"]["status"] == "failed"
+            assert "摘要与登记值不一致" in checks["initialization"]["message"]
+            assert checks["output_model"]["status"] == "passed"
+            assert checks["environment"]["status"] == "deferred"
+
+            storage.write_bytes(f"{prefix}/annotations/instances_val.json", original_annotation)
+            storage.write_bytes(checkpoint_key, registered_content)
+            repaired = client.post(f"{url}/preview", headers=headers, json=body)
+            assert repaired.status_code == 200, repaired.text
+            assert {item["check"]: item["status"] for item in repaired.json()["checks"]} == {
+                "dataset_export": "passed", "initialization": "passed", "output_model": "passed", "environment": "deferred",
+            }
+            assert client.get(url, headers=headers, params={"project_id": "project-1"}).json() == []
+    finally:
+        factory.engine.dispose()
 
 
 def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) -> None:
@@ -1360,6 +1467,19 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
                 for event in paused_payload["events"]
             )
 
+            resume_path = f"/api/v1/models/detection/training-tasks/{task_id}/resume/preview"
+            checkpoint = dataset_storage.resolve(paused_payload["latest_checkpoint_object_key"])
+            hidden_checkpoint = checkpoint.with_name("paused-checkpoint-hidden.pt")
+            checkpoint.rename(hidden_checkpoint)
+            try:
+                blocked = client.get(resume_path, headers=_build_training_headers())
+                assert blocked.status_code == 400, blocked.text
+                assert blocked.json()["error"]["details"]["resume_check"] == "checkpoint"
+            finally:
+                hidden_checkpoint.rename(checkpoint)
+            resume_preview = client.get(resume_path, headers=_build_training_headers())
+            assert resume_preview.status_code == 200, resume_preview.text
+            assert resume_preview.json()["checkpoint_name"] == Path(paused_payload["latest_checkpoint_object_key"]).name
             resume_response = client.post(
                 f"/api/v1/models/detection/training-tasks/{task_id}/resume",
                 headers=_build_training_headers(),

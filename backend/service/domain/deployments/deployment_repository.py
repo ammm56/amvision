@@ -10,6 +10,15 @@ from backend.service.domain.deployments.deployment_instance import DeploymentIns
 class DeploymentInstanceRepository(Protocol):
     """定义 DeploymentInstance 的最小读写接口。"""
 
+    def list_version_references(
+        self, *, project_id: str, model_version_id: str, query: str | None,
+        offset: int, limit: int,
+        model_build_id: str | None = None,
+    ) -> tuple[tuple[DeploymentInstance, ...], int]:
+        """分页读取项目内直接绑定版本的部署和筛选总数。"""
+
+        ...
+
     def save_deployment_instance(self, deployment_instance: DeploymentInstance) -> None:
         """保存一个 DeploymentInstance。
 

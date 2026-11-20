@@ -26,6 +26,7 @@ def export_yolox_onnx(
     session: object,
     output_path: Path,
     output_object_key: str,
+    opset_version: int = YOLOX_ONNX_EXPORT_OPSET_VERSION,
 ) -> dict[str, object]:
     """把 YOLOX PyTorch checkpoint 导出为 ONNX。"""
 
@@ -37,14 +38,14 @@ def export_yolox_onnx(
             model=session.model,
             model_args=(dummy_input,),
             output_path=output_path,
-            opset_version=YOLOX_ONNX_EXPORT_OPSET_VERSION,
+            opset_version=opset_version,
             input_names=YOLOX_EXPORT_INPUT_NAMES,
             output_names=YOLOX_EXPORT_OUTPUT_NAMES,
         )
     return {
         "stage": "export-onnx",
         "object_uri": output_object_key,
-        "opset_version": YOLOX_ONNX_EXPORT_OPSET_VERSION,
+        "opset_version": opset_version,
         "input_size": session.runtime_target.model_input_spec.spatial_size.to_payload(),
         "model_input_spec": session.runtime_target.model_input_spec.to_payload(),
         "input_tensor": {

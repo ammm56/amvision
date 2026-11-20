@@ -18,6 +18,7 @@ _ORM_MODULES = (
     "backend.service.infrastructure.persistence.resource_deletion_repository",
     "backend.service.infrastructure.persistence.model_orm",
     "backend.service.infrastructure.persistence.model_file_orm",
+    "backend.service.infrastructure.persistence.model_submission_repository",
     "backend.service.infrastructure.persistence.dataset_orm",
     "backend.service.infrastructure.persistence.dataset_import_orm",
     "backend.service.infrastructure.persistence.dataset_export_orm",

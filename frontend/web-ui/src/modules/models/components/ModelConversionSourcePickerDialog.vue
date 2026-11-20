@@ -18,7 +18,7 @@
             class="conversion-source-model" :class="{ 'is-selected': model.model_id === selectedModel?.model_id }"
             @click="$emit('select-model', model.model_id)"
           >
-            <strong>{{ model.model_name }}</strong>
+            <strong>{{ modelDisplayName(model) }}</strong>
             <span>{{ model.model_type }} · {{ model.task_type }} · {{ model.model_scale }}</span>
             <span>{{ model.model_id }}</span>
           </button>
@@ -27,9 +27,9 @@
     </template>
     <template #detail>
       <div v-if="selectedModel" class="conversion-source-versions">
-        <h3>{{ selectedModel.model_name }}</h3>
+        <h3>{{ modelDisplayName(selectedModel) }}</h3>
         <div v-for="version in selectedModel.available_versions" :key="version.model_version_id" class="conversion-source-version" :aria-current="version.model_version_id === selectedVersionId ? 'true' : undefined">
-          <strong>{{ version.model_version_id }}</strong>
+          <strong>{{ modelVersionDisplayName(version) }}</strong>
           <span>{{ version.source_kind }}</span>
           <span v-if="Array.isArray(version.metadata.category_names)">{{ t('modelConversionSource.categoryCount', { count: version.metadata.category_names.length }) }}</span>
           <span v-if="conversionSourceIssue(version)" role="status">{{ t(`modelConversionSource.${conversionSourceIssue(version)}`) }}</span>
@@ -51,6 +51,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { DeploymentSourceModelSummary, ModelTaskType } from '../services/model.service'
 import { conversionSourceIssue } from '../conversion-source-support'
+import { modelDisplayName, modelVersionDisplayName } from '../model-display-name'
 import Button from '@/shared/ui/components/Button.vue'
 import ModelPickerDialogShell from '@/shared/ui/components/ModelPickerDialogShell.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -74,7 +75,7 @@ const { t } = useI18n()
 const search = ref('')
 const filteredModels = computed(() => {
   const query = search.value.trim().toLowerCase()
-  return props.models.filter((model) => [model.model_name, model.model_id, model.model_type, model.model_scale].some((value) => value.toLowerCase().includes(query)))
+  return props.models.filter((model) => [modelDisplayName(model), model.model_name, model.model_id, model.model_type, model.model_scale].some((value) => value.toLowerCase().includes(query)))
 })
 watch(() => [props.open, props.selectedTaskType], () => { search.value = '' })
 </script>

@@ -274,6 +274,7 @@ class SqlAlchemyPoseEvaluationTaskService:
             )
             dataset_storage.write_json(report_key, eval_result.report_payload)
             dataset_storage.write_json(predictions_key, eval_result.predictions_payload)
+            dataset_storage.write_json(f"{output_prefix}/artifacts/reports/samples.json", eval_result.samples_payload)
             if package_key:
                 self._write_result_package(package_key, report_key, predictions_key)
         except Exception as error:

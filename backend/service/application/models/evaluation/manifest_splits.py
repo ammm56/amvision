@@ -4,12 +4,17 @@ from __future__ import annotations
 
 
 def select_independent_evaluation_split(
-    split_entries: object,
+    split_entries: object, *, selected_split: object = None,
 ) -> dict[str, object] | None:
     """按 test、validation、首个有效 split 的顺序选择唯一数据划分。"""
 
     entries = split_entries if isinstance(split_entries, list) else []
     valid_splits = [entry for entry in entries if isinstance(entry, dict)]
+    if selected_split is not None:
+        aliases = {"val": {"val", "valid", "validation"}, "test": {"test"}}
+        if not isinstance(selected_split, str) or selected_split not in aliases:
+            return None
+        return next((split for split in valid_splits if str(split.get("name", "")).strip().lower() in aliases[selected_split]), None)
     for preferred_names in (("test",), ("val", "valid", "validation")):
         selected = next(
             (

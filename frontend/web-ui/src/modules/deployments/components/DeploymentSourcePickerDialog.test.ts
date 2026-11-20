@@ -48,6 +48,7 @@ const selectedDetail: DeploymentSourceModelDetail = {
   versions: [
     {
       model_version_id: 'mv-yolo11-s-a',
+      version_number: 1,
       source_kind: 'training-output',
       file_ids: [],
       metadata: {},
@@ -92,6 +93,27 @@ describe('DeploymentSourcePickerDialog', () => {
     setI18nLocale('zh-CN')
   })
 
+  it('shows only builds for the version selected from the model drawer', async () => {
+    const versionId = selectedDetail.versions[0].model_version_id
+    const wrapper = mountDialog({
+      versionId,
+      selectedModelDetail: {
+        ...selectedDetail,
+        builds: [
+          ...selectedDetail.builds,
+          { ...selectedDetail.builds[0], model_build_id: 'build-other', source_model_version_id: 'version-other' },
+        ],
+      },
+    })
+    expect(wrapper.get('.deployment-source-build-meta').text()).toContain('v1')
+    expect(wrapper.findAll('.deployment-source-action')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('build-other')
+    await wrapper.get('.deployment-source-action').trigger('click')
+    expect(wrapper.emitted('apply-source')).toEqual([[expect.objectContaining({ modelVersionId: versionId })]])
+    await wrapper.setProps({ versionId: 'version-without-builds' })
+    expect(wrapper.find('.deployment-source-action').exists()).toBe(false)
+  })
+
   it('uses the compact four-step deployment selection layout', () => {
     const wrapper = mountDialog()
 
@@ -113,7 +135,7 @@ describe('DeploymentSourcePickerDialog', () => {
     expect(wrapper.findAll('.deployment-model-scale').map((item) => item.text()))
       .toEqual(['s', 'm'])
     expect(wrapper.findAll('.deployment-trained-model').map((item) => item.text()))
-      .toEqual(['pcb-slot-ayolo11-s-a构建 1', 'pcb-slot-byolo11-s-b构建 1'])
+      .toEqual(['pcb-slot-a构建 1', 'pcb-slot-b构建 1'])
     expect(wrapper.find('.model-picker-shell__count').text()).toBe('2')
     expect(wrapper.text()).not.toContain('platform-yolo11-s')
   })

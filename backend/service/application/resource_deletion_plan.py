@@ -143,6 +143,8 @@ def build_resource_deletion_plan(
         return plan
     for value in (project_id, resource_id, operation_id):
         normalize_queue_path_component(value, field_name="resource_id")
+    record_only = kind == "conversion-task-record"
+    target_kind = "task" if record_only else kind
     selected: dict[tuple[str, str], dict] = {}
 
     def add(resource_kind: str, row: dict) -> None:
@@ -169,9 +171,9 @@ def build_resource_deletion_plan(
             ).is_dir()
         ):
             raise ResourceNotFoundError("找不到指定数据集")
-    elif kind in ID_FIELDS and kind not in {"outbox", "model-file", "model"}:
+    elif target_kind in ID_FIELDS and target_kind not in {"outbox", "model-file", "model"}:
         row = next(
-            (row for row in inventory[kind] if row[ID_FIELDS[kind]] == resource_id),
+            (row for row in inventory[target_kind] if row[ID_FIELDS[target_kind]] == resource_id),
             None,
         )
         if row is None:
@@ -190,7 +192,7 @@ def build_resource_deletion_plan(
             )
         if owner_project != project_id:
             raise ResourceNotFoundError("找不到当前 Project 的指定资源")
-        add(kind, row)
+        add(target_kind, row)
     else:
         raise InvalidRequestError("不支持此类资源删除")
 
@@ -271,7 +273,10 @@ def build_resource_deletion_plan(
             if row.get("training_task_id") in task_ids:
                 add("model-version", row)
         for row in inventory["model-build"]:
-            if row.get("conversion_task_id") in task_ids:
+            if not record_only and row.get("conversion_task_id") in task_ids:
+                add("model-build", row)
+            elif kind == "model-version" and row.get("source_model_version_id") == resource_id:
+                # 删除目标版本的产物登记，不扩展到其他版本或转换任务。
                 add("model-build", row)
         owned_versions = {rid for (rk, rid) in selected if rk == "model-version"}
         owned_builds = {rid for (rk, rid) in selected if rk == "model-build"}
@@ -298,7 +303,17 @@ def build_resource_deletion_plan(
         changed = before != len(selected)
 
     blockers: list[dict] = []
+    conversion_owner: str | None = None
     deleted_ids = {rid for (rk, rid) in selected if rk not in {"outbox", "model"}}
+    if kind == "model-build":
+        conversion_owner = selected[kind, resource_id].get("conversion_task_id")
+        if any(
+            row["task_id"] == conversion_owner
+            and (row.get("state") not in TERMINAL_TASK_STATES
+                 or row.get("publication_state") in {"reserved", "published"})
+            for row in inventory["task"]
+        ):
+            raise ResourceInUseError("转换任务仍在写入产物，请等待任务结束")
     for (rk, rid), row in selected.items():
         state = row.get("state", row.get("status"))
         active = (
@@ -324,6 +339,7 @@ def build_resource_deletion_plan(
         "model-version",
         "model-build",
         "deployment",
+        *(("model-file",) if kind == "model-build" else ()),
     ):
         for row in inventory[rk]:
             rid = row[ID_FIELDS[rk]]
@@ -339,6 +355,9 @@ def build_resource_deletion_plan(
                 else row
             )
             dependencies = referenced_ids(payload) & deleted_ids
+            if record_only and rk == "model-build" and row.get("conversion_task_id") == resource_id:
+                # 构建登记及其元数据保留原转换 ID 作为来源。部署和下载依赖构建文件。
+                dependencies.discard(resource_id)
             if dependencies:
                 blockers.append(
                     {
@@ -484,6 +503,9 @@ def build_resource_deletion_plan(
     if kind == "dataset":
         paths.add(f"projects/{project_id}/datasets/{resource_id}")
 
+    if record_only:
+        paths = _exclude_registered_model_paths(paths, inventory["model-file"], storage)
+
     # 旧版本允许多个导出指向同一路径；共享导出目录必须先解除引用。
     for row in inventory["dataset-export"]:
         if ("dataset-export", row["dataset_export_id"]) in selected:
@@ -528,10 +550,63 @@ def build_resource_deletion_plan(
             .as_posix()
         )
         if not any(key == root or key.startswith(root + "/") for root in paths):
+            if kind == "model-build":
+                if conversion_owner and row.get("model_build_id") == resource_id:
+                    # 只暂存正式转换目录中的产物文件，不移动任务目录或诊断报告。
+                    owner = normalize_queue_path_component(
+                        conversion_owner, field_name="conversion_task_id"
+                    )
+                    parent = PurePosixPath(key).parent.as_posix()
+                    allowed = {f"task-runs/{part}{owner}/artifacts/builds" for part in ("", "conversion/")}
+                    if parent in allowed:
+                        primary = storage.resolve_deletion_path(key)
+                        if primary.exists() and not primary.is_file():
+                            raise ResourceInUseError("转换产物路径不是文件")
+                        paths.add(key)
+                        continue
+            if kind == "model-version":
+                # 训练和转换任务目录归任务所有；删除版本登记时保留这些原始产物。
+                owners = {
+                    str(item.get("training_task_id") or item.get("conversion_task_id"))
+                    for (item_kind, _), item in selected.items()
+                    if item_kind in {"model-version", "model-build"}
+                    and (item.get("training_task_id") or item.get("conversion_task_id"))
+                }
+                roots = {f"task-runs/{owner}" for owner in owners} | {
+                    f"task-runs/{category}/{owner}" for owner in owners for category in ("training", "conversion")
+                }
+                if any(key.startswith(root + "/") for root in roots):
+                    continue
             raise ResourceInUseError(
                 "模型文件位于独立资产目录，请从所属任务清理",
                 details={"file_id": rid, "object_key": key},
             )
+    if kind == "model-build":
+        build = selected[kind, resource_id]
+        weights = (build.get("metadata_json") or {}).get("weights_object_uri")
+        if isinstance(weights, str) and weights:
+            companion = storage.resolve_deletion_path(weights)
+            # 旧 OpenVINO 转换只登记 XML，BIN 由同名文件及其权威元数据确认。
+            if build.get("build_format") != "openvino-ir" or not any(
+                PurePosixPath(key).suffix == ".xml"
+                and storage.resolve_deletion_path(key).with_suffix(".bin") == companion
+                for key in paths
+            ):
+                raise ResourceInUseError("无法确认 OpenVINO 权重文件归属")
+            if companion.exists() and not companion.is_file():
+                raise ResourceInUseError("OpenVINO 权重路径不是文件")
+            paths.add(companion.relative_to(storage.root_dir.absolute()).as_posix())
+        targets = tuple(storage.resolve_deletion_path(key) for key in paths)
+        for rk in ("model-build", "model-file"):
+            for row in inventory[rk]:
+                if (rk, row[ID_FIELDS[rk]]) in selected:
+                    continue
+                metadata = row.get("metadata_json") or {}
+                for uri in (row.get("storage_uri"), metadata.get("weights_object_uri")):
+                    if isinstance(uri, str) and uri and "://" not in uri:
+                        source = storage.resolve(uri).absolute()
+                        if any(source == path or source.is_relative_to(path) for path in targets):
+                            raise ResourceInUseError("该产物文件仍被其他模型产物引用")
     for row in inventory["model-file"]:
         if ("model-file", row["file_id"]) in selected or "://" in row["storage_uri"]:
             continue
@@ -548,7 +623,7 @@ def build_resource_deletion_plan(
         storage,
         deleted_ids,
         project_id=project_id,
-        strict=kind == "deployment"
+        strict=kind in {"deployment", "model-version", "model-build"}
         or any(rk == "imported-artifact" for rk, _ in selected),
     )
     minimal_paths: list[str] = []
@@ -574,8 +649,34 @@ def build_resource_deletion_plan(
             (ID_FIELDS[rk], rid)
             for rk, rid in selected
             if rk in {"task", "dataset-import", "dataset-export", "deployment"}
-        ],
+        ] + ([("task_id", conversion_owner)] if conversion_owner else []),
     )
+
+
+def _exclude_registered_model_paths(
+    roots: set[str], files: list[dict], storage: LocalDatasetStorage,
+) -> set[str]:
+    """将含登记文件的任务目录拆成可安全暂存的子路径。"""
+    retained_paths = {
+        storage.resolve(row["storage_uri"]).absolute()
+        for row in files
+        if "://" not in row["storage_uri"]
+    }
+    deletable: set[str] = set()
+
+    def collect(key: str) -> None:
+        path = storage.resolve_deletion_path(key)
+        if any(path.is_relative_to(retained) for retained in retained_paths):
+            return
+        if not any(retained.is_relative_to(path) for retained in retained_paths):
+            deletable.add(key)
+        elif path.is_dir():
+            for child in path.iterdir():
+                collect(f"{key}/{child.name}")
+
+    for root in roots:
+        collect(root)
+    return deletable
 
 
 def _check_workflow_references(

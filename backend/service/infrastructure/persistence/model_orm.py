@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, JSON, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.service.infrastructure.persistence.base import Base
@@ -47,6 +47,7 @@ class ModelRecord(Base):
     task_type: Mapped[str] = mapped_column(String(64))
     model_scale: Mapped[str] = mapped_column(String(64))
     labels_file_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    version_sequence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     versions: Mapped[list[ModelVersionRecord]] = relationship(
@@ -66,6 +67,7 @@ class ModelVersionRecord(Base):
 
     __tablename__ = "model_versions"
     __table_args__ = (
+        Index("uq_model_versions_number", "model_id", "version_number", unique=True),
         Index("ix_model_versions_training_task_id", "training_task_id"),
         Index("ix_model_versions_parent_version_id", "parent_version_id"),
         Index("ix_model_versions_model_source", "model_id", "source_kind"),
@@ -77,6 +79,7 @@ class ModelVersionRecord(Base):
         index=True,
     )
     source_kind: Mapped[str] = mapped_column(String(64))
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     dataset_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     training_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     parent_version_id: Mapped[str | None] = mapped_column(

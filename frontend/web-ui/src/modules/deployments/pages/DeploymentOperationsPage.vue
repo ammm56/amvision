@@ -16,6 +16,7 @@
     </PageHeader>
 
     <InlineError :message="errorMessage" />
+    <InlineError :message="versionSourceError" />
     <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
     <DeploymentTransferPanel v-if="canManageTransfers" ref="transferPanel" :project-id="selectedProjectId" :devices="sessionStore.bootstrap?.devices ?? null" @settled="refreshPage" @choose-file="transferFileInput?.click()" />
 
@@ -43,9 +44,9 @@
             <strong>{{ selectedDeploymentSource.sourceKind === 'model-build' ? 'ModelBuild' : 'ModelVersion' }}</strong>
           </div>
           <div>
-            <span>{{ t('deploymentOps.source.id') }}</span>
+            <span>{{ t('deploymentOps.fields.modelVersionId').replace(/ ID$/i, '') }}</span>
             <strong>
-              {{ selectedDeploymentSource.modelBuildId || selectedDeploymentSource.modelVersionId }}
+              {{ selectedSourceVersionName || '—' }}
             </strong>
           </div>
           <div>
@@ -401,13 +402,15 @@
       :loading="sourceModelsLoading"
       :detail-loading="sourceModelDetailLoading"
       :task-type="selectedTaskType"
-      :task-type-options="taskTypeOptions"
+      :task-type-options="versionSource ? taskTypeOptions.filter(option => option.value === versionSource?.taskType) : taskTypeOptions"
       :models="sourceModels"
       :selected-model-id="selectedSourceModelId"
       :selected-model-detail="selectedSourceModelDetail"
       :selected-build-id="modelBuildId"
+      :version-id="versionSource?.versionId"
+      :build-id="versionSource?.buildId"
       :devices="sessionStore.bootstrap?.devices ?? null"
-      @close="deploymentSourcePickerOpen = false"
+      @close="closeDeploymentSourcePicker"
       @change-task-type="setTaskType"
       @select-model="selectDeploymentSourceModel"
       @apply-source="applyDeploymentSource"
@@ -451,6 +454,7 @@
 </template>
 
 <script setup lang="ts">
+import { useCatalogVersionLabel } from '@/modules/models/composables/useCatalogVersionLabel'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Info, Play, RefreshCw, RotateCcw, Square, Trash2, Zap } from '@lucide/vue'
@@ -480,6 +484,7 @@ import {
 import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDialog.vue'
 import DeploymentStatusDrawer from '../components/DeploymentStatusDrawer.vue'
 import type { DeploymentSourceSelection } from '../components/deployment-source.types'
+import { isModelVersionTaskType, type ModelVersionAction } from '@/modules/models/model-version-action'
 import { buildDeploymentDeviceOptions, hasCudaDevice } from '../deployment-device-support'
 import {
   formatTensorRtShape,
@@ -518,9 +523,11 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
 const route = useRoute()
+const versionSource = ref<ModelVersionAction | null>(null)
+const versionSourceError = ref<string | null>(null)
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 type SelectValue = string | number | boolean | null
 const TASK_TYPES: readonly ModelTaskType[] = ['detection', 'classification', 'segmentation', 'pose', 'obb']
@@ -596,6 +603,9 @@ const runtimeMode = ref<DeploymentRuntimeMode>('sync')
 const canWriteModels = computed(() => sessionStore.hasScopes(['models:write']))
 const canManageTransfers = computed(() => sessionStore.hasScopes(['models:read', 'models:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const selectedSourceVersionName = useCatalogVersionLabel(() => [
+  selectedProjectId.value, selectedDeploymentSource.value?.taskType, selectedDeploymentSource.value?.modelVersionId,
+])
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
 const selectedRuntimeStatus = computed(() => deploymentRuntimeStatus(selectedDeploymentId.value))
 const selectedRuntimeHealth = computed(() => deploymentRuntimeHealth(selectedDeploymentId.value))
@@ -794,11 +804,25 @@ watch(runtimeMode, () => {
 })
 
 watch(selectedTaskType, () => {
-  sourceModelDetailSequence += 1
-  if (deploymentSourcePickerOpen.value) {
+  if (deploymentSourcePickerOpen.value && !versionSource.value) {
     void loadDeploymentSourceModels()
   }
 })
+
+watch([
+  () => route?.query.sourceProject, () => route?.query.sourceModel,
+  () => route?.query.sourceVersion, () => route?.query.sourceTask,
+  () => route?.query.sourceBuild,
+  selectedProjectId, canWriteModels, () => sessionStore.currentUser?.principal_id,
+], ([projectId, modelId, versionId, taskType, buildId, currentProject, writable]) => {
+  if (versionSource.value) closeDeploymentSourcePicker()
+  versionSourceError.value = null
+  if (!writable || !currentProject || projectId !== currentProject
+    || typeof modelId !== 'string' || !modelId || typeof versionId !== 'string' || !versionId
+    || !isModelVersionTaskType(taskType)) return
+  if (buildId !== undefined && (typeof buildId !== 'string' || !buildId)) return
+  void openVersionDeploymentSource({ projectId, modelId, versionId, taskType, buildId })
+}, { immediate: true })
 
 watch(deploymentDeviceOptions, (options) => {
   if (!options.some((option) => option.value === deviceName.value)) {
@@ -1141,8 +1165,52 @@ function setRuntimeModeWithoutRefresh(mode: DeploymentRuntimeMode): void {
 }
 
 async function openDeploymentSourcePicker(): Promise<void> {
+  versionSourceError.value = null
   deploymentSourcePickerOpen.value = true
   await loadDeploymentSourceModels()
+}
+
+function closeDeploymentSourcePicker(): void {
+  sourceModelLoadSequence += 1
+  sourceModelDetailSequence += 1
+  sourceModelsLoading.value = false
+  sourceModelDetailLoading.value = false
+  deploymentSourcePickerOpen.value = false
+  versionSource.value = null
+}
+
+async function openVersionDeploymentSource(source: ModelVersionAction): Promise<void> {
+  const sequence = ++sourceModelLoadSequence
+  sourceModelDetailSequence += 1
+  versionSource.value = source
+  sourceModelsLoading.value = true
+  sourceModelDetailLoading.value = false
+  try {
+    const model = await getDeploymentSourceModelDetail(source.projectId, source.modelId)
+    if (sequence !== sourceModelLoadSequence) return
+    if (model.project_id !== source.projectId || model.scope_kind !== 'project' || model.task_type !== source.taskType
+      || !model.versions.some(item => item.model_version_id === source.versionId)) {
+      versionSourceError.value = locale.value.startsWith('zh') ? '此模型版本已不可用。' : 'This model version is no longer available.'
+      closeDeploymentSourcePicker()
+      return
+    }
+    if (source.buildId && !model.builds.some(item => item.model_build_id === source.buildId && item.source_model_version_id === source.versionId)) {
+      versionSourceError.value = locale.value.startsWith('zh') ? '此模型产物已不可用。' : 'This model artifact is no longer available.'
+      closeDeploymentSourcePicker()
+      return
+    }
+    selectedTaskType.value = source.taskType
+    sourceModels.value = [model]
+    selectedSourceModelId.value = model.model_id
+    selectedSourceModelDetail.value = model
+    deploymentSourcePickerOpen.value = true
+  } catch {
+    if (sequence !== sourceModelLoadSequence) return
+    versionSourceError.value = t('deploymentOps.messages.sourceModelDetailFailed')
+    closeDeploymentSourcePicker()
+  } finally {
+    if (sequence === sourceModelLoadSequence) sourceModelsLoading.value = false
+  }
 }
 
 async function loadDeploymentSourceModels(): Promise<void> {
@@ -1185,6 +1253,7 @@ async function loadDeploymentSourceModels(): Promise<void> {
 }
 
 async function selectDeploymentSourceModel(modelId: string): Promise<void> {
+  if (versionSource.value) return
   const detailSequence = ++sourceModelDetailSequence
   selectedSourceModelId.value = modelId
   sourceModelDetailLoading.value = true
@@ -1204,6 +1273,9 @@ async function selectDeploymentSourceModel(modelId: string): Promise<void> {
 }
 
 function applyDeploymentSource(selection: DeploymentSourceSelection): void {
+  if (versionSource.value && (selection.modelId !== versionSource.value.modelId
+    || selection.modelVersionId !== versionSource.value.versionId
+    || (versionSource.value.buildId && selection.modelBuildId !== versionSource.value.buildId))) return
   selectedDeploymentSource.value = selection
   tensorrtOptimizationProfileIndex.value = 0
   selectedSourceModelId.value = selection.modelId
@@ -1224,7 +1296,7 @@ function applyDeploymentSource(selection: DeploymentSourceSelection): void {
     const sourceLabel = selection.modelBuildId || selection.modelVersionId
     displayName.value = `${selection.modelName} ${sourceLabel}`
   }
-  deploymentSourcePickerOpen.value = false
+  closeDeploymentSourcePicker()
 }
 
 function resolveTensorRtOptimizationProfileIndex(): number {

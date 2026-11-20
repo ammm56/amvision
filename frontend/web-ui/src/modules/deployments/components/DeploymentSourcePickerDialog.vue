@@ -96,8 +96,7 @@
               @click.stop="selectTrainedModel(model)"
             >
               <span class="deployment-trained-model__identity">
-                <strong>{{ model.model_name }}</strong>
-                <span>{{ model.model_id }}</span>
+                <strong>{{ modelDisplayName(model) }}</strong>
               </span>
               <span class="deployment-source-detail__section-count">
                 {{ t('deploymentOps.sourcePicker.buildCount', { count: model.build_count }) }}
@@ -125,15 +124,15 @@
             <header class="deployment-source-detail__section-heading">
               <strong>{{ t('deploymentOps.sourcePicker.completedBuilds') }}</strong>
               <span class="deployment-source-detail__section-count">
-                {{ selectedModelDetail?.builds.length ?? 0 }}
+                {{ visibleBuilds.length }}
               </span>
             </header>
             <div
-              v-if="selectedModelDetail && selectedModelDetail.builds.length > 0"
+              v-if="visibleBuilds.length > 0"
               class="compact-list deployment-source-list"
             >
               <div
-                v-for="build in selectedModelDetail.builds"
+                v-for="build in visibleBuilds"
                 :key="build.model_build_id"
                 class="compact-list__item"
                 :class="{
@@ -142,7 +141,7 @@
                 }"
               >
                 <div class="deployment-source-build-meta">
-                  <strong>{{ build.model_build_id }}</strong>
+                  <strong>{{ sourceVersionLabel(build.source_model_version_id) }}</strong>
                   <span v-if="build.metadata.import_provenance">{{ t('deploymentTransfer.importOrigin') }}</span>
                   <span>
                     {{ build.build_format }} · {{ build.runtime_backend }} ·
@@ -195,6 +194,7 @@
 </template>
 
 <script setup lang="ts">
+import { modelDisplayName, modelVersionDisplayName } from '@/modules/models/model-display-name'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -238,6 +238,8 @@ const props = defineProps<{
   selectedModelDetail: DeploymentSourceModelDetail | null
   selectedBuildId: string
   devices: Record<string, unknown> | null
+  versionId?: string
+  buildId?: string
 }>()
 
 const emit = defineEmits<{
@@ -248,6 +250,13 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+function sourceVersionLabel(id: string): string {
+  const version = props.selectedModelDetail?.versions.find(item => item.model_version_id === id)
+  return version ? modelVersionDisplayName(version) : '—'
+}
+const visibleBuilds = computed(() => (props.selectedModelDetail?.builds ?? [])
+  .filter(build => (!props.versionId || build.source_model_version_id === props.versionId)
+    && (!props.buildId || build.model_build_id === props.buildId)))
 
 const scaleOrder = new Map([
   ['tiny', 0],
@@ -376,7 +385,7 @@ function buildSelection(build: DeploymentSourceModelBuild): DeploymentSourceSele
   return {
     sourceKind: 'model-build',
     modelId: model.model_id,
-    modelName: model.model_name,
+    modelName: modelDisplayName(model),
     modelType: model.model_type,
     modelScale: model.model_scale,
     taskType: props.taskType,
@@ -397,7 +406,8 @@ function applyBuildSelection(build: DeploymentSourceModelBuild): void {
 }
 
 function isBuildSelectable(build: DeploymentSourceModelBuild): boolean {
-  return buildRuntimeUnavailableReason(build) === ''
+  return (!props.versionId || build.source_model_version_id === props.versionId)
+    && (!props.buildId || build.model_build_id === props.buildId) && buildRuntimeUnavailableReason(build) === ''
 }
 
 function buildRuntimeUnavailableReason(build: DeploymentSourceModelBuild): string {

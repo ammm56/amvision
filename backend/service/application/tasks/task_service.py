@@ -18,6 +18,7 @@ from backend.service.application.errors import (
 )
 from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.application.conversions.task_kinds import CONVERSION_TASK_KINDS
+from backend.service.application.tasks.model_submission import record_model_submission
 from backend.service.application.tasks.queue_outbox import (
     build_queue_outbox_message,
     build_task_resume_queue_message_id,
@@ -437,6 +438,7 @@ class SqlAlchemyTaskService:
             resource_id=task_id,
         ):
             with self._open_unit_of_work() as unit_of_work:
+                record_model_submission(unit_of_work.session, request.project_id, request.created_by, task_id)
                 existing_task = unit_of_work.tasks.get_task(task_id)
                 if existing_task is not None:
                     raise InvalidRequestError(

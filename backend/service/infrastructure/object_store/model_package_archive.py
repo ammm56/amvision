@@ -9,8 +9,12 @@ import shutil
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from zipfile import ZIP_STORED, BadZipFile, ZipFile
+from typing import TypeVar
 
 from backend.contracts.deployments.model_package import ModelDeploymentPackage, TransferLimits, safe_package_path
+from backend.contracts.models.model_package import ModelPackage
+
+Package = TypeVar("Package", ModelDeploymentPackage, ModelPackage)
 
 
 def file_digest(path: Path, progress: Callable[[int], None] | None = None) -> tuple[str, int]:
@@ -25,7 +29,7 @@ def file_digest(path: Path, progress: Callable[[int], None] | None = None) -> tu
     return digest.hexdigest(), size
 
 
-def write_package(path: Path, manifest: ModelDeploymentPackage, sources: Mapping[str, Path], progress: Callable[[int], None] | None = None) -> None:
+def write_package(path: Path, manifest: ModelDeploymentPackage | ModelPackage, sources: Mapping[str, Path], progress: Callable[[int], None] | None = None) -> None:
     """写完并验证全部文件后公布 ZIP；失败只移除本次临时文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     staging = path.with_suffix(".writing")
@@ -62,7 +66,21 @@ def write_package(path: Path, manifest: ModelDeploymentPackage, sources: Mapping
         staging.unlink(missing_ok=True)
 
 
-def read_package(path: Path, destination: Path, limits: TransferLimits | None = None, progress: Callable[[int], None] | None = None) -> ModelDeploymentPackage:
+class PackageIntegrityError(ValueError):
+    """公开归档条目路径和完整性检查结果，不携带主机路径。"""
+
+    def __init__(self, member: str, reason: str, message: str) -> None:
+        """将错误绑定到已检查的 ZIP 条目。"""
+        super().__init__(message)
+        self.member = member
+        self.reason = reason
+
+
+def read_package(
+    path: Path, destination: Path, limits: TransferLimits | None = None,
+    progress: Callable[[int], None] | None = None, *,
+    manifest_type: type[Package] = ModelDeploymentPackage,
+) -> Package:
     """严格核对归档清单，再逐文件写入调用者专属空暂存目录。"""
     limits = limits or TransferLimits()
     if path.stat().st_size > limits.max_package_bytes:
@@ -99,7 +117,7 @@ def read_package(path: Path, destination: Path, limits: TransferLimits | None = 
                     raise ValueError("JSON 字段重复")
                 value[key] = item
             return value
-        manifest = ModelDeploymentPackage.model_validate(json.loads(archive.read(header), object_pairs_hook=unique_keys))
+        manifest = manifest_type.model_validate(json.loads(archive.read(header), object_pairs_hook=unique_keys))
         expected = {"manifest.json", *(f"files/{f.owner}/{f.path}" for f in manifest.files)}
         if {e.filename for e in entries} != expected:
             raise ValueError("部署包实际文件与清单不一致")
@@ -121,7 +139,7 @@ def read_package(path: Path, destination: Path, limits: TransferLimits | None = 
                         if progress:
                             progress(len(chunk))
             except BadZipFile as error:
-                raise ValueError(f"部署包 ZIP 完整性校验失败：{name}。请在源环境重新导出并下载后重试。") from error
+                raise PackageIntegrityError(name, "crc", f"部署包 ZIP 完整性校验失败：{name}。请在源环境重新导出并下载后重试。") from error
             if digest.hexdigest() != item.sha256:
-                raise ValueError(f"文件摘要不匹配：{item.logical_name}")
+                raise PackageIntegrityError(name, "digest", f"文件摘要不匹配：{item.logical_name}")
         return manifest

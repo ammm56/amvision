@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from backend.service.application.models.evaluation.detection_evaluation import (
@@ -23,6 +24,8 @@ class YoloV8DetectionEvaluationRequest:
     score_threshold: float = 0.001
     nms_threshold: float = 0.7
     extra_options: dict[str, object] = field(default_factory=dict)
+    # 透传给通用评估器的进度回调。
+    on_progress: Callable[[dict[str, object]], None] | None = None
 
 
 YoloV8DetectionEvaluationResult = DetectionEvaluationResult
@@ -45,6 +48,7 @@ def run_yolov8_detection_evaluation(
             score_threshold=request.score_threshold,
             nms_threshold=request.nms_threshold,
             extra_options=dict(request.extra_options),
+            on_progress=request.on_progress,
         )
     )
 

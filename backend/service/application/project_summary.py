@@ -53,6 +53,8 @@ _EVALUATION_TASK_KINDS = (
     "segmentation-evaluation",
     "pose-evaluation",
     "obb-evaluation",
+    "semantic-evaluation",
+    "anomaly-evaluation",
 )
 _CONVERSION_TASK_KINDS = (
     "yolox-conversion",

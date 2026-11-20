@@ -33,6 +33,8 @@ def export_torch_model_to_onnx(
     opset_version: int,
     input_names: Sequence[str],
     output_names: Sequence[str],
+    dynamic_batch: bool = False,
+    spatial_profile: tuple[tuple[int, ...], ...] | None = None,
 ) -> None:
     """使用 PyTorch dynamo ONNX exporter 导出模型。"""
 
@@ -51,6 +53,17 @@ def export_torch_model_to_onnx(
         "output_names": list(output_names),
         "dynamo": True,
     }
+    if spatial_profile:
+        low, _opt, high = spatial_profile
+        dim = torch_module.export.Dim
+        axes = {}
+        for axis, name, stride in ((0, "batch", 1), (2, "height_tiles", 32), (3, "width_tiles", 32)):
+            if low[axis] != high[axis]:
+                symbol = dim(name, min=low[axis] // stride, max=high[axis] // stride)
+                axes[axis] = stride * symbol if stride > 1 else symbol
+        export_kwargs["dynamic_shapes"] = (axes,)
+    elif dynamic_batch:
+        export_kwargs["dynamic_shapes"] = ({0: torch_module.export.Dim("batch", min=1, max=4)},)
     for key, value in {
         "fallback": False,
         "optimize": True,

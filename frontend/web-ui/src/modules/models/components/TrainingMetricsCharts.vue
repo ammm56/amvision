@@ -1,31 +1,31 @@
 <template>
-  <div class="training-charts-grid">
+  <div class="training-charts-grid" :class="{ 'training-charts-grid--compact': compact }">
     <article class="training-chart-card">
-      <h3>{{ t('trainingDetail.charts.trainMetrics') }}</h3>
+      <h3>{{ trainLossKey ? (validationLossKey ? (locale.startsWith('zh') ? '训练与验证损失' : 'Training and validation loss') : (locale.startsWith('zh') ? '训练损失' : 'Training loss')) : t('trainingDetail.charts.trainMetrics') }}</h3>
       <div ref="trainChartElement" class="training-chart-canvas" />
       <span v-if="trainHistory.length === 0" class="training-chart-empty">{{ t('common.noValue') }}</span>
     </article>
     <article class="training-chart-card">
-      <h3>{{ t('trainingDetail.charts.validationMetrics') }}</h3>
+      <h3>{{ primaryMetricLabel ? `${locale.startsWith('zh') ? '验证集' : 'Validation'} ${primaryMetricLabel}` : t('trainingDetail.charts.validationMetrics') }}</h3>
       <div ref="validationChartElement" class="training-chart-canvas" />
       <span v-if="validationHistory.length === 0" class="training-chart-empty">{{ t('common.noValue') }}</span>
     </article>
-    <article class="training-chart-card training-chart-card--wide">
+    <article v-if="!compact" class="training-chart-card training-chart-card--wide">
       <h3>{{ t('trainingDetail.charts.learningRate') }}</h3>
       <div ref="learningRateChartElement" class="training-chart-canvas training-chart-canvas--small" />
       <span v-if="learningRateHistory.length === 0" class="training-chart-empty">{{ t('common.noValue') }}</span>
     </article>
-    <article class="training-chart-card">
+    <article v-if="!compact" class="training-chart-card">
       <h3>{{ t('trainingDetail.charts.runtimePerformance') }}</h3>
       <div ref="runtimeChartElement" class="training-chart-canvas training-chart-canvas--small" />
       <span v-if="runtimeHistory.length === 0" class="training-chart-empty">{{ runtimeEmptyText }}</span>
     </article>
-    <article class="training-chart-card">
+    <article v-if="!compact" class="training-chart-card">
       <h3>{{ t('trainingDetail.charts.gpuResources') }}</h3>
       <div ref="gpuChartElement" class="training-chart-canvas training-chart-canvas--small" />
       <span v-if="!hasGpuHistory" class="training-chart-empty">{{ runtimeHistory.length === 0 ? runtimeEmptyText : t('common.noValue') }}</span>
     </article>
-    <article class="training-chart-card training-chart-card--wide">
+    <article v-if="!compact" class="training-chart-card training-chart-card--wide">
       <h3>{{ t('trainingDetail.charts.stageTiming') }}</h3>
       <div ref="stageChartElement" class="training-chart-canvas training-chart-canvas--small" />
       <span v-if="!hasStageHistory" class="training-chart-empty">{{ runtimeHistory.length === 0 ? runtimeEmptyText : t('common.noValue') }}</span>
@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatLearningRate, formatModelNumber, formatSmallModelNumber, modelChartValueFormatter } from '../model-number-format'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { LineChart } from 'echarts/charts'
@@ -41,6 +42,7 @@ import {
   DataZoomComponent,
   GridComponent,
   LegendComponent,
+  MarkLineComponent,
   TooltipComponent,
 } from 'echarts/components'
 import { init, use, type ECharts, type EChartsCoreOption } from 'echarts/core'
@@ -56,7 +58,7 @@ import {
   type TrainingScalarPoint,
 } from '../training-metric-history'
 
-use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
+use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, DataZoomComponent, CanvasRenderer])
 
 const props = defineProps<{
   taskType: ModelTaskType
@@ -65,9 +67,12 @@ const props = defineProps<{
   learningRateHistory: TrainingScalarPoint[]
   runtimeHistory: TrainingRuntimePoint[]
   runtimeEmptyText: string
+  compact?: boolean
+  bestEpoch?: number
+  primaryMetric?: string | null
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const trainChartElement = ref<HTMLElement | null>(null)
 const validationChartElement = ref<HTMLElement | null>(null)
 const learningRateChartElement = ref<HTMLElement | null>(null)
@@ -75,6 +80,17 @@ const runtimeChartElement = ref<HTMLElement | null>(null)
 const gpuChartElement = ref<HTMLElement | null>(null)
 const stageChartElement = ref<HTMLElement | null>(null)
 const capability = computed(() => getTrainingMetricCapability(props.taskType))
+const lossKey = (history: TrainingMetricPoint[]) => props.compact
+  ? ['loss', 'total_loss'].find(name => history.some(point => Object.hasOwn(point.metrics, name)))
+  : undefined
+const trainLossKey = computed(() => lossKey(props.trainHistory))
+const validationLossKey = computed(() => lossKey(props.validationHistory))
+const primaryMetricKey = computed(() => {
+  if (!props.compact || !props.primaryMetric) return undefined
+  const names = [props.primaryMetric, props.primaryMetric.replace(/^val[_/]/, '')]
+  return names.find(name => props.validationHistory.some(point => Object.hasOwn(point.metrics, name)))
+})
+const primaryMetricLabel = computed(() => primaryMetricKey.value === 'map50_95' ? 'mAP50–95' : primaryMetricKey.value)
 const hasGpuHistory = computed(() => props.runtimeHistory.some((point) => (
   'gpu_utilization_percent' in point.runtime
   || 'gpu_memory_allocated_bytes' in point.runtime
@@ -92,6 +108,7 @@ let runtimeChart: ECharts | null = null
 let gpuChart: ECharts | null = null
 let stageChart: ECharts | null = null
 let resizeObserver: ResizeObserver | null = null
+let themeObserver: MutationObserver | null = null
 
 onMounted(async () => {
   await nextTick()
@@ -102,6 +119,10 @@ onMounted(async () => {
   gpuChart = initializeChart(gpuChartElement.value)
   stageChart = initializeChart(stageChartElement.value)
   renderCharts()
+  if (typeof MutationObserver !== 'undefined') {
+    themeObserver = new MutationObserver(renderCharts)
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  }
   const observedElements = [
     trainChartElement.value,
     validationChartElement.value,
@@ -130,6 +151,8 @@ watch(
     props.validationHistory,
     props.learningRateHistory,
     props.runtimeHistory,
+    props.bestEpoch,
+    props.primaryMetric,
   ],
   renderCharts,
   { deep: true },
@@ -137,6 +160,7 @@ watch(
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  themeObserver?.disconnect()
   trainChart?.dispose()
   validationChart?.dispose()
   learningRateChart?.dispose()
@@ -152,16 +176,14 @@ function initializeChart(element: HTMLElement | null): ECharts | null {
 }
 
 function renderCharts(): void {
-  trainChart?.setOption(buildMetricOption(
-    props.trainHistory,
-    capability.value.trainMetrics,
-    true,
-  ), true)
-  validationChart?.setOption(buildMetricOption(
-    props.validationHistory,
-    capability.value.validationMetrics,
-    false,
-  ), true)
+  const best = props.bestEpoch
+  trainChart?.setOption(trainLossKey.value ? buildBaseOption([
+    metricLine('train loss', props.trainHistory, trainLossKey.value, best),
+    ...(validationLossKey.value ? [{ ...metricLine('val loss', props.validationHistory, validationLossKey.value), itemStyle: { color: chartVisual().text } }] : []),
+  ]) : buildMetricOption(props.trainHistory, capability.value.trainMetrics, true), true)
+  validationChart?.setOption(primaryMetricKey.value
+    ? buildBaseOption([metricLine(primaryMetricLabel.value ?? primaryMetricKey.value, props.validationHistory, primaryMetricKey.value, best)])
+    : buildMetricOption(props.validationHistory, capability.value.validationMetrics, false), true)
   learningRateChart?.setOption(buildLearningRateOption(props.learningRateHistory), true)
   runtimeChart?.setOption(buildRuntimePerformanceOption(props.runtimeHistory), true)
   gpuChart?.setOption(buildGpuResourceOption(props.runtimeHistory), true)
@@ -218,6 +240,7 @@ function buildRuntimeSeries(
     name,
     type: 'line',
     yAxisIndex,
+    tooltip: { valueFormatter: modelChartValueFormatter(value => formatModelNumber(value, name.endsWith('_ms') ? 0 : 2)) },
     showSymbol: history.length <= 80,
     symbolSize: 4,
     connectNulls: false,
@@ -234,11 +257,13 @@ function buildDualAxisOption(input: {
   rightAxisName: string
   series: Record<string, unknown>[]
 }): EChartsCoreOption {
+  const visual = chartVisual()
   return {
     animation: false,
-    color: ['#0f8a68', '#3b82f6', '#f59e0b', '#8b5cf6'],
+    color: visual.palette,
+    textStyle: { color: visual.text, fontFamily: workbenchFontFamily() },
     tooltip: { trigger: 'axis' },
-    legend: { type: 'scroll', top: 0, left: 0, textStyle: { fontSize: 11 } },
+    legend: { type: 'scroll', top: 0, left: 0, textStyle: { fontSize: 11, color: visual.text }, pageTextStyle: { color: visual.text } },
     grid: { left: 60, right: 60, top: 48, bottom: 42 },
     xAxis: {
       type: 'value',
@@ -247,10 +272,14 @@ function buildDualAxisOption(input: {
       name: input.xName,
       nameLocation: 'middle',
       nameGap: 28,
+      ...visual.axis,
     },
     yAxis: [
-      { type: 'value', scale: true, name: input.leftAxisName },
-      { type: 'value', scale: true, name: input.rightAxisName },
+      ...[input.leftAxisName, input.rightAxisName].map(name => ({
+        type: 'value', scale: true, name, ...visual.axis,
+        minInterval: name === 'ms' ? 1 : undefined,
+        axisLabel: { ...visual.axis.axisLabel, formatter: (value: number) => formatModelNumber(value, name === 'ms' ? 0 : 2) },
+      })),
     ],
     dataZoom: input.series.length > 0 ? [{ type: 'inside', filterMode: 'none' }] : [],
     series: input.series,
@@ -271,14 +300,26 @@ function buildMetricOption(
     preferredNames,
     includeAdditionalMetrics,
   )
-  return buildBaseOption(metricNames.map((name) => ({
+  return buildBaseOption(metricNames.map(name => metricLine(name, history, name)))
+}
+
+function metricLine(name: string, history: TrainingMetricPoint[], key: string, epoch?: number) {
+  const metric = history.find(point => point.epoch === epoch)?.metrics[key]
+  const markLine = epoch != null && metric !== undefined ? {
+    silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: chartVisual().text },
+    label: { position: 'insideEndTop', rotate: 0, color: chartVisual().text, textBorderWidth: 0,
+      formatter: locale.value.startsWith('zh') ? `最佳轮次 ${epoch}` : `Best epoch ${epoch}` },
+    data: [{ xAxis: epoch }],
+  } : undefined
+  return {
     name,
     type: 'line',
     showSymbol: history.length <= 80,
     symbolSize: 5,
     connectNulls: false,
-    data: history.map((point) => [point.epoch, point.metrics[name] ?? null]),
-  })))
+    data: history.map((point) => [point.epoch, point.metrics[key] ?? null]),
+    markLine,
+  }
 }
 
 function buildLearningRateOption(history: TrainingScalarPoint[]): EChartsCoreOption {
@@ -288,20 +329,36 @@ function buildLearningRateOption(history: TrainingScalarPoint[]): EChartsCoreOpt
     showSymbol: history.length <= 80,
     symbolSize: 5,
     data: history.map((point) => [point.epoch, point.value]),
-  }])
+  }], formatLearningRate)
 }
 
-function buildBaseOption(series: unknown[]): EChartsCoreOption {
+function buildBaseOption(series: unknown[], format: (value: number) => string = formatModelNumber): EChartsCoreOption {
+  const visual = chartVisual()
   return {
     animation: false,
-    color: ['#0f8a68', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
-    tooltip: { trigger: 'axis' },
-    legend: { type: 'scroll', top: 0, left: 0, textStyle: { fontSize: 11 } },
+    color: visual.palette,
+    textStyle: { color: visual.text, fontFamily: workbenchFontFamily() },
+    tooltip: { trigger: 'axis', valueFormatter: modelChartValueFormatter(format) },
+    legend: { type: 'scroll', top: 0, left: 0, textStyle: { fontSize: 11, color: visual.text }, pageTextStyle: { color: visual.text } },
     grid: { left: 54, right: 18, top: 48, bottom: 42 },
-    xAxis: { type: 'value', min: 1, minInterval: 1, name: 'epoch', nameLocation: 'middle', nameGap: 28 },
-    yAxis: { type: 'value', scale: true },
+    xAxis: { type: 'value', min: 1, minInterval: 1, name: 'epoch', nameLocation: 'middle', nameGap: 28, ...visual.axis,
+      axisLabel: { ...visual.axis.axisLabel, formatter: (value: number) => Number.isInteger(value) ? String(value) : '' } },
+    yAxis: { type: 'value', scale: true, ...visual.axis,
+      axisLabel: { ...visual.axis.axisLabel, formatter: (value: number) => formatSmallModelNumber(value) } },
     dataZoom: series.length > 0 ? [{ type: 'inside', filterMode: 'none' }] : [],
     series,
+  }
+}
+
+function chartVisual() {
+  const styles = getComputedStyle(document.documentElement)
+  const text = styles.getPropertyValue('--am-text-muted').trim() || '#64676a'
+  const border = styles.getPropertyValue('--am-border').trim() || '#d9ddda'
+  const dark = document.documentElement.dataset.theme === 'dark'
+  return {
+    text,
+    palette: dark ? ['#00d696', '#75b4ff', '#ffc35c', '#ff8181', '#bba1ff', '#4de1f1'] : ['#0f8a68', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
+    axis: { axisLabel: { color: text }, nameTextStyle: { color: text }, axisLine: { lineStyle: { color: border } }, splitLine: { lineStyle: { color: border } } },
   }
 }
 </script>
@@ -339,6 +396,10 @@ function buildBaseOption(series: unknown[]): EChartsCoreOption {
 
 .training-chart-canvas--small {
   height: 220px;
+}
+
+.training-charts-grid--compact .training-chart-canvas {
+  height: 210px;
 }
 
 .training-chart-empty {

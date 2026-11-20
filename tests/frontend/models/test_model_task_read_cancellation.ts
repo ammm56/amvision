@@ -11,13 +11,13 @@ beforeEach(() => vi.clearAllMocks())
 
 describe('model task read cancellation', () => {
   it.each([
-    ['training detail', (signal: AbortSignal) => getModelTrainingTaskDetail('classification', 'a', signal)],
-    ['conversion detail', (signal: AbortSignal) => getModelConversionTaskDetail('classification', 'a', signal)],
-    ['file list', (signal: AbortSignal) => listModelTrainingOutputFiles('classification', 'a', signal)],
-    ['file content', (signal: AbortSignal) => getModelTrainingOutputFileDetail('classification', 'a', 'metrics', signal)],
-  ] as const)('forwards the %s signal to the existing HTTP client', async (_name, read) => {
+    ['training detail', (signal: AbortSignal) => getModelTrainingTaskDetail('classification', 'a', signal), {}],
+    ['conversion detail', (signal: AbortSignal) => getModelConversionTaskDetail('classification', 'a', signal), { query: { include_events: true } }],
+    ['file list', (signal: AbortSignal) => listModelTrainingOutputFiles('classification', 'a', signal), {}],
+    ['file content', (signal: AbortSignal) => getModelTrainingOutputFileDetail('classification', 'a', 'metrics', signal), {}],
+  ] as const)('forwards the %s signal to the existing HTTP client', async (_name, read, options) => {
     const controller = new AbortController()
     await read(controller.signal)
-    expect(apiRequest).toHaveBeenCalledWith(expect.stringContaining('/a'), { signal: controller.signal })
+    expect(apiRequest).toHaveBeenCalledWith(expect.stringContaining('/a'), { ...options, signal: controller.signal })
   })
 })

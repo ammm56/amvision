@@ -163,11 +163,13 @@ class SupervisedConversionRunner:
         staged_request = replace(
             request,
             cancel_requested=None,
+            report_stage=None,
         )
         control_dir = self.dataset_storage.resolve(f"{attempt_object_prefix}/control")
         control_dir.mkdir(parents=True, exist_ok=False)
         request_path = control_dir / "request.pkl"
         result_path = control_dir / "result.json"
+        progress_path = control_dir / "stages.jsonl"
         with request_path.open("wb") as stream:
             pickle.dump(staged_request, stream, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -196,6 +198,34 @@ class SupervisedConversionRunner:
             )
             if part
         )
+        progress_offset = 0
+
+        def flush_stage_progress() -> None:
+            """只转发已写完整的阶段记录，父进程保留 Task 写入权限。"""
+
+            if request.report_stage is None:
+                return
+            nonlocal progress_offset
+            try:
+                with progress_path.open("rb") as stream:
+                    stream.seek(progress_offset)
+                    while line := stream.readline():
+                        if not line.endswith(b"\n"):
+                            break
+                        kind, state, created_at = json.loads(line)
+                        request.report_stage(kind, state, created_at)
+                        progress_offset = stream.tell()
+            except FileNotFoundError:
+                return
+
+        def check_cancellation() -> bool:
+            """在已有的监督循环中读取新阶段，并优先响应取消。"""
+
+            if request.cancel_requested is not None and request.cancel_requested():
+                return True
+            flush_stage_progress()
+            return False
+
         try:
             process_result = ProcessTreeSupervisor(
                 deadline=attempt_deadline,
@@ -218,8 +248,9 @@ class SupervisedConversionRunner:
                 env=process_env,
                 stdout_log_path=stdout_log_path,
                 stderr_log_path=stderr_log_path,
-                cancel_requested=request.cancel_requested,
+                cancel_requested=check_cancellation,
             )
+            flush_stage_progress()
             payload = self._read_attempt_payload(
                 result_path=result_path,
                 process_returncode=process_result.returncode,

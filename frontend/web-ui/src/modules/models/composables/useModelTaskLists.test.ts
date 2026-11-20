@@ -71,4 +71,31 @@ describe('useModelTaskLists', () => {
     expect(lists.trainingTasks.value.map((task) => task.task_id)).toEqual(['classification-training'])
     expect(lists.conversionTasks.value.map((task) => task.task_id)).toEqual(['classification-conversion'])
   })
+
+  it('updates each task list independently and retains the matching snapshot on refresh failure', async () => {
+    const training = deferred<ModelTrainingTaskSummary[]>()
+    serviceMocks.listModelTrainingTasks.mockReturnValueOnce(training.promise).mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'))
+    serviceMocks.listModelConversionTasks.mockResolvedValueOnce([conversionTask('fresh-conversion')]).mockResolvedValueOnce([conversionTask('updated-conversion')]).mockResolvedValueOnce([])
+    const taskType = ref<'detection' | 'classification'>('detection')
+    const projectId = ref('project-1')
+    const lists = useModelTaskLists(taskType, computed(() => projectId.value))
+    const first = lists.refreshTaskLists()
+    await Promise.resolve()
+    expect(lists.training.loading.value).toBe(true)
+    expect(lists.conversion.loading.value).toBe(false)
+    expect(lists.conversionTasks.value[0]?.task_id).toBe('fresh-conversion')
+    training.resolve([trainingTask('old-training')])
+    await first
+    const previous = lists.training.updatedAt.value
+    await lists.refreshTaskLists()
+    expect(lists.training.error.value).toBe(true)
+    expect(lists.training.updatedAt.value).toBe(previous)
+    expect(lists.trainingTasks.value[0]?.task_id).toBe('old-training')
+    expect(lists.conversion.error.value).toBe(false)
+    expect(lists.conversionTasks.value[0]?.task_id).toBe('updated-conversion')
+    projectId.value = 'project-2'
+    await lists.refreshTaskLists()
+    expect(lists.trainingTasks.value).toEqual([])
+    expect(lists.training.updatedAt.value).toBeUndefined()
+  })
 })

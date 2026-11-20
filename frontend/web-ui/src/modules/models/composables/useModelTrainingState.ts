@@ -1,8 +1,13 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
+import { translate } from '@/platform/i18n'
+import { isUncertainModelSubmission, useModelSubmissionReceipt } from './useModelSubmissionReceipt'
 
 import type { DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
 import {
   createModelTrainingTask,
+  previewModelTrainingTask,
+  type ModelTrainingPreflight,
+  type ModelTrainingTaskCreateInput,
   type ModelTaskType,
   type ModelTrainingTaskSubmissionResponse,
   type PlatformBaseModelSummary,
@@ -38,6 +43,7 @@ export function useModelTrainingState(options: {
   resolvedTrainingModelScale: ComputedRef<string>
   trainingDatasetExportId: Ref<string>
   outputModelName: Ref<string>
+  trainingRecipeId?: Ref<string>
   warmStartModelVersionId: Ref<string>
   trainingTaskSupportsWarmStart: ComputedRef<boolean>
   evaluationInterval: Ref<number>
@@ -62,6 +68,7 @@ export function useModelTrainingState(options: {
   trainingParameterSchema: ComputedRef<TrainingParameterSchemaItem | null>
   trainingExportFormatsByTaskAndModelType: ComputedRef<Record<string, Record<string, string[]>>>
   alignTrainingInputSizeForSubmit: () => { width: number; height: number }
+  principalId?: Ref<string>
   refreshTrainingTasks: () => Promise<void>
   setErrorMessage: (message: string | null) => void
   messages: {
@@ -76,6 +83,8 @@ export function useModelTrainingState(options: {
 }) {
   const trainingSubmitting = ref(false)
   const lastTrainingSubmission = ref<ModelTrainingTaskSubmissionResponse | null>(null)
+  const receipt = useModelSubmissionReceipt('training', options.selectedProjectId, options.selectedTaskType, options.principalId)
+  const trainingSubmissionUncertain = receipt.pending
 
   function validateTrainingSelection(): string | null {
     if (
@@ -118,13 +127,10 @@ export function useModelTrainingState(options: {
     return null
   }
 
-  async function submitTraining(): Promise<void> {
+  function validateTrainingConfiguration(): string | null {
     const validationError = validateTrainingSelection()
-    if (validationError) {
-      options.setErrorMessage(validationError)
-      return
-    }
-    const parameterError = validateTrainingModelLayerValues(
+    if (validationError) return validationError
+    return validateTrainingModelLayerValues(
       options.selectedTaskType.value,
       options.resolvedTrainingModelType.value,
       options.trainingModelParameterValues,
@@ -134,58 +140,88 @@ export function useModelTrainingState(options: {
         parameterSchema: options.trainingParameterSchema.value,
       },
     )
-    if (parameterError) {
-      options.setErrorMessage(parameterError)
+  }
+
+  function trainingInput(alignedInputSize: { width: number; height: number }): ModelTrainingTaskCreateInput {
+    return {
+      taskType: options.selectedTaskType.value,
+      projectId: options.selectedProjectId.value,
+      modelType: options.resolvedTrainingModelType.value,
+      datasetExportId: options.trainingDatasetExportId.value.trim(),
+      datasetExportManifestKey: options.resolvedTrainingManifestKey.value,
+      recipeId: options.trainingRecipeId?.value || DEFAULT_TRAINING_RECIPE_ID,
+      modelScale: options.resolvedTrainingModelScale.value,
+      outputModelName: options.outputModelName.value.trim(),
+      warmStartModelVersionId: options.trainingTaskSupportsWarmStart.value
+        ? options.warmStartModelVersionId.value.trim()
+        : '',
+      maxEpochs: options.maxEpochs.value,
+      batchMode: options.batchMode.value,
+      batchSize: options.batchSize.value,
+      batchTargetMemoryFraction: options.batchTargetMemoryFraction.value,
+      batchMinimumSize: options.batchMinimumSize.value,
+      batchMaximumSize: options.batchMaximumSize.value,
+      batchRecoverOnOom: options.batchRecoverOnOom.value,
+      batchMaxOomRetries: options.batchMaxOomRetries.value,
+      ampMode: options.ampMode.value,
+      ampDtype: options.ampDtype.value,
+      checkpointInterval: options.checkpointInterval.value,
+      checkpointKeepPeriodic: options.checkpointKeepPeriodic.value,
+      evaluationInterval: options.evaluationInterval.value,
+      inputWidth: alignedInputSize.width,
+      inputHeight: alignedInputSize.height,
+      displayName: options.trainingDisplayName.value.trim(),
+      parameters: buildTrainingParameters(
+        options.selectedTaskType.value,
+        options.resolvedTrainingModelType.value,
+        options.trainingModelParameterValues,
+        {
+          augmentationEnabled: options.trainingAugmentationEnabled.value,
+          device: options.trainingDevice.value,
+          parameterSchema: options.trainingParameterSchema.value,
+        },
+      ),
+    }
+  }
+
+  function previewTraining(signal: AbortSignal): Promise<ModelTrainingPreflight> {
+    const error = validateTrainingConfiguration()
+    if (error) return Promise.reject(new Error(error))
+    return previewModelTrainingTask(trainingInput(options.alignTrainingInputSizeForSubmit()), signal)
+  }
+
+  async function submitTraining(): Promise<void> {
+    if (trainingSubmitting.value || lastTrainingSubmission.value || trainingSubmissionUncertain.value) return
+    const validationError = validateTrainingConfiguration()
+    if (validationError) {
+      options.setErrorMessage(validationError)
       return
     }
     trainingSubmitting.value = true
+    lastTrainingSubmission.value = null
     options.setErrorMessage(null)
+    const projectId = options.selectedProjectId.value
+    const taskType = options.selectedTaskType.value
+    let submitted = false
+    const attempt = receipt.start()
     try {
       const alignedInputSize = options.alignTrainingInputSizeForSubmit()
       options.inputWidth.value = alignedInputSize.width
       options.inputHeight.value = alignedInputSize.height
-      lastTrainingSubmission.value = await createModelTrainingTask({
-        taskType: options.selectedTaskType.value,
-        projectId: options.selectedProjectId.value,
-        modelType: options.resolvedTrainingModelType.value,
-        datasetExportId: options.trainingDatasetExportId.value.trim(),
-        datasetExportManifestKey: options.resolvedTrainingManifestKey.value,
-        recipeId: DEFAULT_TRAINING_RECIPE_ID,
-        modelScale: options.resolvedTrainingModelScale.value,
-        outputModelName: options.outputModelName.value.trim(),
-        warmStartModelVersionId: options.trainingTaskSupportsWarmStart.value
-          ? options.warmStartModelVersionId.value.trim()
-          : '',
-        maxEpochs: options.maxEpochs.value,
-        batchMode: options.batchMode.value,
-        batchSize: options.batchSize.value,
-        batchTargetMemoryFraction: options.batchTargetMemoryFraction.value,
-        batchMinimumSize: options.batchMinimumSize.value,
-        batchMaximumSize: options.batchMaximumSize.value,
-        batchRecoverOnOom: options.batchRecoverOnOom.value,
-        batchMaxOomRetries: options.batchMaxOomRetries.value,
-        ampMode: options.ampMode.value,
-        ampDtype: options.ampDtype.value,
-        checkpointInterval: options.checkpointInterval.value,
-        checkpointKeepPeriodic: options.checkpointKeepPeriodic.value,
-        evaluationInterval: options.evaluationInterval.value,
-        inputWidth: alignedInputSize.width,
-        inputHeight: alignedInputSize.height,
-        displayName: options.trainingDisplayName.value.trim(),
-        parameters: buildTrainingParameters(
-          options.selectedTaskType.value,
-          options.resolvedTrainingModelType.value,
-          options.trainingModelParameterValues,
-          {
-            augmentationEnabled: options.trainingAugmentationEnabled.value,
-            device: options.trainingDevice.value,
-            parameterSchema: options.trainingParameterSchema.value,
-          },
-        ),
-      })
+      const result = await createModelTrainingTask(trainingInput(alignedInputSize), attempt.id)
+      attempt.clear()
+      submitted = true
+      if (projectId !== options.selectedProjectId.value || taskType !== options.selectedTaskType.value) return
+      lastTrainingSubmission.value = result
       await options.refreshTrainingTasks()
     } catch (error) {
-      options.setErrorMessage(error instanceof Error ? error.message : options.messages.submitTrainingFailed())
+      const uncertain = !submitted && isUncertainModelSubmission(error, attempt.id)
+      if (!uncertain) attempt.clear()
+      if (projectId === options.selectedProjectId.value && taskType === options.selectedTaskType.value) {
+        if (!uncertain) {
+          options.setErrorMessage(submitted ? translate('modelOps.messages.submittedRefreshFailed') : error instanceof Error ? error.message : options.messages.submitTrainingFailed())
+        }
+      }
     } finally {
       trainingSubmitting.value = false
     }
@@ -194,6 +230,12 @@ export function useModelTrainingState(options: {
   return {
     trainingSubmitting,
     lastTrainingSubmission,
+    trainingSubmissionUncertain,
     submitTraining,
+    previewTraining,
+    validateTrainingSelection,
+    validateTrainingConfiguration,
+    resetTrainingSubmission: () => { lastTrainingSubmission.value = null },
+    trainingReceipt: receipt,
   }
 }

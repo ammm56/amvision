@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.service.application.errors import OperationCancelledError
 from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     DETECTION_EVALUATION_QUEUE_NAME,
     SqlAlchemyDetectionEvaluationTaskService,
@@ -196,6 +197,11 @@ class DetectionEvaluationQueueWorker:
                     "sample_count": result.sample_count,
                     "report_object_key": result.report_object_key,
                 },
+            )
+        except OperationCancelledError as error:
+            self.queue_backend.complete(
+                queue_task,
+                metadata={"task_id": queue_task.payload["task_id"], "status": "cancelled", "cancel_message": error.message},
             )
         except Exception as error:
             self.queue_backend.fail(

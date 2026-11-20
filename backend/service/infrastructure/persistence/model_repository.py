@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from backend.service.application.errors import PersistenceOperationError
+from backend.service.application.errors import InvalidRequestError, PersistenceOperationError
 from backend.service.domain.models.model_records import (
     PLATFORM_BASE_MODEL_SCOPE,
     Model,
@@ -32,6 +32,48 @@ class SqlAlchemyModelRepository:
         """
 
         self.session = session
+
+    def update_project_presentation(self, *, project_id: str, model_id: str, expected_revision: int, metadata: dict[str, object]) -> bool:
+        """使用 JSON 中的 revision 进行乐观并发检查。"""
+        try:
+            result = self.session.execute(
+                update(ModelRecord).where(
+                    ModelRecord.model_id == model_id,
+                    ModelRecord.project_id == project_id,
+                    ModelRecord.scope_kind == "project",
+                    func.coalesce(ModelRecord.metadata_json["presentation_revision"].as_integer(), 0) == expected_revision,
+                ).values(metadata_json=metadata)
+            )
+            return result.rowcount == 1
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError("保存模型展示信息失败", details={"error_type": type(error).__name__}) from error
+
+    def list_project_catalog(
+        self, *, project_id: str, task_type: str | None, query: str | None,
+        offset: int, limit: int,
+    ) -> tuple[tuple[Model, ...], int]:
+        """在数据库中筛选项目模型，分页前统计完整结果。"""
+
+        conditions = [
+            ModelRecord.scope_kind == "project",
+            ModelRecord.project_id == project_id,
+        ]
+        if task_type:
+            conditions.append(ModelRecord.task_type == task_type)
+        if query:
+            conditions.append(or_(ModelRecord.model_name.icontains(query, autoescape=True), ModelRecord.metadata_json["display_name"].as_string().icontains(query, autoescape=True)))
+        try:
+            total = self.session.scalar(select(func.count()).select_from(ModelRecord).where(*conditions)) or 0
+            records = self.session.execute(
+                select(ModelRecord).where(*conditions).order_by(
+                    ModelRecord.model_name, ModelRecord.model_scale, ModelRecord.model_id
+                ).offset(offset).limit(limit)
+            ).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "读取项目模型目录失败", details={"error_type": error.__class__.__name__}
+            ) from error
+        return tuple(self._to_model_domain(record) for record in records), total
 
     def list_models(
         self,
@@ -80,6 +122,7 @@ class SqlAlchemyModelRepository:
         model_name: str,
         model_scale: str,
         task_type: str,
+        allow_display_name: bool = False,
     ) -> Model | None:
         """按自然键查找一个 Model。
 
@@ -89,20 +132,27 @@ class SqlAlchemyModelRepository:
         - model_name：模型名。
         - model_scale：模型 scale。
         - task_type：任务类型。
+        - allow_display_name：训练输出可通过项目模型的展示名称追加版本。
 
         返回：
         - 读取到的 Model；不存在时返回 None。
         """
 
-        statement = select(ModelRecord).where(
+        candidates = select(ModelRecord).where(
             ModelRecord.project_id == project_id,
             ModelRecord.scope_kind == scope_kind,
-            ModelRecord.model_name == model_name,
             ModelRecord.model_scale == model_scale,
             ModelRecord.task_type == task_type,
         )
         try:
-            record = self.session.execute(statement).scalar_one_or_none()
+            record = self.session.execute(candidates.where(ModelRecord.model_name == model_name)).scalar_one_or_none()
+            if record is None and allow_display_name:
+                matches = self.session.scalars(candidates.where(
+                    ModelRecord.metadata_json["display_name"].as_string() == model_name,
+                ).limit(2)).all()
+                if len(matches) > 1:
+                    raise InvalidRequestError("有多个模型使用此展示名称，请先为目标模型设置唯一名称")
+                record = matches[0] if matches else None
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
                 "按自然键读取 Model 失败",
@@ -183,10 +233,32 @@ class SqlAlchemyModelRepository:
         try:
             existing_record = self.session.get(ModelVersionRecord, model_version.model_version_id)
             if existing_record is None:
-                self.session.add(self._to_model_version_record(model_version))
+                record = self._to_model_version_record(model_version)
+                pending_model = next((
+                    item for item in self.session.new
+                    if isinstance(item, ModelRecord) and item.model_id == model_version.model_id
+                ), None)
+                if pending_model is not None:
+                    pending_model.version_sequence = (pending_model.version_sequence or 0) + 1
+                    record.version_number = pending_model.version_sequence
+                else:
+                    with self.session.no_autoflush:
+                        # 与版本登记同事务递增。删除版本也不会回收原号码。
+                        self.session.execute(
+                            update(ModelRecord)
+                            .where(ModelRecord.model_id == model_version.model_id)
+                            .values(version_sequence=ModelRecord.version_sequence + 1)
+                        )
+                        record.version_number = self.session.execute(
+                            select(ModelRecord.version_sequence).where(
+                                ModelRecord.model_id == model_version.model_id
+                            )
+                        ).scalar_one()
+                self.session.add(record)
                 return
 
-            existing_record.model_id = model_version.model_id
+            if existing_record.model_id != model_version.model_id:
+                raise PersistenceOperationError("不能更改已有模型版本的归属")
             existing_record.source_kind = model_version.source_kind
             existing_record.dataset_version_id = model_version.dataset_version_id
             existing_record.training_task_id = model_version.training_task_id
@@ -245,7 +317,7 @@ class SqlAlchemyModelRepository:
         statement = (
             select(ModelVersionRecord)
             .where(ModelVersionRecord.model_id == model_id)
-            .order_by(ModelVersionRecord.model_version_id)
+            .order_by(ModelVersionRecord.version_number.desc(), ModelVersionRecord.model_version_id)
         )
         try:
             records = self.session.execute(statement).scalars().all()
@@ -460,6 +532,7 @@ class SqlAlchemyModelRepository:
         return ModelVersion(
             model_version_id=record.model_version_id,
             model_id=record.model_id,
+            version_number=record.version_number,
             source_kind=record.source_kind,
             dataset_version_id=record.dataset_version_id,
             training_task_id=record.training_task_id,

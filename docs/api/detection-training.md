@@ -555,6 +555,10 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 - `best-checkpoint`
 - `latest-checkpoint`
 
+### GET /api/v1/models/{task_type}/training-tasks/{task_id}/output-files/{file_name}/download
+
+下载任务已登记的输出文件，`task_type` 支持 `detection`、`classification`、`segmentation`、`pose` 和 `obb`。接口要求 `tasks:read` 和任务所属项目的访问权限；文件必须位于对应任务的受管目录，未生成、路径不匹配或任务不可见时返回 404。下载期间持有项目读取操作权，防止清理并发移走文件。文件处于运行任务下时仍可能被训练进程更新，下载结果不等同于完整性校验或设备兼容性检查。
+
 #### 当前训练输出文件目录约定
 
 - 所有当前训练输出文件都落在 task-runs/training/{task_id}/artifacts 下。
@@ -701,10 +705,16 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 
 - 资源组：`/api/v1/models/detection/evaluation-tasks`
 - 创建接口：`POST /api/v1/models/detection/evaluation-tasks`
+- 提交预检：`POST /api/v1/models/detection/evaluation-tasks/preview`，返回划分、样本数、类别和执行条件。
 - 列表接口：`GET /api/v1/models/detection/evaluation-tasks`
 - 详情接口：`GET /api/v1/models/detection/evaluation-tasks/{task_id}`
 - 报告接口：`GET /api/v1/models/detection/evaluation-tasks/{task_id}/report`
 - 输出文件接口：`GET /api/v1/models/detection/evaluation-tasks/{task_id}/output-files`
+- 样本快照：`GET /api/v1/models/detection/evaluation-tasks/{task_id}/samples`。使用 `issue`（`all`、`errors`、`false_negatives` 或 `false_positives`）筛选漏检与误检，`q` 按文件名搜索（不区分大小写），`class_name` 按类别筛选。先筛选，再按 `offset`、`limit` 分页。旧报告如没有匹配诊断，只支持查看全部样本和文件名搜索。
+- 部分失败：缺失或无法解码的图像、无效标注逐条记录到 `failed_samples`。部分报告包含 `coverage`（`requested`、`succeeded`、`failed`、`unprocessed`）；报告指标和样本快照只使用成功样本。有成功样本时任务仍完成，页面标为“部分失败”。所有样本均不可评估，或模型运行时故障时，任务失败。
+- 样本图片：`GET /api/v1/models/detection/evaluation-tasks/{task_id}/samples/{index}/image`。要求数据集读取权限。失败样本有图片记录时也可以读取原图；源文件缺失或导出被清理时返回 404。重新读取图片不更改历史报告。
+
+新请求可在 `extra_options.split` 中显式指定 `val` 或 `test`。提交时检查划分是否存在和数据集类别顺序是否与模型一致。样本快照包括 GT 和预测框、类别及置信度，按同类别和 IoU 0.50 记录漏检和误检。早期报告可能只包含每张图的计数。
 
 #### 当前创建请求字段
 
@@ -765,8 +775,11 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 - 创建 optimized ONNX 接口：`POST /api/v1/models/detection/conversion-tasks/onnx-optimized`
 - 创建 OpenVINO IR FP32 接口：`POST /api/v1/models/detection/conversion-tasks/openvino-ir-fp32`
 - 创建 OpenVINO IR FP16 接口：`POST /api/v1/models/detection/conversion-tasks/openvino-ir-fp16`
+- 创建 OpenVINO IR INT8 接口：`POST /api/v1/models/detection/conversion-tasks/openvino-ir-int8`
 - 创建 TensorRT Engine FP32 接口：`POST /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp32`
 - 创建 TensorRT Engine FP16 接口：`POST /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp16`
+- 创建 TensorRT 动态 INT8 接口：`POST /api/v1/models/detection/conversion-tasks/tensorrt-engine-int8`
+- 转换预检：`POST /api/v1/models/detection/conversion-tasks/preview`
 - 列表接口：`GET /api/v1/models/detection/conversion-tasks`
 - 详情接口：`GET /api/v1/models/detection/conversion-tasks/{task_id}`
 - 结果接口：`GET /api/v1/models/detection/conversion-tasks/{task_id}/result`
@@ -809,12 +822,37 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 - 当前 ONNX 主链继续使用旧版 `torch.onnx.export`
 - 当前已真实可执行步骤是 `export-onnx -> validate-onnx -> optimize-onnx`，以及面向 `openvino-ir` 的追加步骤 `build-openvino-ir` 与面向 `tensorrt-engine` 的追加步骤 `build-tensorrt-engine`
 - 当前已真实可执行目标支持 `onnx`、`onnx-optimized`、`openvino-ir` 与 `tensorrt-engine`
-- 当前 `openvino-ir` 创建接口已拆成 `fp32` 与 `fp16` 两种构建策略；两者都会把 optimized ONNX 交给隔离子进程执行 OpenVINO `convert_model/save_model`，避免当前 Windows/conda 环境里的 torch/OpenVINO 同进程冲突
+- OpenVINO 的 FP32、FP16 和 INT8 策略均在隔离子进程中将优化后的 ONNX 构建为 IR，避免 Windows/conda 环境中的 torch/OpenVINO 同进程冲突。
 - 当前 `openvino-ir` 构建元数据会回写 `build_precision` 与 `compress_to_fp16`，结果报告会额外公开 `conversion_options.openvino_ir_precision`
-- 当前 `tensorrt-engine` 创建接口已拆成 `fp32` 与 `fp16` 两种构建策略；两者都会先消费 optimized ONNX，再通过 TensorRT Python API 生成 engine，并把 `build_precision` 与 `tensorrt_version` 回写到 `ModelBuild.metadata`
+- TensorRT 的 FP32、FP16 和动态 INT8 均使用 optimized ONNX 和 TensorRT Python API 构建。动态 INT8 仅支持 YOLO11 目标检测，执行机需要 NVIDIA CUDA GPU 和提供 `IInt8EntropyCalibrator2` 的 TensorRT 10。
 - 当前 ONNX 校验包含两层：`onnx.checker` 合法性校验，以及 PyTorch 与 ONNXRuntime 的最小数值对齐校验
 - 当前 ONNX 优化使用 `onnxsim`，并把 optimized 产物登记为独立 `ModelBuild`
 - 当前转换 runner 默认使用 CPU 和本地文件存储，适合先把离线 build 链闭环跑通
+
+#### OpenVINO INT8
+
+仅支持 YOLO11 目标检测。转换 Worker 使用同一环境中的 OpenVINO、ONNX Runtime CPU 和 NNCF 3.4。批次固定为 1，输入宽高沿用来源模型。预检使用 `target: "openvino-ir-int8"` 并在请求顶层指定两组数据。提交请求在 `extra_options` 中指定相同的两组数据。
+
+| 字段 | 值 |
+| --- | --- |
+| `int8_calibration` | 项目内已完成的 COCO 导出 `dataset_export_id` 和 `sample_count`（1–200）。使用 train 图片进行 NNCF MIXED 量化。 |
+| `int8_validation` | 项目内已完成的 COCO 导出 `dataset_export_id` 和 `sample_count`（1–100）。使用 val 图片重新加载并验证已保存的 IR。Worker 按 SHA-256 检查两组图片无内容重叠。 |
+
+每张校验图片经相同的 RGB、LetterBox 和除以 255 预处理后，分别执行 ONNX Runtime CPU 和 OpenVINO CPU。框坐标及宽高按输入尺寸归一化，分类分数直接比较。输出名称、形状、类型及有限值检查通过后，逐图检查 P99 误差不超过 0.10、平均误差不超过 0.02。报告同时保留实际单点最大误差。校验通过后才登记 `.xml`、`.bin` 及 INT8 构建元数据。检测精度由评估任务另行检查。
+
+#### TensorRT 动态 INT8
+
+提交接口在 `extra_options` 中接收以下参数。预检接口在请求顶层接收同样的参数，并使用 `target: "tensorrt-engine-int8"`。
+
+| 字段 | 值 |
+| --- | --- |
+| `input_shape_mode` | `"dynamic"` |
+| `input_profile` | `min`、`opt`、`max` 三组 NCHW 数组。每个维度依次非递减。批次范围为 1–4，`opt` 批次为 1，通道数为 3。H/W 为 64–1280 内的 32 的倍数，至少一项可变，范围覆盖来源模型默认尺寸。 |
+| `workspace_gib` | 1–8 的整数，默认 4。 |
+| `int8_calibration` | 当前项目的 COCO 导出 `dataset_export_id` 和 `sample_count`（1–200）。Worker 取 train 图片并按 opt 尺寸校准。 |
+| `int8_validation` | 当前项目的 COCO 导出 `dataset_export_id` 和 `sample_count`（1–100）。Worker 取 val 图片并检查与 train 图片无内容重叠。 |
+
+Worker 在 opt 运行全部校验图片，并以第一张校验图片验证 min 和 max 的形状与执行。对照 ONNX Runtime 时，框坐标和宽高按输入尺寸归一化，类别分数直接比较。最大误差须不超过 0.20，平均误差须不超过 0.02。校验通过才登记 engine。报告的 `validation_summary.tensorrt_int8` 记录实际输入、执行次数和误差，各构建产物另有源模型的 ONNX 数值校验摘要。
 
 ### 当前 DeploymentInstance 与正式 inference task 接口
 
@@ -1045,3 +1083,6 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 - 当前 input_size 未显式指定时，真实训练默认使用 [640, 640]。
 - 自动设备选择在 Worker 没有可见 CUDA 设备时回退到 CPU；显式 CUDA 不可用或 GPU
   被占用时不静默回退，用于保持设备意图和资源租约规则一致。
+# 模型登记身份保护
+
+训练输出登记时，同一项目内名称、任务类型和规格相同的模型必须具有相同模型系列；若系列不一致，登记被拒绝，不会将新版本或文件附加到已有模型。此检查也适用于复用模型登记服务的其他任务类型。当前检查发生在训练产物登记阶段，而非训练提交前；并发情况下以登记时的实际结果为准。

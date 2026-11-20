@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Protocol
 from urllib.parse import urlparse
@@ -14,7 +15,7 @@ from backend.contracts.files.yolox_model_files import (
     YoloXFileNamingContext,
     build_default_file_name,
 )
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, ResourceInUseError, ResourceNotFoundError
 from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
@@ -59,8 +60,8 @@ _MODEL_BUILD_RUNTIME_BACKEND_BY_FORMAT = {
 _MODEL_BUILD_RUNTIME_PRECISIONS_BY_FORMAT = {
     "onnx": frozenset({"fp32"}),
     "onnx-optimized": frozenset({"fp32"}),
-    "openvino-ir": frozenset({"fp32", "fp16"}),
-    "tensorrt-engine": frozenset({"fp32", "fp16"}),
+    "openvino-ir": frozenset({"fp32", "fp16", "int8"}),
+    "tensorrt-engine": frozenset({"fp32", "fp16", "int8"}),
     "rknn": frozenset({"fp32"}),
 }
 _MODEL_INPUT_CONTRACT_TYPES = frozenset(
@@ -218,6 +219,7 @@ class PlatformBaseModelVersionSummaryView:
     labels_file_id: str | None = None
     labels_storage_uri: str | None = None
     catalog_manifest_object_key: str | None = None
+    version_number: int | None = None
 
 
 @dataclass(frozen=True)
@@ -252,6 +254,7 @@ class PlatformBaseModelVersionDetailView:
     labels_storage_uri: str | None = None
     catalog_manifest_object_key: str | None = None
     files: tuple[PlatformBaseModelFileView, ...] = ()
+    version_number: int | None = None
 
 
 @dataclass(frozen=True)
@@ -353,6 +356,18 @@ class PlatformBaseModelDetailView:
     builds: tuple[PlatformBaseModelBuildView, ...] = ()
 
 
+@dataclass(frozen=True)
+class ProjectModelDeploymentReferenceView:
+    """模型版本的一个直接部署引用，运行状态按模式分别提供。"""
+
+    deployment_id: str
+    display_name: str
+    model_build_id: str | None
+    build_format: str | None
+    runtime_backend: str
+    runtime_states: dict[str, str]
+
+
 class ModelService(Protocol):
     """通用模型登记接口。"""
 
@@ -430,6 +445,25 @@ class SqlAlchemyModelService:
         self.spec = spec
         self.file_types = file_types
         self.project_mutations = ProjectMutationAdmissionService(session_factory)
+
+    def update_project_presentation(self, *, project_id: str, model_id: str, display_name: str, description: str, expected_revision: int) -> int:
+        """只修改项目模型展示信息，保留登记自然键及所有版本。"""
+        with self.project_mutations.operation(project_id=project_id, mutation_kind="model-presentation", resource_id=model_id):
+            with self._open_unit_of_work() as unit:
+                model = unit.models.get_model(model_id)
+                if not model or model.scope_kind != PROJECT_MODEL_SCOPE or model.project_id != project_id:
+                    raise ResourceNotFoundError("找不到当前项目模型")
+                metadata = dict(model.metadata)
+                metadata.update(
+                    display_name=display_name,
+                    description=description,
+                    presentation_revision=expected_revision + 1,
+                    presentation_updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+                if not unit.models.update_project_presentation(project_id=project_id, model_id=model_id, expected_revision=expected_revision, metadata=metadata):
+                    raise ResourceInUseError("模型信息已发生变化，请重新加载后编辑")
+                unit.commit()
+                return expected_revision + 1
 
     def register_pretrained(self, request: PretrainedRegistrationRequest) -> str:
         """登记预置预训练模型并返回模型版本 id。
@@ -951,6 +985,98 @@ class SqlAlchemyModelService:
                 for model in models
             )
 
+    def list_project_model_catalog(
+        self, *, project_id: str, task_type: str | None, query: str | None,
+        offset: int, limit: int,
+    ) -> tuple[tuple[tuple[PlatformBaseModelSummaryView, tuple[str, ...]], ...], int]:
+        """读取项目模型目录，包括尚无版本或产物的模型。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            models, total = unit_of_work.models.list_project_catalog(
+                project_id=project_id, task_type=task_type, query=query,
+                offset=offset, limit=limit,
+            )
+            return tuple(
+                (
+                    self._build_platform_base_model_summary(unit_of_work=unit_of_work, model=model),
+                    tuple(sorted({build.build_format for build in unit_of_work.models.list_model_builds(model.model_id)})),
+                ) for model in models
+            ), total
+
+    def get_project_model_version_file(
+        self, *, project_id: str, model_id: str, model_version_id: str, file_id: str,
+        weights: bool = False,
+    ) -> ModelFile:
+        """读取登记的模型文件，或旧 OpenVINO IR 同目录登记的权重。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            model = unit_of_work.models.get_model(model_id)
+            version = unit_of_work.models.get_model_version(model_version_id)
+            model_file = unit_of_work.model_files.get_model_file(file_id)
+            if (model is None or model.scope_kind != PROJECT_MODEL_SCOPE
+                or model.project_id != project_id or version is None
+                or version.model_id != model_id or model_file is None
+                or model_file.model_id != model_id or model_file.project_id != project_id):
+                raise ResourceNotFoundError("找不到指定的项目模型文件")
+            belongs = model_file.model_version_id == model_version_id
+            build = None
+            if model_file.model_build_id:
+                build = unit_of_work.models.get_model_build(model_file.model_build_id)
+                belongs = bool(build and build.model_id == model_id and build.source_model_version_id == model_version_id)
+            if not belongs:
+                raise ResourceNotFoundError("找不到指定的项目模型文件")
+            if weights:
+                source = PurePosixPath(model_file.storage_uri)
+                companion = source.with_suffix(".bin") if source.suffix.lower() == ".xml" else None
+                if (build is None or build.build_format != "openvino-ir" or companion is None
+                    or build.metadata.get("weights_object_uri") != companion.as_posix()):
+                    raise ResourceNotFoundError("找不到此 OpenVINO 产物的权重文件")
+                return replace(model_file, storage_uri=companion.as_posix(), logical_name=companion.name)
+            return model_file
+
+    def list_project_model_version_references(
+        self, *, project_id: str, model_id: str, model_version_id: str,
+        query: str | None, offset: int, limit: int,
+        model_build_id: str | None = None,
+    ) -> tuple[tuple[ProjectModelDeploymentReferenceView, ...], int]:
+        """查询本项目版本的直接部署引用，不重复计数间接 Workflow 引用。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            model = unit_of_work.models.get_model(model_id)
+            version = unit_of_work.models.get_model_version(model_version_id)
+            if (model is None or model.scope_kind != PROJECT_MODEL_SCOPE
+                or model.project_id != project_id or version is None
+                or version.model_id != model_id):
+                raise ResourceNotFoundError("找不到指定的项目模型版本")
+            if model_build_id is not None:
+                build = unit_of_work.models.get_model_build(model_build_id)
+                if build is None or build.source_model_version_id != model_version_id:
+                    raise ResourceNotFoundError("找不到指定的模型产物")
+            deployments, total = unit_of_work.deployments.list_version_references(
+                project_id=project_id, model_version_id=model_version_id,
+                query=query, offset=offset, limit=limit,
+                model_build_id=model_build_id,
+            )
+            results = []
+            for item in deployments:
+                build = unit_of_work.models.get_model_build(item.model_build_id) if item.model_build_id else None
+                states = {}
+                for mode in ("sync", "async"):
+                    state = unit_of_work.deployment_runtime_states.get_deployment_runtime_state(
+                        item.deployment_instance_id, mode
+                    )
+                    if state is not None:
+                        states[mode] = state.observed_state
+                results.append(ProjectModelDeploymentReferenceView(
+                    deployment_id=item.deployment_instance_id,
+                    display_name=item.display_name or item.deployment_instance_id,
+                    model_build_id=item.model_build_id,
+                    build_format=build.build_format if build else None,
+                    runtime_backend=item.runtime_backend,
+                    runtime_states=states or {"instance": item.status},
+                ))
+            return tuple(results), total
+
     def list_deployment_source_models(
         self,
         *,
@@ -1066,6 +1192,7 @@ class SqlAlchemyModelService:
         *,
         project_id: str,
         model_id: str,
+        project_catalog_only: bool = False,
     ) -> PlatformBaseModelDetailView | None:
         """读取部署页可选择的单个模型来源详情。
 
@@ -1084,6 +1211,8 @@ class SqlAlchemyModelService:
             )
             if model is None:
                 return None
+            if project_catalog_only and (model.scope_kind != PROJECT_MODEL_SCOPE or model.project_id != project_id):
+                return None
             if (
                 model.scope_kind == PROJECT_MODEL_SCOPE
                 and model.project_id != project_id
@@ -1097,7 +1226,7 @@ class SqlAlchemyModelService:
 
             versions = unit_of_work.models.list_model_versions(model.model_id)
             builds = unit_of_work.models.list_model_builds(model.model_id)
-            if not versions and not builds:
+            if not versions and not builds and not project_catalog_only:
                 return None
 
             available_versions = tuple(
@@ -1174,8 +1303,15 @@ class SqlAlchemyModelService:
             model_name=model_name,
             model_scale=model_scale,
             task_type=task_type,
+            allow_display_name=scope_kind == PROJECT_MODEL_SCOPE,
         )
         if model is not None:
+            if model.model_type != self.spec.model_name:
+                raise InvalidRequestError(
+                    "同名同规格模型的系列不匹配，请选择其他输出模型名称",
+                    details={"model_id": model.model_id, "existing_model_type": model.model_type,
+                             "requested_model_type": self.spec.model_name},
+                )
             return model
 
         model = Model(
@@ -1522,6 +1658,7 @@ class SqlAlchemyModelService:
         )
         return PlatformBaseModelVersionSummaryView(
             model_version_id=model_version.model_version_id,
+            version_number=model_version.version_number,
             source_kind=model_version.source_kind,
             dataset_version_id=model_version.dataset_version_id,
             training_task_id=model_version.training_task_id,
@@ -1563,6 +1700,7 @@ class SqlAlchemyModelService:
         )
         return PlatformBaseModelVersionDetailView(
             model_version_id=model_version.model_version_id,
+            version_number=model_version.version_number,
             source_kind=model_version.source_kind,
             dataset_version_id=model_version.dataset_version_id,
             training_task_id=model_version.training_task_id,

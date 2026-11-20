@@ -5,27 +5,32 @@
 
 from __future__ import annotations
 
+import time
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import zipfile
 
 from backend.service.application.datasets.formats import (
     require_supported_dataset_export_format,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationCancelledError,
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.evaluation.evaluation_runtime_target_resolvers import (
-    get_detection_evaluation_runtime_target_resolver,
-)
 from backend.service.application.models.evaluation.detection_evaluation import (
     DetectionEvaluationRequest,
     run_detection_evaluation,
+)
+from backend.service.application.models.evaluation.detection_evaluation_artifacts import (
+    failed_sample_images_key,
+)
+from backend.service.application.models.evaluation.evaluation_runtime_target_resolvers import (
+    get_detection_evaluation_runtime_target_resolver,
 )
 from backend.service.application.models.yolo11_core.evaluation import (
     Yolo11DetectionEvaluationRequest,
@@ -43,15 +48,15 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
 )
 from backend.service.application.task_failure_payloads import build_task_failure_payload
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
     TaskExecutionFence,
     TaskQueueSubmission,
-)
-from backend.service.application.tasks.queue_reference import (
-    resolve_created_task_queue_reference,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
@@ -61,7 +66,6 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
 
 DETECTION_EVALUATION_TASK_KIND = "detection-evaluation"
 DETECTION_EVALUATION_QUEUE_NAME = "detection-evaluations"
@@ -157,14 +161,7 @@ class SqlAlchemyDetectionEvaluationTaskService:
         display_name: str = "",
     ) -> DetectionEvaluationTaskSubmission:
         """创建并入队一条 detection 评估任务。"""
-        if not request.project_id.strip():
-            raise InvalidRequestError("project_id 不能为空")
-        if not request.model_type.strip():
-            raise InvalidRequestError("model_type 不能为空")
-        if not request.model_version_id.strip():
-            raise InvalidRequestError("model_version_id 不能为空")
-        dataset_export = self._resolve_dataset_export(request)
-        runtime_target = self._resolve_runtime_target(request)
+        dataset_export, runtime_target, _ = self._prepare_evaluation(request)
 
         task_spec = {
             "project_id": request.project_id,
@@ -221,6 +218,65 @@ class SqlAlchemyDetectionEvaluationTaskService:
             model_version_id=request.model_version_id,
         )
 
+    def _prepare_evaluation(self, request: DetectionEvaluationTaskRequest):
+        """检查来源、类别及显式划分，兼容未指定划分的历史请求。"""
+        if not all(value.strip() for value in (request.project_id, request.model_type, request.model_version_id)):
+            raise InvalidRequestError("项目、模型架构和模型版本不能为空")
+        export = self._resolve_dataset_export(request)
+        target = self._resolve_runtime_target(request)
+        split = request.extra_options.get("split")
+        selected = None
+        if split is not None:
+            from backend.service.application.models.evaluation.manifest_splits import (
+                select_independent_evaluation_split,
+            )
+
+            storage = self._require_dataset_storage()
+            try:
+                metadata = storage.read_json(export.manifest_object_key)
+            except (OSError, ValueError) as error:
+                raise InvalidRequestError("评估使用的数据集导出文件不可用") from error
+            if not isinstance(metadata, dict):
+                raise InvalidRequestError("评估使用的数据集清单格式错误")
+            selected = select_independent_evaluation_split(metadata.get("splits"), selected_split=split)
+            if selected is None or selected.get("sample_count") == 0:
+                raise InvalidRequestError("该导出没有可用的所选 val 或 test 样本")
+            if tuple(export.category_names) != tuple(target.labels):
+                raise InvalidRequestError("数据集与模型的类别顺序不一致")
+        return export, target, selected
+
+    def preview_evaluation_task(self, request: DetectionEvaluationTaskRequest) -> dict:
+        """按真实导出返回评估范围和模型输入，不创建任务。"""
+        export, target, selected = self._prepare_evaluation(request)
+        sample_count = selected.get("sample_count") if selected else None
+        annotation_count = None
+        annotation_file = selected.get("annotation_file") if selected else None
+        if isinstance(annotation_file, str) and annotation_file:
+            try:
+                annotations = self._require_dataset_storage().read_json(annotation_file)
+            except (OSError, ValueError) as error:
+                raise InvalidRequestError("所选划分的标注文件不可读取") from error
+            if not isinstance(annotations, dict) or not isinstance(annotations.get("images"), list):
+                raise InvalidRequestError("所选划分的 COCO 标注格式错误")
+            ground_truth = annotations.get("annotations")
+            if not isinstance(ground_truth, list):
+                raise InvalidRequestError("所选划分的 COCO 标注格式错误")
+            sample_count = len(annotations["images"])
+            annotation_count = len(ground_truth)
+            if sample_count == 0:
+                raise InvalidRequestError("该导出没有可用的所选 val 或 test 样本")
+        return {
+            "dataset_version_id": export.dataset_version_id,
+            "split": selected.get("name") if selected else None,
+            "sample_count": sample_count,
+            "annotation_count": annotation_count,
+            "category_names": target.labels,
+            "input_size": target.input_size,
+            "runtime_backend": target.runtime_backend,
+            "runtime_precision": target.runtime_precision,
+            "device_name": target.device_name,
+        }
+
     def process_evaluation_task(
         self,
         task_id: str,
@@ -247,7 +303,9 @@ class SqlAlchemyDetectionEvaluationTaskService:
             raise InvalidRequestError(
                 "当前评估任务正在执行", details={"task_id": task_id}
             )
-        if task_record.state in {"failed", "cancelled"}:
+        if task_record.state == "cancelled":
+            raise OperationCancelledError("评估任务已取消")
+        if task_record.state == "failed":
             raise InvalidRequestError(
                 "当前评估任务已结束",
                 details={"task_id": task_id, "state": task_record.state},
@@ -275,7 +333,12 @@ class SqlAlchemyDetectionEvaluationTaskService:
                 event_type=("progress" if execution_fence is not None else "status"),
                 message="detection evaluation started",
                 payload={
-                    "progress": {"stage": "evaluating", "percent": 5.0},
+                    "progress": {
+                        "stage": "preparing", "percent": 0.0, "coverage": None,
+                        "split_name": None, "recent_samples": [],
+                        "runtime_backend": runtime_target.runtime_backend,
+                        "runtime_precision": runtime_target.runtime_precision,
+                    },
                     **(
                         {}
                         if execution_fence is not None
@@ -287,15 +350,36 @@ class SqlAlchemyDetectionEvaluationTaskService:
                     ),
                 },
             )
-        if execution_fence is not None:
-            self.task_service.record_task_progress_event(
-                started_event,
-                fence=execution_fence,
-            )
-        else:
-            self.task_service.execute_task_state_event_command(started_event)
+        last_stage: object = "preparing"
+        last_write = 0.0
+        first_sample_saved = False
 
+        def observe_progress(progress: dict[str, object]) -> None:
+            """阶段切换和首张样本立即保存，其余样本最多每秒保存一次。"""
+            nonlocal last_stage, last_write, first_sample_saved
+            stage = progress["stage"]
+            now = time.monotonic()
+            first_sample = bool(progress.get("recent_samples")) and not first_sample_saved
+            if stage == last_stage and not first_sample and now - last_write < 1.0:
+                return
+            event = AppendTaskEventRequest(
+                task_id=task_id, event_type="progress", message="detection evaluation progress",
+                payload={"progress": progress},
+            )
+            if execution_fence is not None:
+                self.task_service.record_task_progress_event(event, fence=execution_fence)
+            else:
+                if self._require_evaluation_task(task_id).state == "cancelled":
+                    raise OperationCancelledError("评估任务已取消")
+            first_sample_saved = first_sample_saved or first_sample
+            last_stage, last_write = stage, now
+
+        writing_outputs = False
         try:
+            if execution_fence is not None:
+                self.task_service.record_task_progress_event(started_event, fence=execution_fence)
+            else:
+                self.task_service.execute_task_state_event_command(started_event)
             manifest = dataset_storage.read_json(
                 dataset_export.manifest_object_key or ""
             )
@@ -314,6 +398,7 @@ class SqlAlchemyDetectionEvaluationTaskService:
                             _YOLO_DETECTION_DEFAULT_NMS_THRESHOLD,
                         ),
                         extra_options=dict(request.extra_options),
+                        on_progress=observe_progress,
                     )
                 )
             elif runtime_target.model_type == "yolo11":
@@ -331,6 +416,7 @@ class SqlAlchemyDetectionEvaluationTaskService:
                             _YOLO_DETECTION_DEFAULT_NMS_THRESHOLD,
                         ),
                         extra_options=dict(request.extra_options),
+                        on_progress=observe_progress,
                     )
                 )
             elif runtime_target.model_type == "yolo26":
@@ -344,6 +430,7 @@ class SqlAlchemyDetectionEvaluationTaskService:
                             _YOLO_DETECTION_DEFAULT_SCORE_THRESHOLD,
                         ),
                         extra_options=dict(request.extra_options),
+                        on_progress=observe_progress,
                     )
                 )
             else:
@@ -361,13 +448,34 @@ class SqlAlchemyDetectionEvaluationTaskService:
                             _GENERIC_DETECTION_DEFAULT_NMS_THRESHOLD,
                         ),
                         extra_options=dict(request.extra_options),
+                        on_progress=observe_progress,
                     )
                 )
+            observe_progress({"stage": "publishing", "percent": 99.0})
+            eval_result.report_payload["execution"] = {
+                "model_name": runtime_target.model_name,
+                "runtime_backend": runtime_target.runtime_backend,
+                "runtime_precision": runtime_target.runtime_precision,
+                "device_name": runtime_target.device_name,
+                "batch_size": 1,
+                "runtime_artifact_file_id": runtime_target.runtime_artifact_file_id,
+                "input_size": {"width": runtime_target.input_size[1], "height": runtime_target.input_size[0]},
+                "model_input_spec": runtime_target.model_input_spec.to_payload() if runtime_target.model_input_spec else None,
+            }
+            # 报告按实际生效的阈值记录，也明确区分未使用 NMS。
+            eval_result.report_payload.setdefault("nms_threshold", None)
+            writing_outputs = True
             dataset_storage.write_json(report_key, eval_result.report_payload)
             dataset_storage.write_json(detections_key, eval_result.detections_payload)
+            if eval_result.failed_image_paths:
+                dataset_storage.write_json(failed_sample_images_key(detections_key), eval_result.failed_image_paths)
             if package_key:
                 self._write_result_package(package_key, report_key, detections_key)
         except Exception as error:
+            if self._require_evaluation_task(task_id).state == "cancelled":
+                if writing_outputs:
+                    dataset_storage.delete_tree(output_prefix)
+                raise OperationCancelledError("评估任务已取消") from error
             self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
@@ -384,6 +492,8 @@ class SqlAlchemyDetectionEvaluationTaskService:
             )
             raise
 
+        coverage = eval_result.report_payload.get("coverage")
+        partial = isinstance(coverage, dict) and bool(coverage.get("failed"))
         task_result = DetectionEvaluationTaskResult(
             task_id=task_id,
             status="succeeded",
@@ -413,14 +523,14 @@ class SqlAlchemyDetectionEvaluationTaskService:
                 "mean_recall": eval_result.mean_recall,
                 "mean_f1": eval_result.mean_f1,
                 "per_class_metrics": eval_result.per_class_metrics,
+                **({"coverage": coverage} if isinstance(coverage, dict) else {}),
             },
         )
-        self.task_service.execute_task_state_event_command(
-            AppendTaskEventRequest(
-                task_id=task_id,
-                event_type="result",
-                message="detection evaluation completed",
-                payload={
+        success_event = AppendTaskEventRequest(
+            task_id=task_id,
+            event_type="result",
+            message="部分样本评估失败，已生成报告" if partial else "detection evaluation completed",
+            payload={
                     "state": "succeeded",
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                     "attempt_no": attempt_no,
@@ -448,10 +558,15 @@ class SqlAlchemyDetectionEvaluationTaskService:
                         "sample_count": eval_result.sample_count,
                         "report_summary": dict(task_result.report_summary),
                     },
-                },
-            ),
-            fence=execution_fence,
+            },
         )
+        try:
+            self.task_service.execute_task_state_event_command(success_event, fence=execution_fence)
+        except InvalidRequestError as error:
+            if self._require_evaluation_task(task_id).state != "cancelled":
+                raise
+            dataset_storage.delete_tree(output_prefix)
+            raise OperationCancelledError("评估任务已取消") from error
         return task_result
 
     def package_evaluation_result(
@@ -465,6 +580,8 @@ class SqlAlchemyDetectionEvaluationTaskService:
 
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_evaluation_task(task_id)
+        if task_record.state == "cancelled":
+            raise ResourceNotFoundError("已取消的评估没有可用的结果包", details={"task_id": task_id})
         result_payload = dict(task_record.result)
         report_object_key = _require_result_object_key(
             result_payload,
@@ -533,6 +650,8 @@ class SqlAlchemyDetectionEvaluationTaskService:
             raise InvalidRequestError(
                 "DatasetExport 尚未完成", details={"status": export.status}
             )
+        if export.metadata.get("files_cleaned_at"):
+            raise InvalidRequestError("评估使用的数据集导出文件已清理")
         if not export.manifest_object_key:
             raise InvalidRequestError("DatasetExport 缺少 manifest_object_key")
         require_supported_dataset_export_format(

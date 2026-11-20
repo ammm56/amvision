@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,6 +36,8 @@ class Yolo26DetectionEvaluationRequest:
     manifest_payload: dict[str, object]
     score_threshold: float = 0.001
     extra_options: dict[str, object] = field(default_factory=dict)
+    # 透传给通用评估器的进度回调。
+    on_progress: Callable[[dict[str, object]], None] | None = None
 
 
 Yolo26DetectionEvaluationResult = DetectionEvaluationResult
@@ -53,6 +56,7 @@ def run_yolo26_detection_evaluation(
             score_threshold=request.score_threshold,
             nms_threshold=None,
             extra_options=dict(request.extra_options),
+            on_progress=request.on_progress,
         )
     )
 

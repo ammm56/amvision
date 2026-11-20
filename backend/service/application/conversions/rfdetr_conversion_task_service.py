@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.service.application.conversions.advanced_options import resolve_conversion_onnx_opset, uses_conversion_dynamic_batch
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import os
@@ -30,6 +32,7 @@ from backend.service.application.conversions.task_kinds import (
 from backend.service.application.conversions.conversion_result_snapshot import (
     ConversionResultSnapshot as RfdetrConversionResultSnapshot,
 )
+from backend.service.application.conversions.stage_progress import ConversionStageRecorder
 from backend.service.application.conversions.publication import (
     cleanup_aborted_conversion_staging,
     find_recoverable_conversion_publication,
@@ -69,6 +72,7 @@ from backend.service.domain.models.model_artifact_provenance import (
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
+    RuntimeTargetSnapshot,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -168,26 +172,7 @@ class SqlAlchemyRfdetrConversionTaskService:
     ) -> RfdetrConversionTaskSubmission:
         """创建并入队一条 RF-DETR 转换任务。"""
 
-        self._validate_request(request)
-        normalized_task_type = self._normalize_task_type(request.task_type)
-        source_model_version_id = self._resolve_source_model_version_id(request)
-        target_formats = self._resolve_target_formats(request)
-        source_runtime_target = self._resolve_source_runtime_target(
-            project_id=request.project_id,
-            source_model_version_id=source_model_version_id,
-            task_type=normalized_task_type,
-        )
-        plan = self.planner.build_plan(
-            RfdetrConversionPlanningRequest(
-                project_id=request.project_id,
-                source_model_version_id=source_model_version_id,
-                target_formats=target_formats,
-                task_type=normalized_task_type,
-                runtime_profile_id=request.runtime_profile_id,
-                metadata=dict(request.extra_options),
-            )
-        )
-        self._validate_executable_targets(plan.target_formats)
+        normalized_task_type, source_model_version_id, source_runtime_target, plan = self._prepare_conversion(request)
         created_task = self.task_service.create_task(
             CreateTaskRequest(
                 project_id=request.project_id,
@@ -209,6 +194,8 @@ class SqlAlchemyRfdetrConversionTaskService:
                     "model_type": self.model_type,
                     "task_type": normalized_task_type,
                     "source_model_version_id": source_model_version_id,
+                    "source_model_name": source_runtime_target.model_name,
+                    "source_input_size": {"height": source_runtime_target.input_size[0], "width": source_runtime_target.input_size[1]},
                     "target_formats": list(plan.target_formats),
                     "runtime_profile_id": request.runtime_profile_id,
                 },
@@ -234,6 +221,40 @@ class SqlAlchemyRfdetrConversionTaskService:
             target_formats=plan.target_formats,
             task_type=source_runtime_target.task_type,
         )
+
+    def _prepare_conversion(self, request: RfdetrConversionTaskRequest) -> tuple[str, str, RuntimeTargetSnapshot, RfdetrConversionPlan]:
+        """解析来源并生成转换方案，不创建任务。"""
+        self._validate_request(request)
+        normalized_task_type = self._normalize_task_type(request.task_type)
+        source_model_version_id = self._resolve_source_model_version_id(request)
+        target_formats = self._resolve_target_formats(request)
+        source_runtime_target = self._resolve_source_runtime_target(
+            project_id=request.project_id,
+            source_model_version_id=source_model_version_id,
+            task_type=normalized_task_type,
+        )
+        plan = self.planner.build_plan(
+            RfdetrConversionPlanningRequest(
+                project_id=request.project_id,
+                source_model_version_id=source_model_version_id,
+                target_formats=target_formats,
+                task_type=normalized_task_type,
+                runtime_profile_id=request.runtime_profile_id,
+                metadata=dict(request.extra_options),
+            )
+        )
+        self._validate_executable_targets(plan.target_formats)
+        return normalized_task_type, source_model_version_id, source_runtime_target, plan
+
+    def preview_conversion_task(self, request: RfdetrConversionTaskRequest) -> dict[str, object]:
+        """预检来源和转换方案；运行环境在执行时另行检查。"""
+        task_type, source_model_version_id, _, plan = self._prepare_conversion(request)
+        return {
+            "task_type": task_type,
+            "source_model_version_id": source_model_version_id,
+            "target_formats": list(plan.target_formats),
+            "steps": list(serialize_rfdetr_conversion_plan(plan).get("steps", [])),
+        }
 
     def process_conversion_task(
         self,
@@ -334,6 +355,7 @@ class SqlAlchemyRfdetrConversionTaskService:
             fence=execution_fence,
         )
         publication_token: str | None = None
+        stage_recorder = ConversionStageRecorder(self.task_service, task_id, publication_fence)
         try:
             dataset_storage.write_json(
                 plan_object_key,
@@ -363,12 +385,14 @@ class SqlAlchemyRfdetrConversionTaskService:
                         attempt_timeout_seconds=float(
                             attempt_deadline["timeout_seconds"]
                         ),
+                        report_stage=stage_recorder,
                         cancel_requested=ConversionCancellationProbe(
                             task_service=self.task_service,
                             task_id=task_id,
                         ),
                     )
                 )
+            stage_recorder("register-artifact", "running", self._now_iso())
             run_result = prepare_conversion_publication_result(
                 raw_run_result=raw_run_result,
                 conversion_task_id=task_id,
@@ -1535,6 +1559,8 @@ class SqlAlchemyRfdetrConversionTaskService:
         raise InvalidRequestError("当前转换任务缺少 target_formats")
 
     def _validate_request(self, request: RfdetrConversionTaskRequest) -> None:
+        resolve_conversion_onnx_opset(request.extra_options, supported=())
+        uses_conversion_dynamic_batch(request.extra_options, model_type="rfdetr", task_type="", targets=request.target_formats)
         if not request.project_id.strip():
             raise InvalidRequestError("project_id 不能为空")
         target_formats = self._resolve_target_formats(request)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.service.application.conversions.advanced_options import YOLO_ONNX_OPSETS, resolve_conversion_onnx_opset
 from backend.service.application.backends import (
     ConversionBackend,
     ConversionBackendOutput,
@@ -29,6 +30,7 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.conversions.stage_progress import conversion_steps
 from backend.service.application.conversions.runtime.model_conversion_common import (
     attach_conversion_output_provenance,
     build_conversion_options_metadata,
@@ -100,6 +102,7 @@ class LocalYoloXConversionRunner:
         tensorrt_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
         openvino_ir_build_precision = resolve_openvino_ir_build_precision(request.metadata)
         tensorrt_engine_build_precision = resolve_tensorrt_engine_build_precision(request.metadata)
+        opset = resolve_conversion_onnx_opset(dict(request.metadata), supported=YOLO_ONNX_OPSETS)
         executed_step_kinds: list[str] = []
         validation_summary: dict[str, object] = {}
         onnx_output: YoloXConversionOutput | None = None
@@ -107,12 +110,13 @@ class LocalYoloXConversionRunner:
         openvino_output: YoloXConversionOutput | None = None
         tensorrt_output: YoloXConversionOutput | None = None
 
-        for step in request.plan_steps:
+        for step in conversion_steps(request):
             executed_step_kinds.append(step.kind)
             if step.kind == "export-onnx":
                 export_summary = self._export_onnx(
                     session=session,
                     output_object_key=onnx_object_key,
+                    opset_version=opset,
                 )
                 write_conversion_onnx_provenance(
                     onnx_module=onnx_module,
@@ -317,11 +321,14 @@ class LocalYoloXConversionRunner:
                 "phase": resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,
                 "validation_summary": validation_summary,
-                "conversion_options": build_conversion_options_metadata(
-                    target_formats=request.target_formats,
-                    openvino_ir_build_precision=openvino_ir_build_precision,
-                    tensorrt_engine_build_precision=tensorrt_engine_build_precision,
-                ),
+                "conversion_options": {
+                    **build_conversion_options_metadata(
+                        target_formats=request.target_formats,
+                        openvino_ir_build_precision=openvino_ir_build_precision,
+                        tensorrt_engine_build_precision=tensorrt_engine_build_precision,
+                    ),
+                    **({"onnx_opset_version": opset} if opset is not None else {}),
+                },
             },
         )
 
@@ -330,6 +337,7 @@ class LocalYoloXConversionRunner:
         *,
         session: YoloXExportSession,
         output_object_key: str,
+        opset_version: int | None = None,
     ) -> dict[str, object]:
         """把 PyTorch checkpoint 导出为 ONNX。"""
 
@@ -338,6 +346,7 @@ class LocalYoloXConversionRunner:
             session=session,
             output_path=output_path,
             output_object_key=output_object_key,
+            **({"opset_version": opset_version} if opset_version is not None else {}),
         )
 
     def _validate_onnx(

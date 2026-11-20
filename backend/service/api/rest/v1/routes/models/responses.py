@@ -85,6 +85,7 @@ def build_platform_base_model_version_summary_response(
 
     return PlatformBaseModelVersionSummaryResponse(
         model_version_id=version.model_version_id,
+        version_number=version.version_number,
         source_kind=version.source_kind,
         dataset_version_id=version.dataset_version_id,
         training_task_id=version.training_task_id,

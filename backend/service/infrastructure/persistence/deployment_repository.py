@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,40 @@ class SqlAlchemyDeploymentInstanceRepository:
         """
 
         self.session = session
+
+    def list_version_references(
+        self, *, project_id: str, model_version_id: str, query: str | None,
+        offset: int, limit: int,
+        model_build_id: str | None = None,
+    ) -> tuple[tuple[DeploymentInstance, ...], int]:
+        """只查询指定项目中直接绑定版本的部署。"""
+
+        conditions = [
+            DeploymentInstanceRecord.project_id == project_id,
+            DeploymentInstanceRecord.model_version_id == model_version_id,
+        ]
+        if model_build_id is not None:
+            conditions.append(DeploymentInstanceRecord.model_build_id == model_build_id)
+        if query:
+            conditions.append(or_(
+                DeploymentInstanceRecord.display_name.icontains(query, autoescape=True),
+                DeploymentInstanceRecord.deployment_instance_id.icontains(query, autoescape=True),
+            ))
+        try:
+            total = self.session.scalar(
+                select(func.count()).select_from(DeploymentInstanceRecord).where(*conditions)
+            ) or 0
+            records = self.session.scalars(
+                select(DeploymentInstanceRecord).where(*conditions).order_by(
+                    DeploymentInstanceRecord.created_at.desc(),
+                    DeploymentInstanceRecord.deployment_instance_id.desc(),
+                ).offset(offset).limit(limit)
+            ).all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "读取模型版本关联部署失败", details={"error_type": error.__class__.__name__}
+            ) from error
+        return tuple(self._to_domain(record) for record in records), total
 
     def list_existing_ids(self) -> set[str]:
         """读取部署主记录的稳定 id 集合，避免载入模型快照。"""

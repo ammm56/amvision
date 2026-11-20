@@ -8,14 +8,17 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { i18n } from '@/platform/i18n'
 import TrainingTaskDetailPage from '@/modules/models/pages/TrainingTaskDetailPage.vue'
 import ConversionTaskDetailPage from '@/modules/models/pages/ConversionTaskDetailPage.vue'
+import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import * as service from '@/modules/models/services/model.service'
 import { conversionTask, deferred, outputFile, TaskTestSocket, trainingTask } from './task_lifecycle_support'
 
 vi.mock('@/modules/models/services/model.service', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/modules/models/services/model.service')>(),
   getModelTrainingTaskDetail: vi.fn(), listModelTrainingOutputFiles: vi.fn(), getModelTrainingOutputFileDetail: vi.fn(),
+  downloadModelTrainingOutputFile: vi.fn(),
   requestModelTrainingTaskAction: vi.fn(), registerModelTrainingLatestCheckpoint: vi.fn(), deleteModelTrainingTask: vi.fn(),
-  getModelConversionTaskDetail: vi.fn(), deleteModelConversionTask: vi.fn(),
+  previewModelTrainingResume: vi.fn(),
+  getModelConversionTaskDetail: vi.fn(), deleteModelConversionTask: vi.fn(), downloadModelConversionReport: vi.fn(), downloadModelConversionBuildFile: vi.fn(),
 }))
 
 enableAutoUnmount(afterEach)
@@ -28,6 +31,7 @@ beforeEach(() => {
   vi.mocked(service.listModelTrainingOutputFiles).mockResolvedValue([])
   vi.mocked(service.getModelTrainingOutputFileDetail).mockImplementation(async (_type, id, name) => outputFile(id, name))
   vi.mocked(service.getModelConversionTaskDetail).mockImplementation(async (_type, id) => conversionTask(id))
+  vi.mocked(service.previewModelTrainingResume).mockResolvedValue({ checkpoint_name: 'latest.pt', dataset_export_id: 'export' })
 })
 
 type Kind = 'training' | 'conversion'
@@ -49,22 +53,109 @@ async function openPage(kind: Kind, type = 'classification') {
   await router.push(url(kind, 'a', type))
   await router.isReady()
   const wrapper = mount(defineComponent({ render: () => h(RouterView) }), {
-    global: { plugins: [pinia, i18n, router], stubs: { TrainingMetricsCharts: true } },
+    global: { plugins: [pinia, i18n, router], stubs: { TrainingMetricsCharts: true, teleport: true } },
   })
   return { wrapper, router }
 }
 
 function button(wrapper: VueWrapper, label: string) {
   const match = wrapper.findAll('button').find((item) => item.text() === label
-    || (label === '删除' && item.text() === '删除转换任务'))
+    || (label === '删除' && item.text() === '删除任务记录'))
   if (!match) throw new Error(`Missing button: ${label}`)
   return match
 }
 
 async function confirmDelete(wrapper: VueWrapper) {
-  await button(wrapper, '删除').trigger('click')
+  await openDelete(wrapper)
   await wrapper.get('[role="dialog"] .ui-button--danger').trigger('click')
 }
+
+async function openDelete(wrapper: VueWrapper) {
+  if (wrapper.findComponent(ConversionTaskDetailPage).exists()) {
+    const menu = wrapper.getComponent(ResourceMenu)
+    const action = menu.props('items').find(item => item.id === 'delete')
+    expect(action?.disabled).toBe(false)
+    menu.vm.$emit('action', 'delete')
+    await wrapper.vm.$nextTick()
+  } else {
+    await button(wrapper, '删除').trigger('click')
+  }
+}
+
+it('shows conversion stages only as completed when the task report confirms them', async () => {
+  vi.mocked(service.getModelConversionTaskDetail).mockResolvedValue({
+    ...conversionTask('a'),
+    task_spec: { planned_steps: [{ kind: 'export-onnx' }, { kind: 'build-openvino-ir' }] },
+    report_summary: { executed_step_kinds: ['export-onnx'], validation_summary: { stage: 'validate-onnx', allclose: false, max_abs_diff: 0.012 } },
+  })
+  const { wrapper } = await openPage('conversion')
+  await flushPromises()
+  const stages = wrapper.findAll('.conversion-stage-timeline li')
+  expect(stages).toHaveLength(4)
+  expect(stages[0]!.text()).toContain('已完成')
+  expect(stages[1]!.text()).toContain('未执行')
+  expect(stages[1]!.classes()).not.toContain('is-done')
+  expect(wrapper.find('.conversion-validation').text()).toContain('未通过')
+  expect(wrapper.find('.conversion-validation').text()).toContain('0.012')
+  expect(wrapper.find('.conversion-validation').text()).toContain('—')
+})
+
+it('shows the cancelled stage, unstarted publication, elapsed duration, and log from the task record', async () => {
+  const base = conversionTask('a')
+  vi.mocked(service.getModelConversionTaskDetail).mockResolvedValue({
+    ...base, state: 'cancelled', produced_formats: [],
+    started_at: '2026-11-19T01:00:00Z', finished_at: '2026-11-19T01:01:19Z',
+    progress: { stage: 'build-tensorrt-engine' }, report_summary: { executed_step_kinds: ['export-onnx'] },
+    task_spec: { planned_steps: ['export-onnx', 'build-tensorrt-engine'].map(kind => ({ kind })) },
+    events: [{ task_id: 'a', event_id: 'event-1', event_type: 'status', created_at: '2026-11-19T01:01:19Z', message: 'Task cancelled', payload: {} }],
+  })
+  const { wrapper } = await openPage('conversion')
+  await flushPromises()
+  const stages = wrapper.findAll('.conversion-stage-timeline li')
+  expect(stages.map(stage => stage.classes().find(name => name.startsWith('is-')))).toEqual(['is-done', 'is-cancelled', 'is-skipped'])
+  expect(wrapper.find('.conversion-terminal-summary').text()).toContain('1分钟 19秒')
+  expect(wrapper.text()).toContain('没有新增可用产物')
+  expect(wrapper.findAll('button').some(item => /下载/.test(item.text()))).toBe(false)
+  await button(wrapper, '查看日志').trigger('click')
+  expect(wrapper.get('[role="dialog"]').text()).toContain('Task cancelled')
+})
+
+it('cancels a conversion report download when switching tasks', async () => {
+  vi.mocked(service.getModelConversionTaskDetail).mockImplementation(async (_type, id) => ({
+    ...conversionTask(id), result: { report_object_key: `task-runs/conversion/${id}/artifacts/reports/conversion-report.json` },
+  }))
+  const pending = deferred<Blob>()
+  vi.mocked(service.downloadModelConversionReport).mockReturnValue(pending.promise)
+  const { wrapper, router } = await openPage('conversion')
+  await flushPromises()
+  await button(wrapper, '下载报告').trigger('click')
+  const signal = vi.mocked(service.downloadModelConversionReport).mock.calls[0]?.[2]
+  await router.push(url('conversion', 'b'))
+  await flushPromises()
+  expect(signal?.aborted).toBe(true)
+  pending.resolve(new Blob(['old task']))
+  await flushPromises()
+  expect(wrapper.text()).not.toContain('报告下载失败')
+})
+
+it('downloads OpenVINO weights separately and cancels them on task switch', async () => {
+  vi.mocked(service.getModelConversionTaskDetail).mockImplementation(async (_type, id) => ({
+    ...conversionTask(id), builds: [{ model_build_id: 'build-1', build_format: 'openvino-ir', runtime_backend: 'openvino', runtime_precision: 'fp32', build_file_id: 'file-1', build_file_uri: 'model.xml', metadata: { weights_object_uri: 'model.bin' } }],
+  }))
+  const pending = deferred<Blob>()
+  vi.mocked(service.downloadModelConversionBuildFile).mockReturnValue(pending.promise)
+  const { wrapper, router } = await openPage('conversion')
+  await flushPromises()
+  await button(wrapper, '下载权重').trigger('click')
+  expect(service.downloadModelConversionBuildFile).toHaveBeenCalledWith('classification', 'a', 'build-1', 'weights', expect.any(AbortSignal))
+  const signal = vi.mocked(service.downloadModelConversionBuildFile).mock.calls[0]?.[4]
+  await router.push(url('conversion', 'b'))
+  await flushPromises()
+  expect(signal?.aborted).toBe(true)
+  pending.resolve(new Blob(['old weights']))
+  await flushPromises()
+  expect(wrapper.text()).not.toContain('文件下载失败')
+})
 
 describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind) => {
   const detail = () => kind === 'training'
@@ -80,7 +171,7 @@ describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind
     const oldSockets = [...TaskTestSocket.instances]
     await router.push(url(kind, 'a', 'detection'))
     await flushPromises()
-    expect(detail()).toHaveBeenLastCalledWith('detection', 'a', expect.any(AbortSignal))
+    expect(detail().mock.lastCall?.slice(0, 3)).toEqual(['detection', 'a', expect.any(AbortSignal)])
     expect(oldSockets.every((socket) => socket.closed)).toBe(true)
     expect(wrapper.text()).toContain(`${kind} a`)
     await confirmDelete(wrapper)
@@ -92,7 +183,7 @@ describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind
     const { wrapper, router } = await openPage(kind)
     await flushPromises()
     const pageId = wrapper.findComponent(kind === 'training' ? TrainingTaskDetailPage : ConversionTaskDetailPage).vm.$.uid
-    await button(wrapper, '删除').trigger('click')
+    await openDelete(wrapper)
     const pending = deferred<ReturnType<typeof trainingTask>>()
     // 两类详情返回结构分别由各自 service mock 保持；此处只延迟完成。
     detail().mockImplementationOnce(() => pending.promise as never)
@@ -105,7 +196,7 @@ describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind
     await flushPromises()
     expect(wrapper.findComponent(kind === 'training' ? TrainingTaskDetailPage : ConversionTaskDetailPage).vm.$.uid).toBe(pageId)
     expect(wrapper.text()).toContain(`${kind} b`)
-    expect(detail()).toHaveBeenLastCalledWith('detection', 'b', expect.any(AbortSignal))
+    expect(detail().mock.lastCall?.slice(0, 3)).toEqual(['detection', 'b', expect.any(AbortSignal)])
     await confirmDelete(wrapper)
     await flushPromises()
     expect(kind === 'training' ? service.deleteModelTrainingTask : service.deleteModelConversionTask)
@@ -143,7 +234,7 @@ describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind
     expect(deletion).toHaveBeenCalledWith('classification', 'a')
     await router.push(url(kind, 'b'))
     await flushPromises()
-    await button(wrapper, '删除').trigger('click')
+    await openDelete(wrapper)
     if (completion === 'reject') pending.reject(new Error('old deletion failed'))
     else pending.resolve()
     await flushPromises()
@@ -222,13 +313,19 @@ describe('training task nested reads and operations', () => {
     else expect(TaskTestSocket.active()).toHaveLength(0)
   })
   it.each([
-    ['pause', '暂停'], ['save', '保存'], ['terminate', '终止'], ['resume', '恢复'],
+    ['pause', '暂停'], ['save', '保存'], ['terminate', '取消训练'], ['resume', '恢复'],
   ] as const)('pins %s to the displayed task and ignores its late response', async (action, label) => {
     const pending = deferred<service.ModelTrainingTaskDetail>()
     vi.mocked(service.requestModelTrainingTaskAction).mockReturnValueOnce(pending.promise)
     const { wrapper, router } = await openPage('training')
     await flushPromises()
     await button(wrapper, label).trigger('click')
+    if (action === 'resume') {
+      await flushPromises()
+      await wrapper.get('[role="dialog"] .ui-button--primary').trigger('click')
+    } else if (action === 'terminate') {
+      await wrapper.get('[role="dialog"] .ui-button--danger').trigger('click')
+    }
     expect(service.requestModelTrainingTaskAction).toHaveBeenCalledWith('classification', 'a', action)
     await router.push(url('training', 'b', 'pose'))
     await flushPromises()
@@ -237,6 +334,12 @@ describe('training task nested reads and operations', () => {
     expect(service.getModelTrainingTaskDetail).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('training b')
     await button(wrapper, label).trigger('click')
+    if (action === 'resume') {
+      await flushPromises()
+      await wrapper.get('[role="dialog"] .ui-button--primary').trigger('click')
+    } else if (action === 'terminate') {
+      await wrapper.get('[role="dialog"] .ui-button--danger').trigger('click')
+    }
     expect(service.requestModelTrainingTaskAction).toHaveBeenLastCalledWith('pose', 'b', action)
   })
 
@@ -266,7 +369,7 @@ describe('training task nested reads and operations', () => {
     vi.mocked(service.getModelTrainingTaskDetail).mockRejectedValueOnce(new Error('refresh unavailable'))
     await button(wrapper, '登记 latest checkpoint').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('registered-version-a')
+    expect(wrapper.text()).toContain('已登记')
     expect(wrapper.text()).toContain('refresh unavailable')
     expect(button(wrapper, '登记 latest checkpoint').attributes('disabled')).toBeUndefined()
     expect(TaskTestSocket.active()).toHaveLength(2)
@@ -301,8 +404,25 @@ describe('training task nested reads and operations', () => {
     pending.reject(new Error('old preview failed'))
     await flushPromises()
     expect(firstSignal?.aborted).toBe(true)
-    expect(wrapper.get('.detail-side').text()).toContain('a/second')
+    expect(wrapper.get('.training-output-preview').attributes('open')).toBeDefined()
+    expect(wrapper.get('.training-output-preview').text()).toContain('a/second')
     expect(wrapper.text()).not.toContain('old preview failed')
+  })
+
+  it('cancels a file download when leaving the training task', async () => {
+    vi.mocked(service.listModelTrainingOutputFiles).mockResolvedValue([outputFile('a', 'first')])
+    const pending = deferred<Blob>()
+    vi.mocked(service.downloadModelTrainingOutputFile).mockReturnValue(pending.promise)
+    const { wrapper, router } = await openPage('training')
+    await flushPromises()
+    await button(wrapper, '下载').trigger('click')
+    const signal = vi.mocked(service.downloadModelTrainingOutputFile).mock.calls[0]?.[3]
+    await router.push(url('training', 'b'))
+    await flushPromises()
+    expect(signal?.aborted).toBe(true)
+    pending.resolve(new Blob(['old task']))
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('下载训练输出文件失败')
   })
 
   it.each(['switch', 'unmount'] as const)('discards late background file lists and cancels telemetry timers on %s', async (exit) => {

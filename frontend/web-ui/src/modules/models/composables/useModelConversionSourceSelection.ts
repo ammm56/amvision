@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
 
 import { conversionSourceIssue } from '../conversion-source-support'
 import {
@@ -20,10 +20,15 @@ export function useModelConversionSourceSelection(options: {
   const conversionSourcePickerOpen = ref(false)
   const conversionBrowseModelId = ref('')
   const selectedVersionId = ref('')
-  const conversionModels = computed(() => options.sourceModels.value.filter((model) => (
+  const exactSourceModel = shallowRef<DeploymentSourceModelSummary | null>(null)
+  const conversionModels = computed(() => [
+    ...(exactSourceModel.value && !options.sourceModels.value.some(model => model.model_id === exactSourceModel.value?.model_id)
+      ? [exactSourceModel.value] : []),
+    ...options.sourceModels.value,
+  ].filter((model) => (
     (model.project_id === options.projectId.value || model.scope_kind === 'platform-base')
     && model.task_type === options.taskType.value
-    && model.available_versions.some((version) => conversionSourceIssue(version) === null)
+    && model.available_versions.length > 0
   )))
   const conversionBrowseModel = computed(() => conversionModels.value.find((model) => model.model_id === conversionBrowseModelId.value) ?? null)
   const selectedConversionSource = computed<ModelConversionSource | null>(() => {
@@ -53,7 +58,19 @@ export function useModelConversionSourceSelection(options: {
   function resetConversionSourceSelection(keepPickerOpen = false): void {
     selectedVersionId.value = ''
     conversionBrowseModelId.value = ''
+    exactSourceModel.value = null
     if (!keepPickerOpen) conversionSourcePickerOpen.value = false
+  }
+
+  function applyVersionSource(model: DeploymentSourceModelSummary, versionId: string): boolean {
+    const version = model.available_versions.find(item => item.model_version_id === versionId)
+    if ((model.scope_kind !== 'platform-base' && (model.project_id !== options.projectId.value || model.scope_kind !== 'project'))
+      || model.task_type !== options.taskType.value || !version || conversionSourceIssue(version)) return false
+    exactSourceModel.value = model
+    conversionBrowseModelId.value = model.model_id
+    selectedVersionId.value = versionId
+    conversionSourcePickerOpen.value = false
+    return true
   }
 
   watch(conversionModels, () => {
@@ -64,6 +81,6 @@ export function useModelConversionSourceSelection(options: {
   return {
     conversionModels, conversionSourcePickerOpen, conversionBrowseModelId, conversionBrowseModel,
     selectedConversionSource, conversionSelectedModelSummary, conversionModelType, conversionSourceModelVersionId,
-    openConversionSourcePicker, selectConversionVersion, resetConversionSourceSelection,
+    openConversionSourcePicker, selectConversionVersion, resetConversionSourceSelection, applyVersionSource,
   }
 }

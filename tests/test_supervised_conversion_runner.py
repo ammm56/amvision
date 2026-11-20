@@ -71,7 +71,8 @@ def test_supervised_conversion_runner_returns_validated_staging_without_publishi
         workspace_dir=tmp_path / "worker",
         helper_timeout_seconds=12.0,
     )
-    request = _build_request()
+    stage_records: list[tuple[str, str, str]] = []
+    request = replace(_build_request(), report_stage=lambda *entry: stage_records.append(entry))
     captured: dict[str, object] = {}
 
     def fake_run(
@@ -85,6 +86,15 @@ def test_supervised_conversion_runner_returns_validated_staging_without_publishi
         result_path = Path(command[command.index("--result-path") + 1])
         with request_path.open("rb") as stream:
             staged_request = pickle.load(stream)  # noqa: S301
+        assert staged_request.report_stage is None
+        stages = result_path.with_name("stages.jsonl")
+        started = ["export-onnx", "running", "2026-11-19T08:00:00+00:00"]
+        finished = ["export-onnx", "done", "2026-11-19T08:00:01+00:00"]
+        stages.write_text(json.dumps(started) + "\n" + json.dumps(finished), encoding="utf-8")
+        assert not kwargs["cancel_requested"]()
+        assert stage_records == [tuple(started)]
+        with stages.open("a", encoding="utf-8") as stream:
+            stream.write("\n")
         staged_uri = f"{staged_request.output_object_prefix}/artifacts/builds/model.onnx"
         storage.write_bytes(staged_uri, b"valid-onnx")
         result = ConversionBackendRunResult(
@@ -138,6 +148,10 @@ def test_supervised_conversion_runner_returns_validated_staging_without_publishi
 
     result = runner.run_conversion(request)
 
+    assert stage_records == [
+        ("export-onnx", "running", "2026-11-19T08:00:00+00:00"),
+        ("export-onnx", "done", "2026-11-19T08:00:01+00:00"),
+    ]
     staged_uri = (
         "task-runs/conversion/task-1/attempts/"
         "conversion-attempt-test/staging/artifacts/builds/model.onnx"

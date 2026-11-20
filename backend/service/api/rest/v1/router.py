@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from backend.service.api.rest.v1.routes.model_submissions import model_submissions_router
 from backend.service.api.rest.v1.routes.resource_deletions import resource_deletions_router
 from backend.service.api.rest.v1.routes.model_deployment_transfers import router as model_deployment_transfers_router
+from backend.service.api.rest.v1.routes.model_packages import model_packages_router
+from backend.service.api.rest.v1.routes.training_preflight import training_preflight_router
+from backend.service.api.rest.v1.routes.training_output_downloads import training_output_downloads_router
+from backend.service.api.rest.v1.routes.conversion_report_downloads import conversion_report_downloads_router
+from backend.service.api.rest.v1.routes.conversion_preflight import conversion_preflight_router
+from backend.service.api.rest.v1.routes.task_evaluation.reports import evaluation_reports_router
+from backend.service.api.rest.v1.routes.task_evaluation.dense_routes import dense_evaluation_router
 
 from backend.service.api.rest.v1.routes.classification_conversion_tasks.router import (
     classification_conversion_tasks_router,
@@ -97,13 +105,20 @@ api_v1_router.include_router(workflow_trigger_sources_router)
 api_v1_router.include_router(datasets_router)
 api_v1_router.include_router(resource_deletions_router)
 api_v1_router.include_router(model_deployment_transfers_router)
+api_v1_router.include_router(model_packages_router)
 api_v1_router.include_router(models_router)
+api_v1_router.include_router(training_output_downloads_router)
+api_v1_router.include_router(model_submissions_router)
+api_v1_router.include_router(training_preflight_router)
+api_v1_router.include_router(conversion_report_downloads_router)
+api_v1_router.include_router(conversion_preflight_router)
 api_v1_router.include_router(detection_training_tasks_router)
 api_v1_router.include_router(detection_validation_sessions_router)
 api_v1_router.include_router(detection_conversion_tasks_router)
 api_v1_router.include_router(detection_deployments_router)
 api_v1_router.include_router(detection_inference_tasks_router)
 api_v1_router.include_router(detection_evaluation_tasks_router)
+api_v1_router.include_router(evaluation_reports_router)
 api_v1_router.include_router(classification_deployments_router)
 api_v1_router.include_router(classification_inference_tasks_router)
 api_v1_router.include_router(classification_training_tasks_router)
@@ -128,4 +143,5 @@ api_v1_router.include_router(obb_training_tasks_router)
 api_v1_router.include_router(obb_conversion_tasks_router)
 api_v1_router.include_router(obb_validation_sessions_router)
 api_v1_router.include_router(obb_evaluation_tasks_router)
+api_v1_router.include_router(dense_evaluation_router)
 api_v1_router.include_router(tasks_router)

@@ -23,12 +23,14 @@
 
 ## 数据集与模型
 
+- [训练与转换任务提交回执](model-task-submissions.md)
 - [DatasetImport](datasets-imports.md)
 - [DatasetExport](datasets-exports.md)
 - [资源删除与清理状态](resource-deletions.md)
 - [模型部署实例导出与导入](model-deployment-transfers.md)
 - [平台基础模型](platform-base-models.md)
 - [Detection 训练、评估、转换、部署与推理](detection-training.md)
+- [模型评估报告与样本](model-evaluation-reports.md)
 - [模型 Deployment SDK](model-deployment-sdks.md)
 
 模型/任务组合以 [模型支持矩阵](../reference/models/support-matrix.md) 为准。

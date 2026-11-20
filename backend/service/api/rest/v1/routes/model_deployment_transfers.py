@@ -1,5 +1,6 @@
 """单实例离线传递 API；重文件处理仅提交给后台消费者。"""
 
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 import anyio
@@ -57,7 +58,7 @@ def export(project_id: str, body: ExportRequest, principal: Principal, factory: 
 @router.get("")
 def list_operations(project_id: str, principal: Principal, factory: Factory, storage: Storage) -> list[dict]:
     """页面刷新后回读未完成和短期结果。"""
-    return [public(op) for op in service(project_id, principal, factory, storage).list(project_id) if not op.get("dismissed")]
+    return [public(op) for op in service(project_id, principal, factory, storage).list(project_id) if not op.get("dismissed") and not op.get("standalone")]
 
 
 @router.get("/deployment/{deployment_id}/deletion-preview")
@@ -71,7 +72,7 @@ def deletion_preview(project_id: str, deployment_id: str, principal: Principal, 
 @router.get("/{operation_id}")
 def get_operation(project_id: str, operation_id: str, principal: Principal, factory: Factory, storage: Storage) -> dict:
     """按真实阶段显示结果。"""
-    return public(service(project_id, principal, factory, storage).get(operation_id, project_id))
+    return public(service(project_id, principal, factory, storage).get(operation_id, project_id, standalone=False))
 
 
 @router.get("/assets/list")
@@ -86,10 +87,21 @@ def imported_assets(project_id: str, principal: Principal, factory: Factory, sto
         for row in rows:
             kind = "model-build" if row.model_build_id else "model-version"
             item = unit.models.get_model_build(row.model_build_id) if row.model_build_id else unit.models.get_model_version(row.model_version_id)
+            if item is None:
+                continue
             model = unit.models.get_model(item.model_id)
+            if model is None:
+                continue
             files = unit.model_files.list_model_files(**{"model_build_id" if row.model_build_id else "model_version_id": row.model_build_id or row.model_version_id})
             size = sum(storage.resolve_deletion_path(file.storage_uri).stat().st_size for file in files if storage.resolve_deletion_path(file.storage_uri).is_file())
-            result.append({"kind": kind, "resource_id": row.model_build_id or row.model_version_id, "model_name": model.model_name, "task_type": model.task_type, "byte_size": size, "source_kind": "deployment-import"})
+            source_kind = "deployment-import"
+            if not row.model_build_id:
+                source_kind = item.source_kind
+            elif not (row.provenance_json or {}).get("source_id"):
+                version = unit.models.get_model_version(item.source_model_version_id)
+                if version is not None and version.source_kind == "model-package-import":
+                    source_kind = version.source_kind
+            result.append({"kind": kind, "resource_id": row.model_build_id or row.model_version_id, "model_name": model.model_name, "task_type": model.task_type, "byte_size": size, "source_kind": source_kind})
         return result
 
 
@@ -126,7 +138,7 @@ class TransferDownloadResponse(ResourceFileResponse):
 def download(project_id: str, operation_id: str, principal: Principal, factory: Factory, storage: Storage):
     """仅下载已经完整公布的 ZIP。"""
     svc = service(project_id, principal, factory, storage)
-    op = svc.get(operation_id, project_id)
+    op = svc.get(operation_id, project_id, standalone=False)
     if op["state"] != "completed" or op["direction"] != "export":
         raise InvalidRequestError("导出尚未完成")
     import re
@@ -140,6 +152,13 @@ async def upload(project_id: str, file: UploadFile, principal: Principal, factor
     """逐块接收上传；解压和完整性计算交给 Worker。"""
     svc = service(project_id, principal, factory, storage)
     op = await run_in_threadpool(svc.create, project_id, "import", actor=principal.principal_id)
+    return public(await receive_package(svc, op, file))
+
+
+async def receive_package(svc: ModelDeploymentTransferService, op: dict, file: UploadFile) -> dict:
+    """按操作权限接收 ZIP，失败只清理本次上传。"""
+    factory, storage = svc.factory, svc.storage
+    project_id = op["project_id"]
     with ProjectMutationAdmissionService(factory).operation(project_id=project_id, mutation_kind="model-transfer-upload", resource_id=op["operation_id"]):
         key = f"{svc.root(op)}/package.zip"
         path = storage.resolve(key)
@@ -150,9 +169,11 @@ async def upload(project_id: str, file: UploadFile, principal: Principal, factor
                 while chunk := await file.read(1024 * 1024):
                     total += len(chunk)
                     if total > svc.limits.max_package_bytes:
-                        raise InvalidRequestError("上传文件超过部署包大小限制")
+                        raise InvalidRequestError("上传文件超过大小限制")
                     await dst.write(chunk)
-            return public(await run_in_threadpool(svc.uploaded, op["operation_id"]))
+            return await run_in_threadpool(svc.update, op["operation_id"], "pending_analysis",
+                                           file_name=(file.filename or "model.zip")[:255], upload_bytes=total,
+                                           uploaded_at=datetime.now(timezone.utc).isoformat())
         except BaseException:
             with anyio.CancelScope(shield=True):
                 await run_in_threadpool(svc.update, op["operation_id"], "cancelled", error="上传未完成")
@@ -167,7 +188,7 @@ async def upload(project_id: str, file: UploadFile, principal: Principal, factor
 def analyze(project_id: str, operation_id: str, body: ImportOptions, principal: Principal, factory: Factory, storage: Storage) -> dict:
     """更改现场配置后重新分析。"""
     svc = service(project_id, principal, factory, storage)
-    svc.get(operation_id, project_id)
+    svc.get(operation_id, project_id, standalone=False)
     return public(svc.analyze(operation_id, body))
 
 
@@ -175,7 +196,7 @@ def analyze(project_id: str, operation_id: str, body: ImportOptions, principal: 
 def commit(project_id: str, operation_id: str, body: ImportOptions, principal: Principal, factory: Factory, storage: Storage) -> dict:
     """提交已分析配置的幂等导入。"""
     svc = service(project_id, principal, factory, storage)
-    svc.get(operation_id, project_id)
+    svc.get(operation_id, project_id, standalone=False)
     return public(svc.commit(operation_id, body))
 
 
@@ -183,7 +204,7 @@ def commit(project_id: str, operation_id: str, body: ImportOptions, principal: P
 def cancel(project_id: str, operation_id: str, principal: Principal, factory: Factory, storage: Storage) -> dict:
     """协作取消未提交操作。"""
     svc = service(project_id, principal, factory, storage)
-    svc.get(operation_id, project_id)
+    svc.get(operation_id, project_id, standalone=False)
     return public(svc.cancel(operation_id))
 
 
@@ -191,5 +212,5 @@ def cancel(project_id: str, operation_id: str, principal: Principal, factory: Fa
 def dismiss(project_id: str, operation_id: str, principal: Principal, factory: Factory, storage: Storage) -> None:
     """持久清除失败导入的展示；不能隐藏活动任务或删除模型。"""
     svc = service(project_id, principal, factory, storage)
-    svc.get(operation_id, project_id)
+    svc.get(operation_id, project_id, standalone=False)
     svc.dismiss(operation_id)

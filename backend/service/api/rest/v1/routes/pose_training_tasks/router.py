@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
+from backend.service.api.rest.v1.routes.model_submissions import track_model_submission
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.pose_training_tasks.controls import (
@@ -38,6 +39,7 @@ from backend.service.api.rest.v1.routes.task_training.services import (
     list_training_task_output_files,
     require_project_access,
 )
+from backend.service.application.models.training.submission_checks import check_output_model_identity
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -51,6 +53,7 @@ pose_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
     "/pose/training-tasks",
     response_model=PoseTrainingTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_pose_training_task(
     body: PoseTrainingTaskCreateRequestBody,
@@ -65,6 +68,10 @@ def create_pose_training_task(
     require_project_access(
         principal_project_ids=principal.project_ids,
         project_id=body.project_id,
+    )
+    check_output_model_identity(
+        session_factory=session_factory, project_id=body.project_id, task_type="pose",
+        model_type=body.model_type, model_scale=body.model_scale, output_model_name=body.output_model_name,
     )
     return submit_pose_training_task(
         body=body,

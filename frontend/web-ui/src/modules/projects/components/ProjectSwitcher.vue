@@ -1,6 +1,6 @@
 <template>
   <div class="project-switcher">
-    <SelectField :model-value="projectStore.selectedProjectId" :options="projectOptions" @update:model-value="selectProject" />
+    <SelectField :model-value="projectStore.selectedProjectId" :options="projectOptions" :aria-label="ariaLabel" @update:model-value="selectProject" />
   </div>
 </template>
 
@@ -10,6 +10,8 @@ import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import SelectField from '@/shared/ui/components/Select.vue'
+
+defineProps<{ ariaLabel?: string }>()
 
 type SelectValue = string | number | boolean | null
 

@@ -42,6 +42,7 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.application.conversions.stage_progress import conversion_steps
 from backend.service.application.conversions.runtime.model_conversion_common import (
     attach_conversion_output_provenance,
     build_conversion_options_metadata,
@@ -151,7 +152,7 @@ class LocalRfdetrConversionRunner(ConversionBackend):
         openvino_output: RfdetrConversionOutput | None = None
         tensorrt_output: RfdetrConversionOutput | None = None
 
-        for step in request.plan_steps:
+        for step in conversion_steps(request):
             executed_step_kinds.append(step.kind)
             if step.kind == "export-onnx":
                 export_summary = export_rfdetr_onnx_artifact(

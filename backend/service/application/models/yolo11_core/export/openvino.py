@@ -18,6 +18,7 @@ def build_yolo11_openvino_ir(
     output_object_key: str,
     build_precision: str,
     run_conversion_script: Any,
+    int8_config_path: Path | None = None,
 ) -> dict[str, object]:
     """把 YOLO11 optimized ONNX 构建为 OpenVINO IR。"""
 
@@ -28,6 +29,7 @@ def build_yolo11_openvino_ir(
         output_object_key=output_object_key,
         build_precision=build_precision,
         run_conversion_script=run_conversion_script,
+        int8_config_path=int8_config_path,
     )
 
 

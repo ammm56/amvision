@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from backend.service.application.backends import (
     ConversionBackend,
     ConversionBackendOutput,
@@ -109,6 +111,7 @@ class LocalYolo11ConversionRunner(LocalYoloModelConversionRunner):
         source_object_key: str,
         output_object_key: str,
         build_precision: str,
+        int8_config_path: Path | None = None,
     ) -> dict[str, object]:
         """通过 YOLO11 core 构建 OpenVINO IR。"""
 
@@ -119,6 +122,7 @@ class LocalYolo11ConversionRunner(LocalYoloModelConversionRunner):
             output_object_key=output_object_key,
             build_precision=build_precision,
             run_conversion_script=run_conversion_script,
+            **({"int8_config_path": int8_config_path} if int8_config_path is not None else {}),
         )
 
     def _build_tensorrt_engine(
@@ -127,6 +131,7 @@ class LocalYolo11ConversionRunner(LocalYoloModelConversionRunner):
         source_object_key: str,
         output_object_key: str,
         build_precision: str,
+        int8_config_path: Path | None = None,
     ) -> dict[str, object]:
         """通过 YOLO11 core 构建 TensorRT engine。"""
 
@@ -137,4 +142,5 @@ class LocalYolo11ConversionRunner(LocalYoloModelConversionRunner):
             output_object_key=output_object_key,
             build_precision=build_precision,
             run_conversion_script=run_conversion_script,
+            int8_config_path=int8_config_path,
         )

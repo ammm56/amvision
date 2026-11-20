@@ -7,24 +7,33 @@
 from __future__ import annotations
 
 import time
+from bisect import bisect_right
+from collections import Counter, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from math import isfinite
+from pathlib import PurePosixPath
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images.image_matrix import (
+    ImageDecodeError,
+    decode_image_bytes_to_matrix,
+)
 from backend.service.application.models.evaluation.manifest_splits import (
     select_independent_evaluation_split,
 )
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
 )
-from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
 
 DefaultDetectionModelRuntime: type | None = None
 
@@ -39,6 +48,8 @@ class DetectionEvaluationRequest:
     score_threshold: float = 0.01
     nms_threshold: float | None = 0.65
     extra_options: dict[str, object] = field(default_factory=dict)
+    # 接收阶段、覆盖量和最近处理记录，供任务服务保存进度并检查取消。
+    on_progress: Callable[[dict[str, object]], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +67,8 @@ class DetectionEvaluationResult:
     per_class_metrics: list[dict[str, object]] = field(default_factory=list)
     report_payload: dict[str, object] = field(default_factory=dict)
     detections_payload: list[dict[str, object]] = field(default_factory=list)
+    # 仅供授权预览；不进入报告或结果压缩包。
+    failed_image_paths: dict[int, str] = field(default_factory=dict)
 
 
 def run_detection_evaluation(
@@ -70,9 +83,16 @@ def run_detection_evaluation(
     manifest = request.manifest_payload
     runtime_target = request.runtime_target
 
+    selected_split = request.extra_options.get("split")
     split_name, images, categories = _parse_detection_manifest(
-        manifest, dataset_storage
+        manifest, dataset_storage, selected_split=selected_split,
     )
+    if request.on_progress is not None:
+        request.on_progress({
+            "stage": "evaluating", "percent": 5.0, "split_name": split_name,
+            "coverage": {"requested": len(images), "succeeded": 0, "failed": 0, "unprocessed": len(images)},
+            "recent_samples": [],
+        })
     if not images:
         return DetectionEvaluationResult(
             split_name=split_name,
@@ -134,53 +154,83 @@ def _run_detection_evaluation_with_session(
     # 收集所有 GT 和预测结果
     all_gt: list[dict[str, Any]] = []
     all_pred: list[dict[str, Any]] = []
+    curve_predictions: list[dict[str, Any]] = []
     predictions_out: list[dict[str, object]] = []
+    failed_samples: list[dict[str, object]] = []
+    failed_image_paths: dict[int, str] = {}
+    curve_score_floor = min(0.001, request.score_threshold)
+    confusion: Counter[tuple[int | None, int | None]] = Counter()
+    recent_samples: deque[dict[str, object]] = deque(maxlen=3)
+
+    def publish_progress(stage: str) -> None:
+        """发送最新的样本覆盖量和有界执行记录。"""
+        if request.on_progress is None:
+            return
+        succeeded, failed = len(predictions_out), len(failed_samples)
+        processed = succeeded + failed
+        request.on_progress({
+            "stage": stage, "percent": 5.0 + 90.0 * processed / len(images), "split_name": split_name,
+            "coverage": {"requested": len(images), "succeeded": succeeded, "failed": failed, "unprocessed": len(images) - processed},
+            "recent_samples": list(reversed(recent_samples)),
+        })
+
+    def note_sample(sample: dict[str, object], status: str) -> None:
+        """保存最新样本的文件名、类别和处理时间。"""
+        if request.on_progress is not None:
+            recent_samples.append({
+                "image_index": sample["image_index"], "name": sample["name"], "classes": sample["classes"],
+                "status": status, "processed_at": datetime.now(timezone.utc).isoformat(),
+            })
+            publish_progress("evaluating")
 
     for img_idx, img_info in enumerate(images):
         image_path = img_info["image_path"]
         gt_annotations = img_info.get("annotations", [])
-        resolved = (
-            dataset_storage.resolve_filesystem_path(image_path) if image_path else None
-        )
-        if resolved is None or not resolved.is_file():
-            raise InvalidRequestError(
-                "detection 评估样本文件不存在",
-                details={"image_path": str(image_path)},
-            )
-
-        # 记录 GT
-        for ann in gt_annotations:
-            bbox = ann.get("bbox")
-            if isinstance(bbox, list) and len(bbox) == 4:
-                x, y, w, h = (
-                    float(bbox[0]),
-                    float(bbox[1]),
-                    float(bbox[2]),
-                    float(bbox[3]),
-                )
-                all_gt.append(
-                    {
-                        "image_id": img_idx,
-                        "category_id": int(ann.get("category_id", 0)),
-                        "bbox_xyxy": (x, y, x + w, y + h),
-                        "area": w * h,
-                    }
-                )
-
-        # 推理
-        image_bytes = resolved.read_bytes()
+        failure = img_info.get("sample_error")
+        image_bytes = b""
+        sample_gt = _validated_sample_ground_truth(img_idx, gt_annotations, category_name_by_id)
+        if failure is None:
+            try:
+                if not image_path:
+                    raise FileNotFoundError
+                image_bytes = dataset_storage.resolve_filesystem_path(image_path).read_bytes()
+            except FileNotFoundError:
+                failure = "missing_image"
+            except (OSError, InvalidRequestError, ValueError):
+                failure = "unreadable_image"
+        if failure is None and sample_gt is None:
+            failure = "invalid_annotation"
+        if failure is not None:
+            if image_path:
+                failed_image_paths[img_idx] = str(image_path)
+            failed_samples.append(_failed_sample(img_idx, image_path, failure, gt_annotations, category_name_by_id))
+            note_sample(failed_samples[-1], "failed")
+            continue
+        assert sample_gt is not None
+        predictions_start = len(all_pred)
         prediction_extra_options: dict[str, object] = {}
         if request.nms_threshold is not None:
             prediction_extra_options["nms_threshold"] = request.nms_threshold
         pred_request = DetectionPredictionRequest(
-            score_threshold=request.score_threshold,
+            score_threshold=curve_score_floor,
             save_result_image=False,
             input_image_bytes=image_bytes,
             extra_options=prediction_extra_options,
         )
-        result = session.predict(pred_request)
+        try:
+            result = session.predict(pred_request)
+        except ImageDecodeError:
+            if image_path:
+                failed_image_paths[img_idx] = str(image_path)
+            failed_samples.append(_failed_sample(img_idx, image_path, "unreadable_image", gt_annotations, category_name_by_id))
+            note_sample(failed_samples[-1], "failed")
+            continue
+        all_gt.extend(sample_gt)
 
+        visible_count = 0
         for det in result.detections:
+            at_working_point = det.score >= request.score_threshold
+            visible_count += int(at_working_point)
             class_index = int(det.class_id)
             category_id = _resolve_detection_category_id(
                 class_index=class_index,
@@ -188,29 +238,39 @@ def _run_detection_evaluation_with_session(
             )
             if category_id is None:
                 continue
-            all_pred.append(
-                {
-                    "image_id": img_idx,
-                    # 模型输出始终是零基 class index；评估数据必须使用 manifest
-                    # 中的真实 category id，COCO 数据集的 id 不保证连续。
-                    "category_id": category_id,
-                    "bbox_xyxy": det.bbox_xyxy,
-                    "score": det.score,
-                }
-            )
+            prediction = {
+                "image_id": img_idx,
+                # 模型输出是零基索引，COCO 类别 ID 可以不连续。
+                "category_id": category_id,
+                "bbox_xyxy": det.bbox_xyxy,
+                "score": det.score,
+            }
+            curve_predictions.append(prediction)
+            if at_working_point:
+                all_pred.append(prediction)
 
+        sample_pred = all_pred[predictions_start:]
+        confusion.update(_detection_confusion(sample_gt, sample_pred))
         predictions_out.append(
             {
                 "image_index": img_idx,
                 "image_path": str(image_path),
                 "gt_count": len(gt_annotations),
-                "pred_count": len(result.detections),
+                "pred_count": visible_count,
                 "latency_ms": result.latency_ms,
+                **_summarize_detection_sample(sample_gt, sample_pred, category_name_by_id),
             }
         )
+        if request.on_progress is not None:
+            note_sample(_sample_identity(img_idx, image_path, gt_annotations, category_name_by_id), "succeeded")
 
     duration = time.monotonic() - started
     total_images = len(predictions_out)
+    coverage = {"requested": len(images), "succeeded": total_images, "failed": len(failed_samples), "unprocessed": 0}
+    if not total_images:
+        raise InvalidRequestError("没有可用于计算指标的评估样本", details={"coverage": coverage})
+
+    publish_progress("summarizing")
 
     # 计算 mAP
     iou_thresholds = [0.5 + 0.05 * i for i in range(10)]  # 0.5, 0.55, ..., 0.95
@@ -223,6 +283,11 @@ def _run_detection_evaluation_with_session(
     precision_list: list[float] = []
     recall_list: list[float] = []
     per_class: list[dict[str, object]] = []
+    curves: list[dict[str, object]] = []
+    confidence = sorted({curve_score_floor, request.score_threshold, *(i / 100 for i in range(1, 101))})
+    curve_by_class: dict[int, list[dict[str, Any]]] = {}
+    for prediction in curve_predictions:
+        curve_by_class.setdefault(prediction["category_id"], []).append(prediction)
 
     for cat_id in all_class_ids:
         cat_gt = [g for g in all_gt if g["category_id"] == cat_id]
@@ -235,9 +300,7 @@ def _run_detection_evaluation_with_session(
             continue
 
         cat_ap50 = _compute_ap(cat_gt, cat_pred, iou_threshold=0.5)
-        cat_ap_all = [
-            _compute_ap(cat_gt, cat_pred, iou_threshold=t) for t in iou_thresholds
-        ]
+        cat_ap_all = [cat_ap50, *(_compute_ap(cat_gt, cat_pred, iou_threshold=t) for t in iou_thresholds[1:])]
         cat_ap_mean = sum(cat_ap_all) / max(len(cat_ap_all), 1)
 
         # 计算单类别 precision/recall/F1（IoU=0.5）
@@ -252,6 +315,19 @@ def _run_detection_evaluation_with_session(
         recall_list.append(cat_recall)
 
         name = category_name_by_id.get(cat_id, str(cat_id))
+        curve_pred = sorted(curve_by_class.get(cat_id, []), key=lambda item: item["score"], reverse=True)
+        matches = _detection_matches(cat_gt, curve_pred, iou_threshold=0.5)
+        neg_scores = [-item["score"] for item in curve_pred]
+        f1_at_threshold = []
+        for threshold in confidence:
+            count = bisect_right(neg_scores, -threshold)
+            tp = matches[count - 1] if count else 0
+            f1_at_threshold.append(round(2 * tp / (len(cat_gt) + count), 6))
+        curves.append({
+            "class_id": cat_id, "class_name": name,
+            "precision_recall": _interpolated_precision(matches, len(cat_gt)),
+            "f1_confidence": f1_at_threshold,
+        })
         per_class.append(
             {
                 "class_id": cat_id,
@@ -285,6 +361,8 @@ def _run_detection_evaluation_with_session(
         "model_type": runtime_target.model_type,
         "split_name": split_name,
         "sample_count": total_images,
+        "coverage": coverage,
+        "failed_samples": failed_samples,
         "duration_seconds": round(duration, 3),
         "map50": round(map50, 6),
         "map50_95": round(map50_95, 6),
@@ -293,6 +371,19 @@ def _run_detection_evaluation_with_session(
         "mean_f1": round(mean_f1, 6),
         "score_threshold": request.score_threshold,
         "per_class_metrics": per_class,
+        "curves": {
+            "iou_threshold": 0.5, "working_point": request.score_threshold,
+            "score_floor": curve_score_floor, "confidence": confidence, "series": curves,
+            "confusion": [
+                {"actual": actual, "predicted": predicted, "count": count}
+                for (actual, predicted), count in confusion.items()
+            ],
+            "labels": [{"id": cid, "name": category_name_by_id.get(cid, str(cid))} for cid in all_class_ids],
+        },
+        "ground_truth_count": len(all_gt),
+        "prediction_count": len(all_pred),
+        "samples_with_false_negatives": sum(bool(sample["false_negatives"]) for sample in predictions_out),
+        "samples_with_false_positives": sum(bool(sample["false_positives"]) for sample in predictions_out),
     }
     if request.nms_threshold is not None:
         report["nms_threshold"] = request.nms_threshold
@@ -309,7 +400,131 @@ def _run_detection_evaluation_with_session(
         per_class_metrics=per_class,
         report_payload=report,
         detections_payload=predictions_out,
+        failed_image_paths=failed_image_paths,
     )
+
+
+def _validated_sample_ground_truth(
+    image_index: int, annotations: list[dict[str, Any]], names: dict[int, str],
+) -> list[dict[str, Any]] | None:
+    """标注必须有已知类别和有限、有效的框；错误时整张样本不计分。"""
+    ground_truth = []
+    for annotation in annotations:
+        box = annotation.get("bbox")
+        category_id = annotation.get("category_id")
+        if type(category_id) is not int or category_id not in names:
+            return None
+        if not isinstance(box, list) or len(box) != 4:
+            return None
+        if any(not isinstance(v, (int, float)) or not isfinite(v) for v in box):
+            return None
+        x, y, width, height = box
+        if width <= 0 or height <= 0 or not all(map(isfinite, (x + width, y + height, width * height))):
+            return None
+        ground_truth.append({
+            "image_id": image_index, "category_id": category_id,
+            "bbox_xyxy": (x, y, x + width, y + height), "area": width * height,
+        })
+    return ground_truth
+
+
+def _failed_sample(
+    image_index: int, path: str, reason: str, annotations: list[dict[str, Any]], names: dict[int, str],
+) -> dict[str, object]:
+    """失败样本报告仅保留名称和已知类别。"""
+    return {**_sample_identity(image_index, path, annotations, names), "reason": reason}
+
+
+def _sample_identity(
+    image_index: int, path: str, annotations: list[dict[str, Any]], names: dict[int, str],
+) -> dict[str, object]:
+    """返回执行记录和报告共用的样本标识，不返回文件路径。"""
+    return {
+        "image_index": image_index,
+        "name": PurePosixPath(str(path).replace("\\", "/")).name,
+        "classes": sorted({names[cid] for ann in annotations
+                           if isinstance(cid := ann.get("category_id"), int) and cid in names}),
+    }
+
+
+def _detection_confusion(
+    ground_truth: list[dict], predictions: list[dict],
+) -> list[tuple[int | None, int | None]]:
+    """按置信度和 IoU 0.50 匹配不同类别的框，记录错分与背景。"""
+    remaining = set(range(len(ground_truth)))
+    pairs = []
+    for prediction in sorted(predictions, key=lambda item: item["score"], reverse=True):
+        best = max(sorted(remaining), key=lambda idx: _box_iou(
+            ground_truth[idx]["bbox_xyxy"], prediction["bbox_xyxy"],
+        ), default=None)
+        if best is not None and _box_iou(ground_truth[best]["bbox_xyxy"], prediction["bbox_xyxy"]) >= 0.5:
+            remaining.remove(best)
+            pairs.append((ground_truth[best]["category_id"], prediction["category_id"]))
+        else:
+            pairs.append((None, prediction["category_id"]))
+    pairs.extend((ground_truth[idx]["category_id"], None) for idx in sorted(remaining))
+    return pairs
+
+
+def _summarize_detection_sample(ground_truth: list[dict], predictions: list[dict], names: dict[int, str]) -> dict[str, object]:
+    """记录可回放标注与预测，按同类别和 IoU 0.50 标记漏检及误检。"""
+    missed = set(range(len(ground_truth)))
+    ordered = sorted(predictions, key=lambda item: item["score"], reverse=True)
+    predicted = []
+    for item in ordered:
+        same_class = [index for index in missed if ground_truth[index]["category_id"] == item["category_id"]]
+        best = max(same_class, key=lambda index: _box_iou(item["bbox_xyxy"], ground_truth[index]["bbox_xyxy"]), default=None)
+        matched = best is not None and _box_iou(item["bbox_xyxy"], ground_truth[best]["bbox_xyxy"]) >= 0.5
+        if matched:
+            missed.remove(best)
+        predicted.append({
+            "class_name": names.get(item["category_id"], str(item["category_id"])),
+            "bbox_xyxy": item["bbox_xyxy"], "score": item["score"], "matched": matched,
+        })
+    return {
+        "ground_truth": [{
+            "class_name": names.get(item["category_id"], str(item["category_id"])),
+            "bbox_xyxy": item["bbox_xyxy"], "matched": index not in missed,
+        } for index, item in enumerate(ground_truth)],
+        "predictions": predicted,
+        "false_negatives": len(missed),
+        "false_positives": sum(not item["matched"] for item in predicted),
+    }
+
+
+def find_localization_error(sample: dict, class_name: str = "") -> dict[str, int | float] | None:
+    """返回同类别未匹配框中 IoU 最大的重叠对，定位偏差的 IoU 低于 0.50。
+
+    sample 是持久化的样本快照，class_name 为空时比较所有已知类别。
+    返回值包含两个原始框的索引及其 IoU，旧快照没有完整框时返回空。
+    """
+    if not sample.get("false_negatives") or not sample.get("false_positives"):
+        return None
+
+    def unmatched(layer: str):
+        """提取指定快照图层的有效未匹配框。"""
+        for index, item in enumerate(sample.get(layer) or ()):
+            if not isinstance(item, dict) or item.get("matched") is not False:
+                continue
+            name, box = item.get("class_name"), item.get("bbox_xyxy")
+            if (not isinstance(name, str) or not name or class_name and name != class_name
+                or not isinstance(box, (list, tuple)) or len(box) != 4
+                or not all(isinstance(value, (int, float)) and isfinite(value) for value in box)):
+                continue
+            yield index, name, tuple(box)
+
+    truth = list(unmatched("ground_truth"))
+    best = None
+    best_iou = 0.0
+    for pred_index, category, prediction_box in unmatched("predictions"):
+        for truth_index, truth_category, truth_box in truth:
+            if truth_category != category:
+                continue
+            iou = _box_iou(truth_box, prediction_box)
+            if best_iou < iou < 0.5:
+                best_iou = iou
+                best = {"ground_truth_index": truth_index, "prediction_index": pred_index, "iou": iou}
+    return best
 
 
 def _resolve_detection_category_id(
@@ -327,11 +542,13 @@ def _resolve_detection_category_id(
 def _parse_detection_manifest(
     manifest: dict[str, object],
     dataset_storage: LocalDatasetStorage,
+    *,
+    selected_split: object = None,
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
     """解析 detection manifest，返回 (split_name, images, categories)。"""
     splits = manifest.get("splits", [])
 
-    chosen_split = select_independent_evaluation_split(splits)
+    chosen_split = select_independent_evaluation_split(splits, selected_split=selected_split)
     if chosen_split is None:
         raise InvalidRequestError("detection manifest 不包含可用的 split")
 
@@ -420,20 +637,24 @@ def _parse_yolo_detection_split(
     for image_id, image_path in enumerate(
         _iter_detection_image_files(resolved_image_root), start=1
     ):
-        image_width, image_height = _read_detection_image_size(image_path)
         relative_image_path = image_path.relative_to(resolved_image_root).as_posix()
         label_path = (resolved_label_root / relative_image_path).with_suffix(".txt")
-        images.append(
-            {
-                "image_path": f"{image_root}/{relative_image_path}",
-                "annotations": _parse_yolo_detection_annotations(
-                    label_path=label_path,
-                    image_id=image_id,
-                    image_width=image_width,
-                    image_height=image_height,
-                ),
-            }
-        )
+        item: dict[str, Any] = {"image_path": f"{image_root}/{relative_image_path}"}
+        try:
+            image_width, image_height = _read_detection_image_size(image_path)
+        except FileNotFoundError:
+            item["sample_error"] = "missing_image"
+        except (ImageDecodeError, OSError):
+            item["sample_error"] = "unreadable_image"
+        else:
+            try:
+                item["annotations"] = _parse_yolo_detection_annotations(
+                    label_path=label_path, image_id=image_id,
+                    image_width=image_width, image_height=image_height,
+                )
+            except (OSError, ValueError):
+                item["sample_error"] = "invalid_annotation"
+        images.append(item)
     return split_name, images, categories
 
 
@@ -523,13 +744,12 @@ def _read_detection_image_size(image_path: Any) -> tuple[int, int]:
     """读取 detection 图片尺寸。"""
 
     import cv2
+    import numpy as np
 
-    image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-    if image is None:
-        raise InvalidRequestError(
-            "detection 图片无法读取",
-            details={"image_path": str(image_path)},
-        )
+    image = decode_image_bytes_to_matrix(
+        cv2_module=cv2, np_module=np, image_bytes=image_path.read_bytes(),
+        image_payload=None, imdecode_flags=cv2.IMREAD_UNCHANGED,
+    )
     return int(image.shape[1]), int(image.shape[0])
 
 
@@ -551,21 +771,17 @@ def _parse_yolo_detection_annotations(
             continue
         parts = line.split()
         if len(parts) != 5:
-            continue
-        try:
-            category_index = int(parts[0])
-            x_center = float(parts[1])
-            y_center = float(parts[2])
-            box_width = float(parts[3])
-            box_height = float(parts[4])
-        except ValueError:
-            continue
+            raise ValueError("无效的 YOLO 标注字段数")
+        category_index = int(parts[0])
+        x_center, y_center, box_width, box_height = map(float, parts[1:])
+        if not all(map(isfinite, (x_center, y_center, box_width, box_height))):
+            raise ValueError("YOLO 标注必须为有限数值")
         x = max(0.0, (x_center - (box_width / 2.0)) * float(image_width))
         y = max(0.0, (y_center - (box_height / 2.0)) * float(image_height))
         w = max(0.0, box_width * float(image_width))
         h = max(0.0, box_height * float(image_height))
         if w <= 0.0 or h <= 0.0:
-            continue
+            raise ValueError("YOLO 标注宽高必须为正数")
         annotations.append(
             {
                 "image_id": image_id,
@@ -576,178 +792,68 @@ def _parse_yolo_detection_annotations(
     return annotations
 
 
-def _compute_ap(
-    gt_list: list[dict],
-    pred_list: list[dict],
-    iou_threshold: float = 0.5,
-) -> float:
-    """计算单类别在指定 IoU 阈值下的 AP（101 点插值法）。
-
-    遵循 COCO 评估标准：
-    1. 按置信度降序排列预测
-    2. 贪心匹配每个预测到 IoU 最高且未被匹配的 GT
-    3. 构建 precision-recall 曲线
-    4. 在 101 个等间距 recall 阈值 [0.00, 0.01, ..., 1.00] 上插值 precision
-    5. AP = 插值 precision 的均值
-    """
-    if not gt_list:
-        return 0.0
-    if not pred_list:
-        return 0.0
-
-    # 按 image_id 分组 GT
+def _detection_matches(
+    gt_list: list[dict], pred_list: list[dict], iou_threshold: float,
+) -> list[int]:
+    """按置信度降序逐框匹配同类标注，返回每个预测之后的累计 TP。"""
     gt_by_image: dict[int, list[dict]] = {}
-    for g in gt_list:
-        gt_by_image.setdefault(g["image_id"], []).append(g)
+    for gt in gt_list:
+        gt_by_image.setdefault(gt["image_id"], []).append(gt)
 
-    gt_id_counter = 0
-    gt_id_map: dict[int, dict[int, int]] = {}
-    for g in gt_list:
-        img_id = g["image_id"]
-        if img_id not in gt_id_map:
-            gt_id_map[img_id] = {}
-        gt_idx = len(gt_id_map[img_id])
-        gt_id_map[img_id][gt_idx] = gt_id_counter
-        gt_id_counter += 1
-
-    total_gt = len(gt_list)
-    matched_gt: set[int] = set()
-
-    # 按 score 降序遍历预测，逐步构建 PR 曲线
-    tp_cumsum: list[int] = []
-    fp_cumsum: list[int] = []
-    tp_count = 0
-    fp_count = 0
-
-    for pred in pred_list:
-        img_id = pred["image_id"]
-        img_gt = gt_by_image.get(img_id, [])
+    cumulative: list[int] = []
+    matched: set[tuple[int, int]] = set()
+    for prediction in pred_list:
+        image_id = prediction["image_id"]
+        best_index = None
         best_iou = 0.0
-        best_gt_idx = -1
-
-        for gt_idx, gt in enumerate(img_gt):
-            gid = gt_id_map[img_id][gt_idx]
-            if gid in matched_gt:
+        for index, gt in enumerate(gt_by_image.get(image_id, ())):
+            if (image_id, index) in matched:
                 continue
-            iou = _box_iou(pred["bbox_xyxy"], gt["bbox_xyxy"])
+            iou = _box_iou(prediction["bbox_xyxy"], gt["bbox_xyxy"])
             if iou > best_iou:
                 best_iou = iou
-                best_gt_idx = gt_idx
+                best_index = index
+        if best_index is not None and best_iou >= iou_threshold:
+            matched.add((image_id, best_index))
+        cumulative.append(len(matched))
+    return cumulative
 
-        if best_iou >= iou_threshold and best_gt_idx >= 0:
-            tp_count += 1
-            gid = gt_id_map[img_id][best_gt_idx]
-            matched_gt.add(gid)
-        else:
-            fp_count += 1
 
-        tp_cumsum.append(tp_count)
-        fp_cumsum.append(fp_count)
+def _interpolated_precision(matches: list[int], total_gt: int) -> list[float]:
+    """在 101 个召回率点查找单调的精确率包络。"""
+    precisions = [0.0] * 101
+    recall_index = 100
+    best = 0.0
+    for index in range(len(matches) - 1, -1, -1):
+        recall = matches[index] / total_gt
+        while recall_index >= 0 and recall_index / 100 > recall:
+            precisions[recall_index] = best
+            recall_index -= 1
+        best = max(best, matches[index] / (index + 1))
+    for index in range(recall_index + 1):
+        precisions[index] = best
+    return precisions
 
-    if not tp_cumsum:
+
+def _compute_ap(gt_list: list[dict], pred_list: list[dict], iou_threshold: float = 0.5) -> float:
+    """计算单类别的 101 点插值 AP。"""
+    if not gt_list or not pred_list:
         return 0.0
-
-    # 构建 precision-recall 曲线
-    n_det = len(tp_cumsum)
-    precisions: list[float] = []
-    recalls: list[float] = []
-    for i in range(n_det):
-        precision_i = tp_cumsum[i] / max(tp_cumsum[i] + fp_cumsum[i], 1)
-        recall_i = tp_cumsum[i] / max(total_gt, 1)
-        precisions.append(precision_i)
-        recalls.append(recall_i)
-
-    # 101 点插值法（COCO 标准）
-    # 对每个 recall 阈值 r，找到 recall >= r 的所有点中的最大 precision
-    interpolated_precisions: list[float] = []
-    for r_threshold_i in range(101):
-        r_threshold = r_threshold_i / 100.0
-        # 找到所有 recall >= r_threshold 的点中的最大 precision
-        max_precision = 0.0
-        for i in range(n_det):
-            if recalls[i] >= r_threshold and precisions[i] > max_precision:
-                max_precision = precisions[i]
-        interpolated_precisions.append(max_precision)
-
-    # AP = 101 个插值 precision 的均值
-    return sum(interpolated_precisions) / 101.0
+    matches = _detection_matches(gt_list, pred_list, iou_threshold)
+    return sum(_interpolated_precision(matches, len(gt_list))) / 101
 
 
 def _compute_precision_recall_f1(
-    gt_list: list[dict],
-    pred_list: list[dict],
-    iou_threshold: float = 0.5,
+    gt_list: list[dict], pred_list: list[dict], iou_threshold: float = 0.5,
 ) -> dict[str, float]:
-    """计算单类别在指定 IoU 阈值下的 Precision、Recall、F1。
-
-    参数：
-    - gt_list: ground truth 列表，每个元素包含 image_id 和 bbox_xyxy
-    - pred_list: 预测列表，每个元素包含 image_id、bbox_xyxy 和 score（已按 score 降序排列）
-    - iou_threshold: IoU 匹配阈值
-
-    返回：
-    - dict 包含 precision、recall、f1 三个指标
-    """
-    if not gt_list:
-        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
-    if not pred_list:
-        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
-
-    # 按 image_id 分组 GT
-    gt_by_image: dict[int, list[dict]] = {}
-    for g in gt_list:
-        gt_by_image.setdefault(g["image_id"], []).append(g)
-
-    gt_id_counter = 0
-    gt_id_map: dict[int, dict[int, int]] = {}
-    for g in gt_list:
-        img_id = g["image_id"]
-        if img_id not in gt_id_map:
-            gt_id_map[img_id] = {}
-        gt_idx = len(gt_id_map[img_id])
-        gt_id_map[img_id][gt_idx] = gt_id_counter
-        gt_id_counter += 1
-
-    total_gt = len(gt_list)
-    matched_gt: set[int] = set()
-
-    # 贪心匹配
-    tp = 0
-    fp = 0
-
-    for pred in pred_list:
-        img_id = pred["image_id"]
-        img_gt = gt_by_image.get(img_id, [])
-        best_iou = 0.0
-        best_gt_idx = -1
-
-        for gt_idx, gt in enumerate(img_gt):
-            gid = gt_id_map[img_id][gt_idx]
-            if gid in matched_gt:
-                continue
-            iou = _box_iou(pred["bbox_xyxy"], gt["bbox_xyxy"])
-            if iou > best_iou:
-                best_iou = iou
-                best_gt_idx = gt_idx
-
-        if best_iou >= iou_threshold and best_gt_idx >= 0:
-            tp += 1
-            gid = gt_id_map[img_id][best_gt_idx]
-            matched_gt.add(gid)
-        else:
-            fp += 1
-
-    fn = total_gt - tp
-    precision = tp / max(tp + fp, 1)
-    recall = tp / max(tp + fn, 1)
-    f1 = (
-        (2 * precision * recall / (precision + recall))
-        if (precision + recall) > 0
-        else 0.0
-    )
-
-    return {"precision": precision, "recall": recall, "f1": f1}
-
+    """计算单类别在工作点的 Precision、Recall 和 F1。"""
+    matches = _detection_matches(gt_list, pred_list, iou_threshold)
+    tp = matches[-1] if matches else 0
+    return {
+        "precision": tp / max(len(pred_list), 1),
+        "recall": tp / max(len(gt_list), 1),
+        "f1": 2 * tp / max(len(gt_list) + len(pred_list), 1),
+    }
 
 def _box_iou(box1: tuple, box2: tuple) -> float:
     """计算两个 xyxy 框的 IoU。"""

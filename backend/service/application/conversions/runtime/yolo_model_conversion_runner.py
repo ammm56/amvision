@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+import json
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
+
+from backend.service.application.conversions.advanced_options import (
+    YOLO_ONNX_OPSETS, is_tensorrt_int8_request, parse_openvino_int8_options, parse_tensorrt_int8_options,
+    resolve_conversion_onnx_opset, uses_conversion_dynamic_batch,
+)
+from backend.service.application.models.yolo_core_common.export.execution import validate_profile_input_tensor
 
 from backend.service.application.backends import (
     ConversionBackend,
@@ -29,6 +39,7 @@ from backend.service.application.runtime.session_lifecycle import RuntimeSession
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.application.conversions.stage_progress import conversion_steps
 from backend.service.application.conversions.runtime.model_conversion_common import (
     attach_conversion_output_provenance,
     build_conversion_options_metadata,
@@ -84,6 +95,19 @@ class LocalYoloModelConversionRunner:
             task_type=request.task_type,
             target_formats=request.target_formats,
         )
+        opset = resolve_conversion_onnx_opset(dict(request.metadata), supported=YOLO_ONNX_OPSETS)
+        if opset is not None:
+            export_plan = replace(export_plan, onnx_opset_version=opset)
+        if uses_conversion_dynamic_batch(
+            dict(request.metadata), model_type=request.model_type, task_type=request.task_type,
+            targets=request.target_formats,
+        ):
+            export_plan = replace(export_plan, dynamic_batch=True)
+        if is_tensorrt_int8_request(
+            dict(request.metadata), model_type=request.model_type, task_type=request.task_type,
+            targets=request.target_formats,
+        ):
+            export_plan = replace(export_plan, spatial_profile=parse_tensorrt_int8_options(dict(request.metadata)).shapes)
         with RuntimeSessionLease(
             session_cls.load(
                 dataset_storage=self.dataset_storage,
@@ -129,8 +153,18 @@ class LocalYoloModelConversionRunner:
         optimized_output: YoloModelConversionOutput | None = None
         openvino_output: YoloModelConversionOutput | None = None
         tensorrt_output: YoloModelConversionOutput | None = None
+        profile = getattr(export_plan, "spatial_profile", None)
 
-        for step in request.plan_steps:
+        def validate_input(input_tensor: object, input_spec: object, artifact_format: str) -> dict[str, object]:
+            """检查产物的真实输入，动态输入以任务 profile 为准。"""
+            if profile:
+                return validate_profile_input_tensor(input_tensor, profile)
+            return validate_yolo_converted_input_tensor(
+                input_tensor=input_tensor, model_input_spec_payload=input_spec,
+                artifact_format=artifact_format,
+            )
+
+        for step in conversion_steps(request):
             executed_step_kinds.append(step.kind)
             if step.kind == "export-onnx":
                 export_summary = self._export_onnx(
@@ -175,9 +209,9 @@ class LocalYoloModelConversionRunner:
                     export_plan=export_plan,
                 )
                 if onnx_output is not None:
-                    validated_input_tensor = validate_yolo_converted_input_tensor(
-                        input_tensor=validation_summary.get("input_tensor"),
-                        model_input_spec_payload=onnx_output.metadata.get(
+                    validated_input_tensor = validate_input(
+                        validation_summary.get("input_tensor"),
+                        onnx_output.metadata.get(
                             "model_input_spec"
                         ),
                         artifact_format="onnx",
@@ -220,9 +254,9 @@ class LocalYoloModelConversionRunner:
                 runtime_fields = build_conversion_output_runtime_fields(
                     target_format="onnx-optimized",
                 )
-                optimized_input_tensor = validate_yolo_converted_input_tensor(
-                    input_tensor=optimize_summary.get("input_tensor"),
-                    model_input_spec_payload=onnx_output.metadata.get(
+                optimized_input_tensor = validate_input(
+                    optimize_summary.get("input_tensor"),
+                    onnx_output.metadata.get(
                         "model_input_spec"
                     ),
                     artifact_format="onnx-optimized",
@@ -254,11 +288,15 @@ class LocalYoloModelConversionRunner:
                     raise ServiceConfigurationError(
                         "build-openvino-ir 缺少 optimize-onnx 输出"
                     )
-                build_summary = self._build_openvino_ir(
-                    source_object_key=optimized_object_key,
-                    output_object_key=openvino_object_key,
-                    build_precision=openvino_ir_build_precision,
-                )
+                openvino_options = {
+                    "source_object_key": optimized_object_key,
+                    "output_object_key": openvino_object_key,
+                    "build_precision": openvino_ir_build_precision,
+                }
+                if openvino_ir_build_precision == "int8":
+                    build_summary = self._build_openvino_int8(request, openvino_options)
+                else:
+                    build_summary = self._build_openvino_ir(**openvino_options)
                 runtime_fields = build_conversion_output_runtime_fields(
                     target_format="openvino-ir",
                     build_precision=openvino_ir_build_precision,
@@ -301,11 +339,15 @@ class LocalYoloModelConversionRunner:
                     raise ServiceConfigurationError(
                         "build-tensorrt-engine 缺少 optimize-onnx 输出"
                     )
-                build_summary = self._build_tensorrt_engine(
-                    source_object_key=optimized_object_key,
-                    output_object_key=tensorrt_object_key,
-                    build_precision=tensorrt_engine_build_precision,
-                )
+                build_options = {
+                    "source_object_key": optimized_object_key,
+                    "output_object_key": tensorrt_object_key,
+                    "build_precision": tensorrt_engine_build_precision,
+                }
+                if profile:
+                    build_summary = self._build_dynamic_int8(request, build_options)
+                else:
+                    build_summary = self._build_tensorrt_engine(**build_options)
                 runtime_fields = build_conversion_output_runtime_fields(
                     target_format="tensorrt-engine",
                     build_precision=tensorrt_engine_build_precision,
@@ -314,9 +356,9 @@ class LocalYoloModelConversionRunner:
                     build_summary=build_summary,
                     inherited_input_tensor=optimized_output.metadata["input_tensor"],
                 )
-                validate_yolo_converted_input_tensor(
-                    input_tensor=tensorrt_input_tensor,
-                    model_input_spec_payload=onnx_output.metadata.get(
+                validate_input(
+                    tensorrt_input_tensor,
+                    onnx_output.metadata.get(
                         "model_input_spec"
                     ),
                     artifact_format="tensorrt-engine",
@@ -373,15 +415,85 @@ class LocalYoloModelConversionRunner:
             metadata={
                 "phase": resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,
-                "validation_summary": validation_summary,
-                "conversion_options": build_conversion_options_metadata(
-                    target_formats=request.target_formats,
-                    openvino_ir_build_precision=openvino_ir_build_precision,
-                    tensorrt_engine_build_precision=tensorrt_engine_build_precision,
-                ),
+                "validation_summary": {
+                    **validation_summary,
+                    **({"tensorrt_int8": tensorrt_output.metadata["runtime_smoke"]} if profile and tensorrt_output else {}),
+                    **({"openvino_int8": openvino_output.metadata["runtime_smoke"]} if openvino_ir_build_precision == "int8" and openvino_output else {}),
+                },
+                "conversion_options": {
+                    **build_conversion_options_metadata(
+                        target_formats=request.target_formats,
+                        openvino_ir_build_precision=openvino_ir_build_precision,
+                        tensorrt_engine_build_precision=tensorrt_engine_build_precision,
+                    ),
+                    "onnx_opset_version": export_plan.onnx_opset_version,
+                    "input_shape_mode": "dynamic" if profile else (
+                        "dynamic-batch" if getattr(export_plan, "dynamic_batch", False) else "static"
+                    ),
+                    **({
+                        key: request.metadata[key] for key in (
+                            "input_profile", "int8_calibration", "int8_validation",
+                        )
+                    } | {"workspace_gib": parse_tensorrt_int8_options(dict(request.metadata)).workspace_gib} if profile else {}),
+                },
                 "export_plan": export_plan.to_metadata(),
             },
         )
+
+    def _build_dynamic_int8(self, request: YoloModelConversionRunRequest, build_options: dict[str, str]) -> dict[str, object]:
+        """只向 TensorRT 子进程传递 Worker 已解析的样本文件。"""
+        options = parse_tensorrt_int8_options(dict(request.metadata))
+        samples = self._resolve_int8_sample_paths(request)
+        config = {
+            "shapes": options.shapes,
+            "workspace_gib": options.workspace_gib,
+            **samples,
+        }
+        directory = self.dataset_storage.resolve(build_options["output_object_key"]).parent
+        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory, suffix=".json", delete=False) as handle:
+            config_path = Path(handle.name)
+        try:
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            summary = self._build_tensorrt_engine(**build_options, int8_config_path=config_path)
+        finally:
+            config_path.unlink(missing_ok=True)
+        summary["calibration"] = {
+            **summary["calibration"], "dataset_export_id": options.calibration_export_id, "split": "train",
+        }
+        summary["runtime_smoke"] = {
+            **summary["runtime_smoke"], "dataset_export_id": options.validation_export_id, "split": "val",
+        }
+        return summary
+
+    def _resolve_int8_sample_paths(self, request: YoloModelConversionRunRequest) -> dict[str, list[str]]:
+        """将 Worker 已选样本解析为子进程可读的本地路径。"""
+        samples = request.metadata.get("int8_sample_sets")
+        if not isinstance(samples, dict):
+            raise ServiceConfigurationError("转换 Worker 未解析 INT8 校准与校验样本")
+        return {
+            split: [str(self.dataset_storage.resolve_deletion_path(key)) for key in samples[split]]
+            for split in ("train", "val")
+        }
+
+    def _build_openvino_int8(self, request: YoloModelConversionRunRequest, build_options: dict[str, str]) -> dict[str, object]:
+        """将静态输入的样本交给 OpenVINO 子进程，并保留两组数据来源。"""
+        options = parse_openvino_int8_options(dict(request.metadata))
+        samples = self._resolve_int8_sample_paths(request)
+        directory = self.dataset_storage.resolve(build_options["output_object_key"]).parent
+        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory, suffix=".json", delete=False) as handle:
+            config_path = Path(handle.name)
+        try:
+            config_path.write_text(json.dumps(samples), encoding="utf-8")
+            summary = self._build_openvino_ir(**build_options, int8_config_path=config_path)
+        finally:
+            config_path.unlink(missing_ok=True)
+        summary["calibration"] = {
+            **summary["calibration"], "dataset_export_id": options.calibration_export_id, "split": "train",
+        }
+        summary["runtime_smoke"] = {
+            **summary["runtime_smoke"], "dataset_export_id": options.validation_export_id, "split": "val",
+        }
+        return summary
 
     def _resolve_task_runtime_session_cls(self, task_type: str) -> type:
         """按 task_type 返回当前模型要使用的 PyTorch export session。"""
@@ -472,6 +584,7 @@ class LocalYoloModelConversionRunner:
         source_object_key: str,
         output_object_key: str,
         build_precision: str,
+        int8_config_path: Path | None = None,
     ) -> dict[str, object]:
         """把 optimized ONNX 转换为 OpenVINO IR。"""
 
@@ -482,6 +595,7 @@ class LocalYoloModelConversionRunner:
             output_object_key=output_object_key,
             build_precision=build_precision,
             run_conversion_script=run_conversion_script,
+            int8_config_path=int8_config_path,
         )
 
     def _build_tensorrt_engine(

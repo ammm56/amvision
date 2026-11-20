@@ -4,7 +4,7 @@
       <section
         ref="dialogRef"
         class="confirm-dialog"
-        :class="{ 'confirm-dialog--wide': size === 'wide', 'confirm-dialog--medium': size === 'medium', 'confirm-dialog--scroll-body': scrollBody }"
+        :class="[{ 'confirm-dialog--wide': size === 'wide', 'confirm-dialog--medium': size === 'medium', 'confirm-dialog--scroll-body': scrollBody }, panelClass]"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
@@ -60,6 +60,7 @@ const props = withDefaults(
     confirmVariant?: 'primary' | 'danger'
     initialFocus?: 'cancel' | 'first-field'
     size?: 'default' | 'medium' | 'wide'
+    panelClass?: string
     scrollBody?: boolean
     showConfirm?: boolean
   }>(),

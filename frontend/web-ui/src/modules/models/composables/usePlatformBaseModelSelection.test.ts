@@ -17,6 +17,7 @@ vi.mock('../services/model.service', async (importOriginal) => {
 })
 
 import { usePlatformBaseModelSelection } from './usePlatformBaseModelSelection'
+import { getPlatformBaseModelDetail } from '../services/model.service'
 
 function version(
   modelVersionId: string,
@@ -26,6 +27,7 @@ function version(
   const hasCheckpoint = options.checkpoint !== false
   return {
     model_version_id: modelVersionId,
+    version_number: 1,
     source_kind: 'training-output',
     parent_version_id: parentVersionId,
     file_ids: hasCheckpoint ? [`${modelVersionId}-checkpoint`] : [],
@@ -76,6 +78,16 @@ function selectedBaseModel(): PlatformBaseModelDetail {
 }
 
 describe('usePlatformBaseModelSelection', () => {
+  it('exposes a detail failure and clears it on retry', async () => {
+    const baseModel = selectedBaseModel()
+    vi.mocked(getPlatformBaseModelDetail).mockRejectedValueOnce(new Error('读取失败')).mockResolvedValueOnce(baseModel)
+    const selection = usePlatformBaseModelSelection({ baseModels: ref([baseModel]), sourceModels: ref([]), detailFailedMessage: () => 'failed' })
+    await selection.selectBaseModel(baseModel.model_id)
+    expect(selection.selectedModelDetailError.value).toBe('读取失败')
+    await selection.selectBaseModel(baseModel.model_id)
+    expect(selection.selectedModelDetailError.value).toBe('')
+    expect(selection.selectedModelDetail.value?.model_id).toBe(baseModel.model_id)
+  })
   it('lists matching project versions from the model registry across warm-start generations', () => {
     const baseModel = selectedBaseModel()
     const firstGenerationId = 'model-version-df3198f31449'
@@ -112,7 +124,6 @@ describe('usePlatformBaseModelSelection', () => {
     const selection = usePlatformBaseModelSelection({
       baseModels: ref<PlatformBaseModelSummary[]>([baseModel]),
       sourceModels,
-      onError: vi.fn(),
       detailFailedMessage: () => 'failed',
     })
 
@@ -123,13 +134,13 @@ describe('usePlatformBaseModelSelection', () => {
         model_version_id: firstGenerationId,
         source_kind: 'training-output',
         title: 'yolo11-s-pcbpetslot3570-20260803193223',
-        subtitle: firstGenerationId,
+        subtitle: 'v1',
       },
       {
         model_version_id: secondGenerationId,
         source_kind: 'training-output',
         title: 'yolo11-s-pcbpetslot4570-20260804092556',
-        subtitle: secondGenerationId,
+        subtitle: 'v1',
       },
     ])
   })

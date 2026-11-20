@@ -1,9 +1,10 @@
 import type { PlatformBaseModelVersionSummary } from './services/model.service'
 
-export type ConversionSourceIssue = 'checkpointMissing' | 'labelsMissing' | 'labelsInvalid' | null
+export type ConversionSourceIssue = 'checkpointMissing' | 'checkpointUnavailable' | 'labelsMissing' | 'labelsInvalid' | null
 
 export function conversionSourceIssue(version: PlatformBaseModelVersionSummary): ConversionSourceIssue {
-  if (!version.checkpoint_file_id?.trim() || !version.checkpoint_storage_uri?.trim()) return 'checkpointMissing'
+  if (!version.checkpoint_file_id?.trim() || !version.checkpoint_storage_uri?.trim() || version.checkpoint_state === 'missing') return 'checkpointMissing'
+  if (version.checkpoint_state === 'unavailable') return 'checkpointUnavailable'
   const names = version.metadata.category_names
   if (names !== undefined) {
     if (

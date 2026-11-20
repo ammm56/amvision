@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import json
 import pickle
 from pathlib import Path
@@ -68,6 +69,15 @@ def run_attempt(
     )
     with request_path.open("rb") as stream:
         request = pickle.load(stream)  # noqa: S301 - 仅消费父进程创建的本地控制文件
+    progress_path = result_path.with_name("stages.jsonl")
+
+    def report_stage(kind: str, state: str, created_at: str) -> None:
+        """把子进程观察到的阶段写入本次 Attempt 的控制目录。"""
+
+        with progress_path.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(json.dumps([kind, state, created_at]) + "\n")
+
+    request = replace(request, report_stage=report_stage)
     try:
         runner = _build_runner(
             runner_kind=runner_kind,

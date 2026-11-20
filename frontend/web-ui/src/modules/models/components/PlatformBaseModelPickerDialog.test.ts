@@ -1,144 +1,60 @@
 import { mount } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
 import { describe, expect, it } from 'vitest'
-
 import PlatformBaseModelPickerDialog from './PlatformBaseModelPickerDialog.vue'
-import type {
-  PlatformBaseModelDetail,
-  PlatformBaseModelSummary,
-} from '../services/model.service'
+import type { PlatformBaseModelDetail, PlatformBaseModelSummary } from '../services/model.service'
 
-function model(
-  modelId: string,
-  modelName: string,
-  modelScale: string,
-): PlatformBaseModelSummary {
-  return {
-    model_id: modelId,
-    scope_kind: 'platform',
-    model_name: modelName,
-    model_type: modelName,
-    task_type: 'detection',
-    model_scale: modelScale,
-    metadata: {},
-    version_count: 1,
-    build_count: 0,
-    available_versions: [],
-  }
+const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': {} } })
+function model(id: string, state: 'present' | 'missing'): PlatformBaseModelSummary {
+  return { model_id: id, scope_kind: 'platform-base', model_name: id, model_type: id, task_type: 'detection', model_scale: 's', metadata: {}, version_count: 1, build_count: 0, available_versions: [{ model_version_id: `${id}-v1`, source_kind: 'pretrained-reference', file_ids: [], metadata: {}, checkpoint_state: state, checkpoint_storage_uri: `models/${id}.pt` }] }
 }
-
-const models = [
-  model('rfdetr-l', 'rfdetr', 'l'),
-  model('rfdetr-m', 'rfdetr', 'm'),
-  model('yolo11-s', 'yolo11', 's'),
-  model('yolo11-m', 'yolo11', 'm'),
-]
-
-function detail(summary: PlatformBaseModelSummary): PlatformBaseModelDetail {
-  return {
-    ...summary,
-    versions: [{
-      model_version_id: `mv-${summary.model_id}`,
-      source_kind: 'pretrained-reference',
-      file_ids: [],
-      metadata: {},
-      files: [],
-    }],
-    builds: [],
-  }
+const available = model('yolo11', 'present')
+const detail: PlatformBaseModelDetail = { ...available, versions: [], builds: [] }
+const props = {
+  open: true, loading: false, detailLoading: false, retryLabel: '重试', title: '选择基础模型', closeLabel: '关闭',
+  taskTypeOptions: [{ label: 'detection', value: 'detection' }], selectedTaskType: 'detection', modelListTitle: '', modelNameLabel: '', detailTitle: '', detailLoadingLabel: '正在加载', currentSelectionLabel: '当前选择', versionSelectionLabel: '', versionsTitle: '', extraVersionsTitle: '项目训练版本', scaleLabel: '', applyModelLabel: '', applyTrainingVersionLabel: '选择此版本', emptyTitle: '暂无模型', emptyDescription: '', detailEmptyTitle: '先选择模型', detailEmptyDescription: '', emptyVersionsTitle: '', emptyVersionsDescription: '', models: [available, model('yolox', 'missing')], selectedModelId: 'yolo11', selectedModelDetail: detail,
 }
-
 function mountDialog(overrides: Record<string, unknown> = {}) {
-  return mount(PlatformBaseModelPickerDialog, {
-    props: {
-      open: true,
-      loading: false,
-      detailLoading: false,
-      title: '选择训练基础模型',
-      closeLabel: '关闭',
-      taskTypeOptions: [{ label: 'detection', value: 'detection' }],
-      selectedTaskType: 'detection',
-      modelListTitle: '模型选择',
-      modelNameLabel: '模型名称',
-      detailTitle: '版本与使用',
-      detailLoadingLabel: '正在加载模型详情',
-      currentSelectionLabel: '当前选择',
-      versionSelectionLabel: '继续训练版本',
-      versionsTitle: '可用版本',
-      extraVersionsTitle: '项目训练版本',
-      scaleLabel: '参数量',
-      applyModelLabel: '使用当前模型',
-      applyTrainingVersionLabel: '选择此版本继续训练',
-      emptyTitle: '暂无模型',
-      emptyDescription: '没有可用模型',
-      detailEmptyTitle: '先选择模型',
-      detailEmptyDescription: '选择后显示详情',
-      emptyVersionsTitle: '暂无版本',
-      emptyVersionsDescription: '登记后显示',
-      models,
-      selectedModelId: 'rfdetr-m',
-      selectedModelDetail: detail(models[1]),
-      ...overrides,
-    },
-  })
+  return mount(PlatformBaseModelPickerDialog, { props: { ...props, ...overrides }, global: { plugins: [i18n], stubs: { SideDrawer: { template: '<div><slot/><slot name="footer"/></div>' } } } })
 }
-
 describe('PlatformBaseModelPickerDialog', () => {
-  it('keeps the dialog header compact without description or task type label', () => {
+  it('shows real checkpoint state and filters models', async () => {
     const wrapper = mountDialog()
-
-    expect(wrapper.find('.model-picker-shell__description').exists()).toBe(false)
-    expect(wrapper.find('.model-picker-shell__label').exists()).toBe(false)
+    expect(wrapper.text()).toContain('文件存在')
+    expect(wrapper.text()).toContain('文件缺失')
+    expect(wrapper.text()).toContain('yolo11.pt')
+    await wrapper.get('input[aria-label="搜索模型名称"]').setValue('yolox')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.find('tbody').text()).toContain('yolox')
   })
-
-  it('groups platform models by model name before showing parameter sizes', () => {
+  it('does not enable missing or unchecked files', () => {
+    const missing = model('yolox', 'missing')
+    const wrapper = mountDialog({ selectedModelId: 'yolox', selectedModelDetail: { ...missing, versions: [], builds: [] } })
+    expect(wrapper.findAll('button').find(button => button.text() === '使用所选模型')!.attributes('disabled')).toBeDefined()
+  })
+  it('allows choosing the architecture without a checkpoint for training from scratch', async () => {
+    const missing = model('yolox', 'missing')
+    const missingDetail = { ...missing, versions: [], builds: [] }
+    const wrapper = mountDialog({ selectedModelId: 'yolox', selectedModelDetail: missingDetail })
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.findAll('button').find(button => button.text() === '使用所选模型')!.trigger('click')
+    expect(wrapper.emitted('apply-model')).toEqual([[missingDetail]])
+  })
+  it('confirms the actual checkpoint version for weight initialization', async () => {
     const wrapper = mountDialog()
-
-    const families = wrapper.findAll('.platform-model-family')
-    expect(families).toHaveLength(2)
-    expect(families.map((item) => item.find('strong').text())).toEqual(['rfdetr', 'yolo11'])
-    expect(families.map((item) => item.text())).toEqual(['rfdetr', 'yolo11'])
-    expect(wrapper.findAll('.platform-model-scale')).toHaveLength(2)
-    expect(wrapper.findAll('.platform-model-scale').map((item) => item.text())).toEqual(['m', 'l'])
-    expect(wrapper.find('.model-picker-shell__count').text()).toBe('2')
+    await wrapper.findAll('button').find(button => button.text() === '使用所选模型')!.trigger('click')
+    expect(wrapper.emitted('apply-training-version')).toEqual([[{ model: detail, modelVersionId: 'yolo11-v1' }]])
   })
-
-  it('numbers model selection and version actions as one four-step flow', () => {
-    const wrapper = mountDialog()
-
-    expect(wrapper.findAll('.platform-model-selection__step').map((item) => item.text()))
-      .toEqual(['1', '2', '3', '4'])
-    expect(wrapper.text()).toContain('当前选择')
-    expect(wrapper.text()).toContain('继续训练版本')
-    expect(wrapper.find('.platform-model-version-action').text()).toBe('选择此版本继续训练')
-  })
-
-  it('preserves the selected parameter size when switching model names', async () => {
-    const wrapper = mountDialog()
-
-    await wrapper.findAll('.platform-model-family')[1].trigger('click')
-
-    expect(wrapper.emitted('select-model')).toEqual([['yolo11-m']])
-  })
-
-  it('emits the concrete model id when a parameter size is selected', async () => {
-    const wrapper = mountDialog()
-    const largeScale = wrapper
-      .findAll('.platform-model-scale')
-      .find((item) => item.find('strong').text() === 'l')
-
-    expect(largeScale).toBeDefined()
-    await largeScale?.trigger('click')
-
-    expect(wrapper.emitted('select-model')).toEqual([['rfdetr-l']])
-  })
-
-  it('shows a stable loading state while the selected model detail changes', () => {
-    const wrapper = mountDialog({
-      detailLoading: true,
-      selectedModelDetail: null,
-    })
-
-    expect(wrapper.find('.platform-model-detail__spinner').exists()).toBe(true)
-    expect(wrapper.text()).toContain('正在加载模型详情')
+  it('distinguishes loading, list failure, and detail failure with retry', async () => {
+    const wrapper = mountDialog({ models: [], selectedModelDetail: null, loading: true })
+    expect(wrapper.get('[role="status"]').text()).toContain('正在加载')
+    await wrapper.setProps({ loading: false, listError: '目录读取失败' })
+    expect(wrapper.get('[role="alert"]').text()).toContain('目录读取失败')
+    await wrapper.findAll('button').find(button => button.text() === '重试')!.trigger('click')
+    expect(wrapper.emitted('retry-list')).toHaveLength(1)
+    await wrapper.setProps({ models: [available], listError: null, detailError: '详情读取失败' })
+    expect(wrapper.get('[role="alert"]').text()).toContain('详情读取失败')
+    await wrapper.findAll('button').find(button => button.text() === '重试')!.trigger('click')
+    expect(wrapper.emitted('retry-detail')).toHaveLength(1)
   })
 })

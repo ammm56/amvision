@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
+from backend.service.api.rest.v1.routes.model_submissions import track_model_submission
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.detection_conversion_tasks.schemas import (
     OPENVINO_IR_PRECISION_OPTION_KEY,
@@ -31,6 +32,7 @@ detection_conversion_create_router = APIRouter()
     "/detection/conversion-tasks/onnx",
     response_model=DetectionConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_detection_onnx_conversion_task(
     body: DetectionConversionTaskCreateRequestBody,
@@ -53,6 +55,7 @@ def create_detection_onnx_conversion_task(
     "/detection/conversion-tasks/onnx-optimized",
     response_model=DetectionConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_detection_optimized_onnx_conversion_task(
     body: DetectionConversionTaskCreateRequestBody,
@@ -75,6 +78,7 @@ def create_detection_optimized_onnx_conversion_task(
     "/detection/conversion-tasks/openvino-ir-fp32",
     response_model=DetectionConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_detection_openvino_ir_fp32_conversion_task(
     body: DetectionConversionTaskCreateRequestBody,
@@ -101,6 +105,7 @@ def create_detection_openvino_ir_fp32_conversion_task(
     "/detection/conversion-tasks/openvino-ir-fp16",
     response_model=DetectionConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_detection_openvino_ir_fp16_conversion_task(
     body: DetectionConversionTaskCreateRequestBody,
@@ -124,9 +129,37 @@ def create_detection_openvino_ir_fp16_conversion_task(
 
 
 @detection_conversion_create_router.post(
+    "/detection/conversion-tasks/openvino-ir-int8",
+    response_model=DetectionConversionTaskSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
+)
+def create_detection_openvino_ir_int8_conversion_task(
+    body: DetectionConversionTaskCreateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> DetectionConversionTaskSubmissionResponse:
+    """创建一个输出 INT8 OpenVINO IR 的 detection conversion task。"""
+
+    return submit_detection_conversion_task(
+        body=body,
+        target_format="openvino-ir",
+        extra_options_override=merge_fixed_detection_conversion_extra_options(
+            body_extra_options=body.extra_options,
+            fixed_extra_options={OPENVINO_IR_PRECISION_OPTION_KEY: "int8"},
+        ),
+        principal=principal,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+
+
+@detection_conversion_create_router.post(
     "/detection/conversion-tasks/tensorrt-engine-fp32",
     response_model=DetectionConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_detection_tensorrt_engine_fp32_conversion_task(
     body: DetectionConversionTaskCreateRequestBody,
@@ -153,6 +186,7 @@ def create_detection_tensorrt_engine_fp32_conversion_task(
     "/detection/conversion-tasks/tensorrt-engine-fp16",
     response_model=DetectionConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
 )
 def create_detection_tensorrt_engine_fp16_conversion_task(
     body: DetectionConversionTaskCreateRequestBody,
@@ -168,6 +202,33 @@ def create_detection_tensorrt_engine_fp16_conversion_task(
         extra_options_override=merge_fixed_detection_conversion_extra_options(
             body_extra_options=body.extra_options,
             fixed_extra_options={TENSORRT_ENGINE_PRECISION_OPTION_KEY: "fp16"},
+        ),
+        principal=principal,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+
+
+@detection_conversion_create_router.post(
+    "/detection/conversion-tasks/tensorrt-engine-int8",
+    response_model=DetectionConversionTaskSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(track_model_submission)],
+)
+def create_detection_tensorrt_engine_int8_conversion_task(
+    body: DetectionConversionTaskCreateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> DetectionConversionTaskSubmissionResponse:
+    """创建经独立验证后登记的 YOLO11 动态 INT8 TensorRT 转换。"""
+
+    return submit_detection_conversion_task(
+        body=body,
+        target_format="tensorrt-engine",
+        extra_options_override=merge_fixed_detection_conversion_extra_options(
+            body_extra_options=body.extra_options,
+            fixed_extra_options={TENSORRT_ENGINE_PRECISION_OPTION_KEY: "int8"},
         ),
         principal=principal,
         session_factory=session_factory,

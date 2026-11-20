@@ -37,6 +37,18 @@ def delete_conversion_task_outputs(
     )
 
 
+def delete_conversion_task_record(
+    *, task: TaskRecord, session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage, queue_backend: QueueBackend,
+) -> None:
+    """删除转换记录、日志和临时文件，保留已登记的模型产物。"""
+    _ensure_terminal_task(task)
+    _resolve_conversion_output_prefix(task)
+    ResourceDeletionService(
+        session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend,
+    ).delete(kind="conversion-task-record", resource_id=task.task_id, project_id=task.project_id)
+
+
 def _ensure_terminal_task(task: TaskRecord) -> None:
     """确保任务已进入可删除的终态。"""
 

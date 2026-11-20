@@ -180,8 +180,14 @@ function enabledIndex(start: number, direction: 1 | -1): number {
 
 function scrollActiveOption(): void {
   void nextTick(() => {
-    if (open.value && activeIndex.value >= 0)
-      document.getElementById(optionId(activeIndex.value))?.scrollIntoView?.({ block: 'nearest' })
+    if (!open.value || activeIndex.value < 0) return
+    const menu = menuElement.value
+    const option = document.getElementById(optionId(activeIndex.value))
+    if (!menu || !option) return
+    const menuBounds = menu.getBoundingClientRect()
+    const optionBounds = option.getBoundingClientRect()
+    if (optionBounds.top < menuBounds.top) menu.scrollTop -= menuBounds.top - optionBounds.top
+    else if (optionBounds.bottom > menuBounds.bottom) menu.scrollTop += optionBounds.bottom - menuBounds.bottom
   })
 }
 

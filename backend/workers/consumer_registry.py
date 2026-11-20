@@ -28,6 +28,7 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
     BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
     BACKEND_WORKER_CONSUMER_OBB_EVALUATION,
+    BACKEND_WORKER_CONSUMER_DENSE_EVALUATION,
     BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
     BACKEND_WORKER_CONSUMER_OBB_TRAINING,
     BACKEND_WORKER_CONSUMER_POSE_EVALUATION,
@@ -336,6 +337,11 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
         "backend.workers.evaluation.model_evaluation_queue_worker",
         "ObbEvaluationQueueWorker",
         "obb-evaluation",
+    ),
+    BACKEND_WORKER_CONSUMER_DENSE_EVALUATION: _std_factory(
+        "backend.workers.evaluation.dense_evaluation_worker",
+        "DenseEvaluationQueueWorker",
+        "dense-model-evaluation",
     ),
 }
 

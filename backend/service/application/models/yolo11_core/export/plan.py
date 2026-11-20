@@ -59,6 +59,8 @@ class Yolo11ExportTaskPlan:
     exporter_mode: str
     export_mode_enabled: bool
     target_specs: tuple[Yolo11ExportTargetSpec, ...]
+    dynamic_batch: bool = False
+    spatial_profile: tuple[tuple[int, ...], ...] | None = None
 
     def to_metadata(self) -> dict[str, object]:
         """返回可写入转换结果的导出计划摘要。"""
@@ -70,6 +72,8 @@ class Yolo11ExportTaskPlan:
             "onnx_opset_version": self.onnx_opset_version,
             "exporter_mode": self.exporter_mode,
             "export_mode_enabled": self.export_mode_enabled,
+            **({"dynamic_batch": True} if self.dynamic_batch else {}),
+            **({"input_profile": self.spatial_profile} if self.spatial_profile else {}),
             "target_specs": [
                 {
                     "target_format": spec.target_format,

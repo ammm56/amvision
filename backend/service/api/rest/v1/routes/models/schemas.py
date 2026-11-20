@@ -52,6 +52,20 @@ class PlatformBaseModelFileResponse(BaseModel):
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
 
 
+class ProjectModelPresentationRequest(BaseModel):
+    """更新项目模型展示名称和说明，原始登记名称保持不变。"""
+
+    display_name: str = Field(min_length=1, max_length=128)
+    description: str = Field(default="", max_length=2000)
+    expected_revision: int = Field(ge=0)
+
+
+class ProjectModelPresentationResponse(BaseModel):
+    """返回本次展示信息的 revision。"""
+
+    revision: int
+
+
 class PlatformBaseModelVersionSummaryResponse(BaseModel):
     """描述平台基础模型列表中的版本摘要。
 
@@ -69,6 +83,7 @@ class PlatformBaseModelVersionSummaryResponse(BaseModel):
     """
 
     model_version_id: str = Field(description="ModelVersion id")
+    version_number: int | None = Field(default=None, description="模型内稳定的版本序号")
     source_kind: str = Field(description="版本来源类型")
     dataset_version_id: str | None = Field(
         default=None, description="关联 DatasetVersion id"
@@ -86,6 +101,9 @@ class PlatformBaseModelVersionSummaryResponse(BaseModel):
     )
     checkpoint_storage_uri: str | None = Field(
         default=None, description="checkpoint 存储 URI"
+    )
+    checkpoint_state: Literal["present", "missing", "unavailable"] | None = Field(
+        default=None, description="本地 checkpoint 存在性；空值表示未检查"
     )
     labels_file_id: str | None = Field(
         default=None, description="此 ModelVersion 的有序类别映射文件 id"
@@ -108,6 +126,31 @@ class PlatformBaseModelVersionDetailResponse(PlatformBaseModelVersionSummaryResp
     files: list[PlatformBaseModelFileResponse] = Field(
         default_factory=list, description="版本文件列表"
     )
+
+
+class ProjectModelSourceDatasetResponse(BaseModel):
+    """模型训练关联的数据集版本标识和展示信息。"""
+
+    dataset_id: str
+    dataset_version_id: str
+    display_name: str
+    version_number: int
+
+
+class ProjectModelSourceParentResponse(BaseModel):
+    """项目模型的初始化权重或父版本。"""
+
+    model_id: str
+    model_version_id: str
+    display_name: str
+    scope_kind: str
+
+
+class ProjectModelVersionSourceResponse(BaseModel):
+    """已解析且当前主体可读取的版本来源。"""
+
+    dataset: ProjectModelSourceDatasetResponse | None = None
+    parent: ProjectModelSourceParentResponse | None = None
 
 
 class PlatformBaseModelBuildResponse(BaseModel):
@@ -202,6 +245,47 @@ class DeploymentSourceModelSummaryResponse(PlatformBaseModelSummaryResponse):
 
     字段与平台基础模型摘要保持一致，但来源包含当前 Project 训练产物和平台预训练模型。
     """
+
+
+class ProjectModelCatalogItemResponse(PlatformBaseModelSummaryResponse):
+    """项目模型摘要与已登记的转换格式。"""
+
+    build_formats: list[str] = Field(default_factory=list, description="已登记的转换格式")
+
+
+class ProjectModelCatalogResponse(BaseModel):
+    """项目模型目录及筛选结果总数。"""
+
+    items: list[ProjectModelCatalogItemResponse] = Field(description="当前页项目模型")
+    total: int = Field(ge=0, description="筛选后总数")
+
+
+class ProjectModelReferenceResponse(BaseModel):
+    """一个直接引用模型版本的部署。"""
+
+    deployment_id: str
+    display_name: str
+    model_build_id: str | None
+    build_format: str | None
+    runtime_backend: str
+    runtime_states: dict[str, str] = Field(default_factory=dict, description="各运行模式的已观察状态")
+
+
+class ProjectModelReferencePageResponse(BaseModel):
+    """模型版本直接部署引用的分页结果。"""
+
+    items: list[ProjectModelReferenceResponse]
+    total: int = Field(ge=0)
+
+
+class ProjectModelFileStatusResponse(BaseModel):
+    """本地文件的存在性，不表示内容或推理兼容性已校验。"""
+
+    file_id: str
+    state: Literal["present", "missing", "unavailable"]
+    size_bytes: int | None = Field(default=None, ge=0)
+    sha256: str | None = None
+    part: Literal["weights"] | None = None
 
 
 class DeploymentSourceModelDetailResponse(PlatformBaseModelDetailResponse):

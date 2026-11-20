@@ -110,10 +110,12 @@ def submit_detection_conversion_task(
     }
     if model_type == "rfdetr":
         request_kwargs["task_type"] = DETECTION_TASK_TYPE
+    submit_options = {"created_by": principal.principal_id, "display_name": body.display_name}
+    if model_type != "rfdetr":
+        submit_options["expected_task_type"] = DETECTION_TASK_TYPE
     submission = service.submit_conversion_task(
         request_cls(**request_kwargs),
-        created_by=principal.principal_id,
-        display_name=body.display_name,
+        **submit_options,
     )
     return DetectionConversionTaskSubmissionResponse(
         task_id=submission.task_id,

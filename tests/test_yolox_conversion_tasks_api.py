@@ -119,6 +119,32 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
 
     try:
         with client:
+            preview = client.post(
+                "/api/v1/models/detection/conversion-tasks/preview",
+                headers=_build_headers(),
+                json={"project_id": "project-1", "model_type": "yolox", "source_model_version_id": source_model_version_id,
+                      "target": create_path.rsplit("/", 1)[-1]},
+            )
+            assert preview.status_code == 200, preview.text
+            assert preview.json()["target_formats"] == expected_target_formats
+            assert preview.json()["steps"]
+            if create_path.endswith("/onnx"):
+                preview_url = "/api/v1/models/detection/conversion-tasks/preview"
+                payload = {"project_id": "project-1", "model_type": "yolox",
+                           "source_model_version_id": source_model_version_id, "target": "onnx"}
+                explicit_opset = client.post(preview_url, headers=_build_headers(), json={**payload, "onnx_opset_version": 19})
+                assert explicit_opset.status_code == 200, explicit_opset.text
+                assert explicit_opset.json()["onnx_opset_version"] == 19
+                for extra in ({"onnx_opset_version": 17}, {"input_shape_mode": "dynamic"}, {"int8_calibration": {}}):
+                    blocked = client.post(preview_url, headers=_build_headers(), json={**payload, **extra})
+                    assert blocked.status_code == 400, blocked.text
+                    rejected = client.post(create_path, headers=_build_headers(), json={
+                        "project_id": "project-1", "model_type": "yolox", "source_model_version_id": source_model_version_id,
+                        "extra_options": extra,
+                    })
+                    assert rejected.status_code == 400, rejected.text
+            before = client.get("/api/v1/models/detection/conversion-tasks?project_id=project-1", headers=_build_headers())
+            assert before.json() == []
             create_response = client.post(
                 create_path,
                 headers=_build_headers(),
@@ -371,6 +397,39 @@ def test_delete_yolox_conversion_task_rejects_deployed_model_build(tmp_path: Pat
                 headers=_build_headers(),
             )
             assert kept_detail_response.status_code == 200
+
+            source = detail_payload["builds"][0]
+            file_key = source["build_file_uri"]
+            artifact = dataset_storage.resolve(file_key)
+            original_bytes = artifact.read_bytes()
+            output_root = dataset_storage.resolve(detail_payload["output_object_prefix"])
+            temporary = artifact.parent / "temporary.bin"
+            temporary.write_bytes(b"temporary")
+            report = dataset_storage.resolve(detail_payload["report_object_key"])
+            assert report.is_file()
+
+            record_path = f"/api/v1/models/detection/conversion-tasks/{task_id}/record"
+            record_response = client.delete(record_path, headers=_build_headers())
+            assert record_response.status_code == 204, record_response.text
+            assert client.get(record_path.removesuffix("/record"), headers=_build_headers()).status_code == 404
+            assert output_root.is_dir() and artifact.read_bytes() == original_bytes
+            assert not temporary.exists() and not report.exists()
+            with session_factory.create_session() as session:
+                build = SqlAlchemyModelRepository(session).get_model_build(model_build_id)
+                assert build is not None
+                assert SqlAlchemyModelFileRepository(session).get_model_file(source["build_file_id"]) is not None
+            download = client.get(
+                f"/api/v1/models/catalog/{build.model_id}/versions/{source_model_version_id}/files/{source['build_file_id']}/download",
+                headers=_build_headers(), params={"project_id": "project-1"},
+            )
+            assert download.status_code == 200, download.text
+            assert download.content == original_bytes
+            deployment_id = deployment_response.json()["deployment_instance_id"]
+            deployment = client.get(
+                f"/api/v1/models/detection/deployment-instances/{deployment_id}", headers=_build_headers(),
+            )
+            assert deployment.status_code == 200, deployment.text
+            assert deployment.json()["model_build_id"] == model_build_id
     finally:
         session_factory.engine.dispose()
 

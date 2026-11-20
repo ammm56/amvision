@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,11 @@ from backend.service.application.models.catalog.yolo_model_pretrained_catalog im
     _load_yolo_model_catalog_entry,
 )
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.domain.models.model_records import Model
+from backend.service.domain.deployments.deployment_instance import DeploymentInstance
+from backend.service.domain.deployments.deployment_runtime_state import DeploymentRuntimeState
+from backend.service.infrastructure.persistence.model_repository import SqlAlchemyModelRepository
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -33,6 +39,232 @@ from tests.api_test_support import (
     create_api_test_context,
     issue_test_user_token,
 )
+
+
+def test_project_model_catalog_filters_and_paginates_without_losing_empty_models(tmp_path: Path) -> None:
+    """目录只包含当前项目，统计全部结果并保留没有版本的模型。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    platform_ids, _ = _seed_platform_and_project_models(session_factory, include_project_model=True)
+    with session_factory.create_session() as session:
+        repository = SqlAlchemyModelRepository(session)
+        for model_id, project_id, name, task in (
+            ("empty-1", "project-1", "Alpha_100%", "detection"),
+            ("empty-2", "project-1", "Beta", "classification"),
+            ("other-project", "project-2", "Alpha_other", "detection"),
+        ):
+            repository.save_model(Model(model_id=model_id, project_id=project_id, model_name=name,
+                                        model_type="yolox", task_type=task, model_scale="s"))
+        session.commit()
+    restricted_token = issue_test_user_token(
+        session_factory, username="catalog-reader", scopes=("models:read",), project_ids=("project-1",)
+    )
+    try:
+        with client:
+            response = client.get("/api/v1/models/catalog", params={"project_id": "project-1", "limit": 1}, headers=build_bearer_headers(restricted_token))
+            assert response.status_code == 200
+            assert response.json()["total"] == 3
+            assert response.json()["items"][0]["model_id"] == "empty-1"
+            assert response.json()["items"][0]["version_count"] == 0
+            assert response.json()["items"][0]["build_formats"] == []
+            page = client.get("/api/v1/models/catalog", params={"project_id": "project-1", "limit": 1, "offset": 1}, headers=build_bearer_headers(restricted_token))
+            assert page.json()["total"] == 3
+            assert page.json()["items"][0]["model_id"] == "empty-2"
+            filtered = client.get("/api/v1/models/catalog", params={"project_id": "project-1", "query": "_100%", "task_type": "detection"}, headers=build_bearer_headers(restricted_token))
+            assert [item["model_id"] for item in filtered.json()["items"]] == ["empty-1"]
+            denied = client.get("/api/v1/models/catalog", params={"project_id": "project-2"}, headers=build_bearer_headers(restricted_token))
+            assert denied.status_code == 403
+            detail = client.get("/api/v1/models/catalog/empty-1", params={"project_id": "project-1"}, headers=build_bearer_headers(restricted_token))
+            assert detail.status_code == 200
+            assert detail.json()["versions"] == []
+            hidden = client.get(f"/api/v1/models/catalog/{platform_ids[0]}", params={"project_id": "project-1"}, headers=build_bearer_headers(restricted_token))
+            assert hidden.status_code == 404
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_project_model_references_are_direct_scoped_and_paginated(tmp_path: Path) -> None:
+    """版本引用只包含当前项目的直接部署，分页及运行模式状态独立。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    platform_ids, model_id = _seed_platform_and_project_models(session_factory, include_project_model=True)
+    with session_factory.create_session() as session:
+        unit = SqlAlchemyUnitOfWork(session)
+        version_id = unit.models.list_model_versions(model_id)[0].model_version_id
+        for index in range(8):
+            deployment_id = f"deployment-{index}"
+            unit.deployments.save_deployment_instance(DeploymentInstance(
+                deployment_instance_id=deployment_id, project_id="project-1", model_id=model_id,
+                model_version_id=version_id, display_name=f"Line_{index}%", created_at=f"2026-11-{index + 1:02}",
+            ))
+        unit.deployments.save_deployment_instance(DeploymentInstance(
+            deployment_instance_id="other-project", project_id="project-2", model_id=model_id,
+            model_version_id=version_id, display_name="Hidden", created_at="2026-11-11",
+        ))
+        unit.deployment_runtime_states.save_deployment_runtime_state(DeploymentRuntimeState(
+            deployment_instance_id="deployment-7", runtime_mode="sync", observed_state="running",
+        ))
+        unit.deployment_runtime_states.save_deployment_runtime_state(DeploymentRuntimeState(
+            deployment_instance_id="deployment-7", runtime_mode="async", observed_state="stopped",
+        ))
+        unit.commit()
+    token = issue_test_user_token(session_factory, username="references-reader", scopes=("models:read",), project_ids=("project-1",))
+    headers = build_bearer_headers(token)
+    path = f"/api/v1/models/catalog/{model_id}/versions/{version_id}/references"
+    try:
+        with client:
+            first = client.get(path, params={"project_id": "project-1", "limit": 6}, headers=headers)
+            assert first.status_code == 200
+            assert first.json()["total"] == 8
+            assert len(first.json()["items"]) == 6
+            assert first.json()["items"][0]["runtime_states"] == {"sync": "running", "async": "stopped"}
+            second = client.get(path, params={"project_id": "project-1", "limit": 6, "offset": 6}, headers=headers)
+            assert len(second.json()["items"]) == 2
+            filtered = client.get(path, params={"project_id": "project-1", "query": "_7%"}, headers=headers)
+            assert filtered.json()["total"] == 1
+            assert filtered.json()["items"][0]["deployment_id"] == "deployment-7"
+            denied = client.get(path, params={"project_id": "project-2"}, headers=headers)
+            assert denied.status_code == 403
+            hidden = client.get(f"/api/v1/models/catalog/{platform_ids[0]}/versions/{version_id}/references", params={"project_id": "project-1"}, headers=headers)
+            assert hidden.status_code == 404
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_project_model_file_status_checks_existence_without_cross_project_access(tmp_path: Path) -> None:
+    """只检查属于目标项目版本的登记文件，区分缺失和存在。"""
+
+    context = create_api_test_context(tmp_path, database_name="model-file-status.db")
+    client, session_factory, storage = context.client, context.session_factory, context.dataset_storage
+    platform_ids, model_id = _seed_platform_and_project_models(session_factory, include_project_model=True)
+    with session_factory.create_session() as session:
+        unit = SqlAlchemyUnitOfWork(session)
+        version = unit.models.list_model_versions(model_id)[0]
+        model_file = next(file for file in unit.model_files.list_model_files(model_version_id=version.model_version_id) if file.file_type.endswith("checkpoint"))
+    token = issue_test_user_token(session_factory, username="file-reader", scopes=("models:read",), project_ids=("project-1",))
+    headers = build_bearer_headers(token)
+    path = f"/api/v1/models/catalog/{model_id}/versions/{version.model_version_id}/files/{model_file.file_id}/status"
+    try:
+        with client:
+            missing = client.get(path, params={"project_id": "project-1"}, headers=headers)
+            assert missing.status_code == 200
+            assert missing.json()["state"] == "missing"
+            download_path = path.removesuffix("/status") + "/download"
+            assert client.get(download_path, params={"project_id": "project-1"}, headers=headers).status_code == 404
+            storage.write_bytes(model_file.storage_uri, b"test model")
+            present = client.get(path, params={"project_id": "project-1"}, headers=headers)
+            assert present.json() == {"file_id": model_file.file_id, "state": "present", "size_bytes": 10}
+            digest = client.get(path, params={"project_id": "project-1", "include_sha256": "true"}, headers=headers)
+            assert digest.json()["sha256"] == sha256(b"test model").hexdigest()
+            assert client.get(path, params={"project_id": "project-1", "part": "weights"}, headers=headers).status_code == 404
+            download = client.get(download_path, params={"project_id": "project-1"}, headers=headers)
+            assert download.status_code == 200
+            assert download.content == b"test model"
+            assert download.headers["cache-control"] == "no-store"
+            assert Path(model_file.storage_uri).name in download.headers["content-disposition"]
+            assert client.get(path, params={"project_id": "project-2"}, headers=headers).status_code == 403
+            assert client.get(download_path, params={"project_id": "project-2"}, headers=headers).status_code == 403
+            wrong_model = f"/api/v1/models/catalog/{platform_ids[0]}/versions/{version.model_version_id}/files/{model_file.file_id}/status"
+            assert client.get(wrong_model, params={"project_id": "project-1"}, headers=headers).status_code == 404
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_project_model_file_legacy_openvino_weights_are_scoped_to_the_registered_xml(tmp_path: Path) -> None:
+    """旧 OpenVINO 产物只允许读取其登记的同目录、同名权重。"""
+
+    context = create_api_test_context(tmp_path, database_name="openvino-file-status.db")
+    client, session_factory, storage = context.client, context.session_factory, context.dataset_storage
+    _, model_id = _seed_platform_and_project_models(session_factory, include_project_model=True)
+    with session_factory.create_session() as session:
+        unit = SqlAlchemyUnitOfWork(session)
+        version_id = unit.models.list_model_versions(model_id)[0].model_version_id
+    service = SqlAlchemyModelService(session_factory=session_factory)
+    for name, weights in (
+        ("valid", "projects/project-1/models/valid.bin"),
+        ("unrelated", "projects/project-1/models/valid.bin"),
+    ):
+        service.register_build(ModelBuildRegistration(
+            project_id="project-1", source_model_version_id=version_id, build_format="openvino-ir",
+            runtime_backend="openvino", runtime_precision="fp32", build_file_id=f"{name}-xml",
+            build_file_uri=f"projects/project-1/models/{name}.xml", conversion_task_id=f"convert-{name}",
+            metadata={"weights_object_uri": weights},
+        ))
+    storage.write_bytes("projects/project-1/models/valid.xml", b"<net/>")
+    token = issue_test_user_token(session_factory, username="weights-reader", scopes=("models:read",), project_ids=("project-1",))
+    endpoint = f"/api/v1/models/catalog/{model_id}/versions/{version_id}/files"
+    headers = build_bearer_headers(token)
+    try:
+        with client:
+            params = {"project_id": "project-1", "part": "weights"}
+            assert client.get(f"{endpoint}/valid-xml/status", params=params, headers=headers).json()["state"] == "missing"
+            storage.write_bytes("projects/project-1/models/valid.bin", b"weights")
+            status = client.get(f"{endpoint}/valid-xml/status", params={**params, "include_sha256": "true"}, headers=headers)
+            assert status.json() == {
+                "file_id": "valid-xml", "state": "present", "size_bytes": 7, "part": "weights",
+                "sha256": sha256(b"weights").hexdigest(),
+            }
+            download = client.get(f"{endpoint}/valid-xml/download", params=params, headers=headers)
+            assert download.content == b"weights"
+            assert "valid.bin" in download.headers["content-disposition"]
+            assert client.get(f"{endpoint}/unrelated-xml/download", params=params, headers=headers).status_code == 404
+            denied = client.get(f"{endpoint}/valid-xml/download", params={**params, "project_id": "project-2"}, headers=headers)
+            assert denied.status_code == 403
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_project_model_presentation_preserves_identity_and_rejects_stale_edits(tmp_path: Path) -> None:
+    """展示信息不改登记自然键，过期编辑和跨项目访问被拒绝。"""
+    client, session_factory = _create_test_client(tmp_path)
+    _, model_id = _seed_platform_and_project_models(session_factory, include_project_model=True)
+    token = issue_test_user_token(session_factory, username="presentation-editor", scopes=("models:read", "models:write"), project_ids=("project-1",))
+    headers = build_bearer_headers(token)
+    endpoint = f"/api/v1/models/catalog/{model_id}/presentation"
+    try:
+        with client:
+            before = client.get(f"/api/v1/models/catalog/{model_id}", params={"project_id": "project-1"}, headers=headers).json()
+            request = {"display_name": "新的展示名", "description": "说明", "expected_revision": 0}
+            saved = client.put(endpoint, params={"project_id": "project-1"}, headers=headers, json=request)
+            assert saved.status_code == 200
+            assert saved.json()["revision"] == 1
+            stale = client.put(endpoint, params={"project_id": "project-1"}, headers=headers, json=request)
+            assert stale.status_code == 409
+            denied = client.put(endpoint, params={"project_id": "project-2"}, headers=headers, json=request)
+            assert denied.status_code == 403
+            after = client.get(f"/api/v1/models/catalog/{model_id}", params={"project_id": "project-1"}, headers=headers).json()
+            assert after["model_name"] == before["model_name"]
+            assert after["metadata"]["display_name"] == "新的展示名"
+            assert after["metadata"]["description"] == "说明"
+            assert after["metadata"]["presentation_updated_at"].endswith("+00:00")
+            assert [item["model_version_id"] for item in after["versions"]] == [item["model_version_id"] for item in before["versions"]]
+            found = client.get("/api/v1/models/catalog", params={"project_id": "project-1", "query": "新的展示名"}, headers=headers).json()
+            assert found["total"] == 1
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_platform_base_checkpoint_state_tracks_the_registered_file(tmp_path: Path) -> None:
+    """基础模型状态只表示已登记 checkpoint 是否实际存在。"""
+
+    context = create_api_test_context(tmp_path, database_name="base-checkpoint-state.db")
+    client, session_factory, storage = context.client, context.session_factory, context.dataset_storage
+    model_ids = _seed_platform_and_project_models(session_factory)
+    with session_factory.create_session() as session:
+        unit = SqlAlchemyUnitOfWork(session)
+        version = unit.models.list_model_versions(model_ids[0])[0]
+        model_file = next(file for file in unit.model_files.list_model_files(model_version_id=version.model_version_id) if file.file_type.endswith("checkpoint"))
+    try:
+        with client:
+            response = client.get("/api/v1/models/platform-base", headers=_build_model_headers())
+            item = next(item for item in response.json() if item["model_id"] == model_ids[0])
+            assert item["available_versions"][0]["checkpoint_state"] == "missing"
+            storage.write_bytes(model_file.storage_uri, b"checkpoint")
+            response = client.get("/api/v1/models/platform-base", headers=_build_model_headers())
+            item = next(item for item in response.json() if item["model_id"] == model_ids[0])
+            assert item["available_versions"][0]["checkpoint_state"] == "present"
+    finally:
+        session_factory.engine.dispose()
 
 
 def test_list_platform_base_models_returns_only_platform_models(tmp_path: Path) -> None:
@@ -149,7 +381,8 @@ def test_deployment_source_models_include_project_training_builds(
 ) -> None:
     """验证部署来源接口会返回当前 Project 的训练版本和转换 build。"""
 
-    client, session_factory = _create_test_client(tmp_path)
+    context = create_api_test_context(tmp_path, database_name="deployment-source-checkpoint.db")
+    client, session_factory, storage = context.client, context.session_factory, context.dataset_storage
     _seed_platform_and_project_models(session_factory)
     service = SqlAlchemyModelService(session_factory=session_factory)
     project_version_id = service.register_training_output(
@@ -197,6 +430,13 @@ def test_deployment_source_models_include_project_training_builds(
             assert list_payload[0]["project_id"] == "project-1"
             assert list_payload[0]["version_count"] == 1
             assert list_payload[0]["build_count"] == 1
+            assert list_payload[0]["available_versions"][0]["checkpoint_state"] == "missing"
+            storage.write_bytes("task-runs/training/task-2/artifacts/checkpoints/best_ckpt.pth", b"checkpoint")
+            refreshed = client.get(
+                "/api/v1/models/deployment-sources?project_id=project-1&task_type=detection",
+                headers=_build_model_headers(),
+            )
+            assert refreshed.json()[0]["available_versions"][0]["checkpoint_state"] == "present"
 
             detail_response = client.get(
                 f"/api/v1/models/deployment-sources/{project_model.model_id}?project_id=project-1",

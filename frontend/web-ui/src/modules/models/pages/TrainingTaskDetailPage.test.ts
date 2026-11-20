@@ -7,6 +7,8 @@ import {
   getModelTrainingOutputFileDetail,
   getModelTrainingTaskDetail,
   listModelTrainingOutputFiles,
+  requestModelTrainingTaskAction,
+  type ModelTrainingTaskDetail,
 } from '../services/model.service'
 
 enableAutoUnmount(afterEach)
@@ -21,6 +23,8 @@ const trainingTelemetryStreamMock = vi.hoisted(() => ({
   handler: null as ((payload: Record<string, unknown>) => void) | null,
   start: vi.fn(),
 }))
+
+vi.mock('@/app/stores/session.store', () => ({ useSessionStore: () => ({ hasScopes: () => true }) }))
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -39,6 +43,7 @@ vi.mock('vue-router', async () => {
 
 vi.mock('../services/model.service', () => ({
   deleteModelTrainingTask: vi.fn(),
+  downloadModelTrainingOutputFile: vi.fn(),
   getModelTrainingOutputFileDetail: vi.fn(),
   getModelTrainingTaskDetail: vi.fn(),
   listModelTrainingOutputFiles: vi.fn(),
@@ -84,6 +89,67 @@ describe('TrainingTaskDetailPage', () => {
     trainingTelemetryStreamMock.handler = null
   })
 
+  it('marks a deleted registered output while keeping the completed training detail', async () => {
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
+      task_id: 'task-classification-1', task_type: 'classification', model_type: 'yolo11', display_name: 'Completed training',
+      project_id: 'project-1', created_at: '2026-07-10T02:00:00Z', state: 'succeeded', current_attempt_no: 1,
+      progress: {}, result: { model_version_id: 'deleted-version' }, metadata: { deleted_model_version_ids: ['deleted-version'] },
+      model_version_id: 'deleted-version', training_summary: {}, available_actions: [],
+      control_status: { status: 'idle', resume_count: 0 }, task_spec: {}, events: [],
+    })
+    vi.mocked(listModelTrainingOutputFiles).mockResolvedValue([])
+    const wrapper = mount(TrainingTaskDetailPage, { global: { plugins: [i18n] } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('输出模型版本已删除')
+    expect(wrapper.get('.page-actions').text()).not.toContain('查看模型版本')
+    expect(wrapper.get('.training-detail-title').text()).toContain('已完成')
+  })
+
+  it('confirms cancellation, keeps a failed request retryable and waits for the worker state', async () => {
+    vi.useFakeTimers()
+    const active: ModelTrainingTaskDetail = {
+      task_id: 'task-classification-1', task_type: 'classification', model_type: 'yolo11',
+      display_name: 'tray training', project_id: 'project-1', created_at: '2026-07-10T02:00:00Z',
+      state: 'running', current_attempt_no: 1,
+      progress: { epoch: 3, completed_epoch: 2, max_epochs: 4 }, result: {}, metadata: {},
+      best_metric_name: null, best_metric_value: null, training_summary: {},
+      available_actions: ['terminate'], control_status: { status: 'idle', resume_count: 0 },
+      task_spec: {}, events: [],
+    }
+    const waiting: ModelTrainingTaskDetail = {
+      ...active, available_actions: [],
+      control_status: { status: 'pending', pending_action: 'terminate', resume_count: 0 },
+    }
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue(active)
+    vi.mocked(listModelTrainingOutputFiles).mockResolvedValue([])
+    vi.mocked(requestModelTrainingTaskAction).mockRejectedValueOnce(new Error('取消请求失败，请重试')).mockResolvedValueOnce(waiting)
+    const wrapper = mount(TrainingTaskDetailPage, { global: { plugins: [i18n] } })
+    await flushPromises()
+    const action = () => wrapper.get('.training-terminate')
+    const confirm = () => wrapper.get('.confirm-dialog__actions .ui-button--danger')
+    await action().trigger('click')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('已完成 2 / 4 轮')
+    await wrapper.get('[data-confirm-cancel]').trigger('click')
+    expect(requestModelTrainingTaskAction).not.toHaveBeenCalled()
+    await action().trigger('click')
+    await confirm().trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="dialog"]').text()).toContain('取消请求失败，请重试')
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue(waiting)
+    await confirm().trigger('click')
+    await flushPromises()
+    expect(requestModelTrainingTaskAction).toHaveBeenLastCalledWith('classification', 'task-classification-1', 'terminate')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(wrapper.get('.training-detail-title').text()).toContain('正在取消')
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({ ...waiting, state: 'cancelled' })
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
+    expect(wrapper.get('.training-detail-title').text()).toContain('已取消')
+    expect(wrapper.get('.training-cancelled-progress').text()).toContain('停止在第 3 轮')
+    expect(wrapper.get('.page-actions').text()).toContain('按此配置新建训练')
+    expect(requestModelTrainingTaskAction).toHaveBeenCalledTimes(2)
+  })
+
   it('renders non-detection progress, metrics, and output files', async () => {
     vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
       task_id: 'task-classification-1',
@@ -105,6 +171,7 @@ describe('TrainingTaskDetailPage', () => {
         best_metric_name: 'val_top1_accuracy',
         best_metric_value: 0.66,
         train_metrics: { epoch: 1, loss: 0.1234567, accuracy: 0.875 },
+        runtime: { step_time_ms: 19.6789 },
         validation_metrics: {
           epoch: 1,
           top1_accuracy: 0.66,
@@ -225,11 +292,13 @@ describe('TrainingTaskDetailPage', () => {
       'runtime-metrics',
       expect.any(AbortSignal),
     )
-    expect(wrapper.text()).toContain('训练进度')
-    expect(wrapper.text()).toContain('75.0%')
+    expect(wrapper.get('.training-overview-progress [role="progressbar"]').attributes('aria-valuenow')).toBe('50')
     expect(wrapper.text()).toContain('2 / 4')
     expect(wrapper.text()).toContain('loss')
-    expect(wrapper.text()).toContain('0.123457')
+    expect(wrapper.text()).toContain('loss0.123accuracy')
+    expect(wrapper.text()).toContain('0.1234567')
+    expect(wrapper.text()).toContain('Learning rate0.0003')
+    expect(wrapper.text()).toContain('20 ms')
     expect(wrapper.text()).toContain('top1_accuracy')
     expect(wrapper.text()).toContain('train-metrics')
     expect(wrapper.text()).toContain('runtime-metrics')
@@ -401,7 +470,7 @@ describe('TrainingTaskDetailPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('3 / 4')
-    expect(wrapper.text()).toContain('68.0%')
+    expect(wrapper.get('.training-overview-progress [role="progressbar"]').attributes('aria-valuenow')).toBe('68')
     expect(wrapper.text()).toContain('0.875')
     expect(wrapper.text()).toContain('训练运行时')
     expect(wrapper.text()).toContain('42.5')
@@ -411,7 +480,9 @@ describe('TrainingTaskDetailPage', () => {
     await vi.advanceTimersByTimeAsync(350)
     await flushPromises()
     expect(listModelTrainingOutputFiles).toHaveBeenCalledTimes(2)
-    expect(wrapper.text()).toContain('ready')
+    const download = wrapper.findAll('.training-output-layout tbody button').find(button => button.text() === '下载')
+    expect(download?.exists()).toBe(true)
+    expect(download?.attributes('disabled')).toBeUndefined()
   }, 10_000)
 
   it('applies completed epoch metrics from task events over an older output snapshot', async () => {

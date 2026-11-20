@@ -57,7 +57,7 @@ describe('conversion source contract', () => {
     expect(conversionSourceIssue(version)).toBe('labelsInvalid')
   })
 
-  it('excludes other projects and invalid versions but permits explicitly labeled platform versions', () => {
+  it('excludes other projects, shows unusable versions without selecting them, and permits labeled platform versions', () => {
     const model = conversionModel()
     const models = ref([
       { ...model, project_id: 'project-2' },
@@ -65,7 +65,13 @@ describe('conversion source contract', () => {
       { ...model, model_id: 'labeled-platform', project_id: null, scope_kind: 'platform-base' },
     ])
     const selection = useModelConversionSourceSelection({ sourceModels: models, projectId: computed(() => 'project-1'), taskType: ref('classification') })
-    expect(selection.conversionModels.value.map((item) => item.model_id)).toEqual(['labeled-platform'])
+    expect(selection.conversionModels.value.map((item) => item.model_id)).toEqual(['warm-start-only', 'labeled-platform'])
+    selection.openConversionSourcePicker()
+    selection.selectConversionVersion('trained-version')
+    expect(selection.selectedConversionSource.value).toBeNull()
+    selection.conversionBrowseModelId.value = 'labeled-platform'
+    selection.selectConversionVersion('trained-version')
+    expect(selection.selectedConversionSource.value?.model.model_id).toBe('labeled-platform')
   })
 
   it('rejects empty selection and prevents a pending response from restoring the previous project', async () => {

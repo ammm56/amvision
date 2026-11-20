@@ -52,6 +52,7 @@ export interface PlatformBaseModelFile {
 
 export interface PlatformBaseModelVersionSummary {
   model_version_id: string
+  version_number?: number | null
   source_kind: string
   dataset_version_id?: string | null
   training_task_id?: string | null
@@ -60,6 +61,7 @@ export interface PlatformBaseModelVersionSummary {
   metadata: Record<string, unknown>
   checkpoint_file_id?: string | null
   checkpoint_storage_uri?: string | null
+  checkpoint_state?: 'present' | 'missing' | 'unavailable' | null
   labels_file_id?: string | null
   labels_storage_uri?: string | null
   catalog_manifest_object_key?: string | null
@@ -67,6 +69,20 @@ export interface PlatformBaseModelVersionSummary {
 
 export interface PlatformBaseModelVersionDetail extends PlatformBaseModelVersionSummary {
   files: PlatformBaseModelFile[]
+}
+
+export interface ProjectModelVersionSource {
+  dataset: { dataset_id: string; dataset_version_id: string; display_name: string; version_number: number } | null
+  parent: { model_id: string; model_version_id: string; display_name: string; scope_kind: string } | null
+}
+
+export function getProjectModelVersionSource(
+  projectId: string, modelId: string, versionId: string, signal?: AbortSignal,
+): Promise<ProjectModelVersionSource> {
+  return apiRequest<ProjectModelVersionSource>(
+    `/models/catalog/${encodeURIComponent(modelId)}/versions/${encodeURIComponent(versionId)}/source`,
+    { query: { project_id: projectId }, signal },
+  )
 }
 
 export interface PlatformBaseModelBuild {
@@ -106,6 +122,80 @@ export type DeploymentSourceModelSummary = PlatformBaseModelSummary
 export type DeploymentSourceModelDetail = PlatformBaseModelDetail
 export type DeploymentSourceModelBuild = PlatformBaseModelBuild
 export type DeploymentSourceModelVersionDetail = PlatformBaseModelVersionDetail
+
+export interface ProjectModelCatalog {
+  items: ProjectModelCatalogItem[]
+  total: number
+}
+
+export interface ProjectModelCatalogItem extends PlatformBaseModelSummary {
+  build_formats?: string[]
+}
+
+export function listProjectModelCatalog(input: {
+  projectId: string; query?: string; taskType?: string; offset: number; limit: number; signal?: AbortSignal
+}): Promise<ProjectModelCatalog> {
+  return apiRequest<ProjectModelCatalog>('/models/catalog', {
+    signal: input.signal,
+    query: { project_id: input.projectId, query: input.query || undefined,
+      task_type: input.taskType || undefined, offset: input.offset, limit: input.limit },
+  })
+}
+
+export function getProjectModelCatalogDetail(projectId: string, modelId: string, signal?: AbortSignal): Promise<PlatformBaseModelDetail> {
+  return apiRequest<PlatformBaseModelDetail>(`/models/catalog/${encodeURIComponent(modelId)}`, {
+    query: { project_id: projectId },
+    signal,
+  })
+}
+
+export function updateProjectModelPresentation(input: { projectId: string; modelId: string; displayName: string; description: string; revision: number }): Promise<{ revision: number }> {
+  return apiRequest(`/models/catalog/${encodeURIComponent(input.modelId)}/presentation`, {
+    method: 'PUT', query: { project_id: input.projectId }, body: { display_name: input.displayName, description: input.description, expected_revision: input.revision },
+  })
+}
+
+export interface ModelDeploymentReference {
+  deployment_id: string
+  display_name: string
+  model_build_id: string | null
+  build_format: string | null
+  runtime_backend: string
+  runtime_states: Record<string, string>
+}
+
+export function listModelVersionReferences(input: {
+  projectId: string; modelId: string; versionId: string; buildId?: string; query?: string; offset: number; limit: number; signal?: AbortSignal
+}): Promise<{ items: ModelDeploymentReference[]; total: number }> {
+  return apiRequest(`/models/catalog/${encodeURIComponent(input.modelId)}/versions/${encodeURIComponent(input.versionId)}/references`, {
+    query: { project_id: input.projectId, model_build_id: input.buildId, query: input.query || undefined, offset: input.offset, limit: input.limit },
+    signal: input.signal,
+  })
+}
+
+export interface ModelFileStatus {
+  file_id: string
+  state: 'present' | 'missing' | 'unavailable'
+  size_bytes: number | null
+  sha256?: string | null
+  part?: 'weights' | null
+}
+
+interface ProjectModelFileRequest {
+  projectId: string; modelId: string; versionId: string; fileId: string; part?: 'weights'; signal?: AbortSignal
+}
+export function getProjectModelFileStatus(input: ProjectModelFileRequest & { includeSha256?: boolean }): Promise<ModelFileStatus> {
+  return apiRequest(`/models/catalog/${encodeURIComponent(input.modelId)}/versions/${encodeURIComponent(input.versionId)}/files/${encodeURIComponent(input.fileId)}/status`, {
+    query: { project_id: input.projectId, part: input.part, include_sha256: input.includeSha256 },
+    signal: input.signal,
+  })
+}
+
+export function downloadProjectModelFile(input: ProjectModelFileRequest): Promise<Blob> {
+  return apiRequest(`/models/catalog/${encodeURIComponent(input.modelId)}/versions/${encodeURIComponent(input.versionId)}/files/${encodeURIComponent(input.fileId)}/download`, {
+    query: { project_id: input.projectId, part: input.part }, responseType: 'blob', signal: input.signal,
+  })
+}
 
 export interface ModelTrainingTaskSubmissionResponse {
   task_id: string
@@ -307,8 +397,22 @@ export type ConversionTargetKey =
   | 'onnx-optimized'
   | 'openvino-ir-fp32'
   | 'openvino-ir-fp16'
+  | 'openvino-ir-int8'
   | 'tensorrt-engine-fp32'
   | 'tensorrt-engine-fp16'
+  | 'tensorrt-engine-int8'
+
+export type TensorRtShape = [number, number, number, number]
+
+export interface Int8SampleSettings {
+  int8_calibration: { dataset_export_id: string; sample_count: number }
+  int8_validation: { dataset_export_id: string; sample_count: number }
+}
+
+export interface TensorRtInt8Settings extends Int8SampleSettings {
+  input_profile: Record<'min' | 'opt' | 'max', TensorRtShape>
+  workspace_gib: number
+}
 
 export interface ModelConversionTaskCreateInput {
   taskType: ModelTaskType
@@ -318,6 +422,28 @@ export interface ModelConversionTaskCreateInput {
   target: ConversionTargetKey
   runtimeProfileId?: string
   displayName?: string
+  onnxOpsetVersion?: number
+  inputShapeMode?: 'dynamic-batch'
+  tensorRtInt8?: TensorRtInt8Settings
+  openVinoInt8?: Int8SampleSettings
+}
+
+export interface ModelConversionPreflightResult {
+  task_type: string
+  source_model_version_id: string
+  target_formats: string[]
+  steps: Array<Record<string, unknown>>
+  onnx_opset_version?: number
+  input_shape_mode?: string
+}
+
+export function previewModelConversion(input: ModelConversionTaskCreateInput, signal?: AbortSignal): Promise<ModelConversionPreflightResult> {
+  return apiRequest<ModelConversionPreflightResult>(buildConversionTaskPath(input.taskType, '/preview'), {
+    method: 'POST', signal,
+    body: { project_id: input.projectId, model_type: input.modelType, source_model_version_id: input.sourceModelVersionId,
+      target: input.target, runtime_profile_id: input.runtimeProfileId || null, onnx_opset_version: input.onnxOpsetVersion,
+      ...conversionInputOptions(input) },
+  })
 }
 
 const detectionConversionTargetPath: Record<ConversionTargetKey, string> = {
@@ -325,8 +451,10 @@ const detectionConversionTargetPath: Record<ConversionTargetKey, string> = {
   'onnx-optimized': '/models/detection/conversion-tasks/onnx-optimized',
   'openvino-ir-fp32': '/models/detection/conversion-tasks/openvino-ir-fp32',
   'openvino-ir-fp16': '/models/detection/conversion-tasks/openvino-ir-fp16',
+  'openvino-ir-int8': '/models/detection/conversion-tasks/openvino-ir-int8',
   'tensorrt-engine-fp32': '/models/detection/conversion-tasks/tensorrt-engine-fp32',
   'tensorrt-engine-fp16': '/models/detection/conversion-tasks/tensorrt-engine-fp16',
+  'tensorrt-engine-int8': '/models/detection/conversion-tasks/tensorrt-engine-int8',
 }
 
 function buildTrainingTaskPath(taskType: ModelTaskType, suffix = ''): string {
@@ -340,9 +468,18 @@ function buildConversionTaskPath(taskType: ModelTaskType, suffix = ''): string {
 function buildConversionRequestTarget(target: ConversionTargetKey): { targetFormats: string[]; extraOptions: Record<string, unknown> } {
   if (target === 'openvino-ir-fp32') return { targetFormats: ['openvino-ir'], extraOptions: { openvino_ir_precision: 'fp32' } }
   if (target === 'openvino-ir-fp16') return { targetFormats: ['openvino-ir'], extraOptions: { openvino_ir_precision: 'fp16' } }
+  if (target === 'openvino-ir-int8') return { targetFormats: ['openvino-ir'], extraOptions: { openvino_ir_precision: 'int8' } }
   if (target === 'tensorrt-engine-fp32') return { targetFormats: ['tensorrt-engine'], extraOptions: { tensorrt_engine_precision: 'fp32' } }
   if (target === 'tensorrt-engine-fp16') return { targetFormats: ['tensorrt-engine'], extraOptions: { tensorrt_engine_precision: 'fp16' } }
+  if (target === 'tensorrt-engine-int8') return { targetFormats: ['tensorrt-engine'], extraOptions: { tensorrt_engine_precision: 'int8' } }
   return { targetFormats: [target], extraOptions: {} }
+}
+
+function conversionInputOptions(input: ModelConversionTaskCreateInput): Record<string, unknown> {
+  if (input.target === 'openvino-ir-int8') return { ...input.openVinoInt8, input_shape_mode: 'static' }
+  return input.target === 'tensorrt-engine-int8'
+    ? { ...input.tensorRtInt8, input_shape_mode: 'dynamic' }
+    : { input_shape_mode: input.inputShapeMode }
 }
 
 export async function listPlatformBaseModels(taskType?: ModelTaskType): Promise<PlatformBaseModelSummary[]> {
@@ -361,6 +498,7 @@ export async function getPlatformBaseModelDetail(modelId: string): Promise<Platf
 export async function listDeploymentSourceModels(
   projectId: string,
   taskType?: ModelTaskType,
+  signal?: AbortSignal,
 ): Promise<DeploymentSourceModelSummary[]> {
   return apiRequest<DeploymentSourceModelSummary[]>('/models/deployment-sources', {
     query: {
@@ -368,6 +506,7 @@ export async function listDeploymentSourceModels(
       task_type: taskType || undefined,
       limit: 200,
     },
+    signal,
   })
 }
 
@@ -380,8 +519,8 @@ export async function getDeploymentSourceModelDetail(
   })
 }
 
-export async function createModelTrainingTask(input: ModelTrainingTaskCreateInput): Promise<ModelTrainingTaskSubmissionResponse> {
-  const body: Record<string, unknown> = {
+function trainingTaskBody(input: ModelTrainingTaskCreateInput): Record<string, unknown> {
+  return {
     project_id: input.projectId,
     model_type: input.modelType,
     dataset_export_id: input.datasetExportId || null,
@@ -420,9 +559,49 @@ export async function createModelTrainingTask(input: ModelTrainingTaskCreateInpu
     display_name: input.displayName ?? '',
   }
 
+}
+
+export interface ModelTrainingPreflight {
+  dataset_export_id: string
+  dataset_version_id: string
+  format_id: string
+  split_counts: Partial<Record<'train' | 'val' | 'test', number>>
+  checks?: ModelTrainingPreflightCheck[]
+}
+
+export interface ModelTrainingPreflightCheck {
+  check: 'dataset_export' | 'initialization' | 'environment' | 'output_model'
+  status: 'passed' | 'failed' | 'skipped' | 'deferred'
+  message?: string
+  missing_files?: string[]
+}
+
+export function previewModelTrainingTask(input: ModelTrainingTaskCreateInput, signal?: AbortSignal): Promise<ModelTrainingPreflight> {
+  return apiRequest<ModelTrainingPreflight>(buildTrainingTaskPath(input.taskType, '/preview'), {
+    method: 'POST', body: trainingTaskBody(input), signal,
+  })
+}
+
+export function previewModelTrainingResume(taskType: ModelTaskType, taskId: string, signal: AbortSignal) {
+  return apiRequest<{ checkpoint_name: string; dataset_export_id: string }>(
+    buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/resume/preview`), { signal },
+  )
+}
+
+export async function createModelTrainingTask(input: ModelTrainingTaskCreateInput, submissionId?: string): Promise<ModelTrainingTaskSubmissionResponse> {
   return apiRequest<ModelTrainingTaskSubmissionResponse>(buildTrainingTaskPath(input.taskType), {
     method: 'POST',
-    body,
+    body: trainingTaskBody(input),
+    headers: submissionId ? { 'X-Model-Submission-Id': submissionId } : undefined,
+  })
+}
+
+export type ModelSubmissionResult = { status: 'accepted' | 'not_created'; task_id: string | null }
+
+export function resolveModelSubmission(projectId: string, submissionId: string): Promise<ModelSubmissionResult> {
+  return apiRequest<ModelSubmissionResult>(`/model-submissions/${encodeURIComponent(submissionId)}/resolve`, {
+    method: 'POST',
+    body: { project_id: projectId },
   })
 }
 
@@ -436,8 +615,10 @@ export async function listModelTrainingTasks(
   })
 }
 
-export async function getModelTrainingTaskDetail(taskType: ModelTaskType, taskId: string, signal?: AbortSignal): Promise<ModelTrainingTaskDetail> {
-  return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), { signal })
+export async function getModelTrainingTaskDetail(taskType: ModelTaskType, taskId: string, signal?: AbortSignal, includeEvents = false): Promise<ModelTrainingTaskDetail> {
+  return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
+    signal, ...(includeEvents && { query: { include_events: true } }),
+  })
 }
 
 export async function listTrainingParameterSchemas(
@@ -592,6 +773,13 @@ export async function listModelTrainingOutputFiles(taskType: ModelTaskType, task
   )
 }
 
+export function downloadModelTrainingOutputFile(taskType: ModelTaskType, taskId: string, fileName: string, signal?: AbortSignal): Promise<Blob> {
+  return apiRequest<Blob>(
+    buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}/download`),
+    { signal, responseType: 'blob', retryTransientRead: false },
+  )
+}
+
 export async function getModelTrainingOutputFileDetail(
   taskType: ModelTaskType,
   taskId: string,
@@ -604,20 +792,21 @@ export async function getModelTrainingOutputFileDetail(
   )
 }
 
-export async function createModelConversionTask(input: ModelConversionTaskCreateInput): Promise<ModelConversionTaskSubmissionResponse> {
+export async function createModelConversionTask(input: ModelConversionTaskCreateInput, submissionId?: string): Promise<ModelConversionTaskSubmissionResponse> {
   const targetRequest = buildConversionRequestTarget(input.target)
   const path = input.taskType === 'detection'
     ? detectionConversionTargetPath[input.target]
     : buildConversionTaskPath(input.taskType)
   return apiRequest<ModelConversionTaskSubmissionResponse>(path, {
     method: 'POST',
+    headers: submissionId ? { 'X-Model-Submission-Id': submissionId } : undefined,
     body: {
       project_id: input.projectId,
       model_type: input.modelType,
       source_model_version_id: input.sourceModelVersionId,
       target_formats: input.taskType === 'detection' ? undefined : targetRequest.targetFormats,
       runtime_profile_id: input.runtimeProfileId || null,
-      extra_options: targetRequest.extraOptions,
+      extra_options: { ...targetRequest.extraOptions, onnx_opset_version: input.onnxOpsetVersion, ...conversionInputOptions(input) },
       display_name: input.displayName ?? '',
     },
   })
@@ -634,11 +823,19 @@ export async function listModelConversionTasks(
 }
 
 export async function getModelConversionTaskDetail(taskType: ModelTaskType, taskId: string, signal?: AbortSignal): Promise<ModelConversionTaskDetail> {
-  return apiRequest<ModelConversionTaskDetail>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`), { signal })
+  return apiRequest<ModelConversionTaskDetail>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`), { query: { include_events: true }, signal })
+}
+
+export function downloadModelConversionReport(taskType: ModelTaskType, taskId: string, signal?: AbortSignal): Promise<Blob> {
+  return apiRequest<Blob>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}/report/download`), { signal, responseType: 'blob', retryTransientRead: false })
+}
+
+export function downloadModelConversionBuildFile(taskType: ModelTaskType, taskId: string, buildId: string, part: 'primary' | 'weights', signal?: AbortSignal): Promise<Blob> {
+  return apiRequest<Blob>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}/builds/${encodeURIComponent(buildId)}/${part}/download`), { signal, responseType: 'blob', retryTransientRead: false })
 }
 
 export async function deleteModelConversionTask(taskType: ModelTaskType, taskId: string): Promise<void> {
-  return apiRequest<void>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
+  return apiRequest<void>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}/record`), {
     method: 'DELETE',
     responseType: 'void',
   })

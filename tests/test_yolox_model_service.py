@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import pytest
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     PretrainedRegistrationRequest,
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )
+from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE, YOLOX_ONNX_FILE
 from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE, PROJECT_MODEL_SCOPE
 from backend.service.domain.models.model_artifact_provenance import (
@@ -53,6 +55,26 @@ def test_register_pretrained_registers_model_version_and_checkpoint_file() -> No
     assert checkpoint_file.file_type == YOLOX_CHECKPOINT_FILE
     assert checkpoint_file.project_id is None
     assert checkpoint_file.storage_uri == "memory://weights/yolox_s.pth"
+
+
+def test_training_registration_rejects_same_identity_with_different_model_family() -> None:
+    """同名同规格的不同系列不能把新版本登记到已有模型。"""
+    yolox = _create_model_service()
+    first = yolox.register_training_output(TrainingOutputRegistration(
+        project_id="project-1", training_task_id="training-1", model_name="shared-name", model_scale="s",
+        dataset_version_id="dataset-version-1", model_version_id="version-first", checkpoint_file_id="checkpoint-first",
+        metadata={"input_size": {"width": 640, "height": 640}},
+    ))
+    other = SqlAlchemyYolo11ModelService(session_factory=yolox.session_factory)
+    with pytest.raises(InvalidRequestError, match="系列不匹配"):
+        other.register_training_output(TrainingOutputRegistration(
+            project_id="project-1", training_task_id="training-2", model_name="shared-name", model_scale="s",
+            dataset_version_id="dataset-version-1", model_version_id="version-second", checkpoint_file_id="checkpoint-second",
+            metadata={"input_size": {"width": 640, "height": 640}},
+        ))
+    assert yolox.get_model_version(first) is not None
+    assert yolox.get_model_version("version-second") is None
+    assert yolox.get_model_file("checkpoint-second") is None
 
 
 def test_register_training_output_and_build_creates_linked_records() -> None:

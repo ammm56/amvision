@@ -115,6 +115,7 @@ class ConversionBackendRunRequest:
     - plan_steps：已经固化的转换步骤图谱。
     - output_object_prefix：输出目录前缀。
     - metadata：附加元数据。
+    - report_stage：记录步骤名称、状态和发生时间的可选回调。
     """
 
     conversion_task_id: str
@@ -128,6 +129,11 @@ class ConversionBackendRunRequest:
     attempt_deadline_at: str | None = None
     attempt_timeout_seconds: float | None = None
     cancel_requested: Callable[[], bool] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    report_stage: Callable[[str, str, str], None] | None = field(
         default=None,
         repr=False,
         compare=False,

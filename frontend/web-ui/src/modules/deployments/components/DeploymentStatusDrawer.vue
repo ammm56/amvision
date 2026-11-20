@@ -27,8 +27,8 @@
             <dd>{{ deployment.model_name }}</dd>
           </div>
           <div>
-            <dt>{{ t('deploymentOps.fields.modelVersionId') }}</dt>
-            <dd>{{ deployment.model_version_id || '-' }}</dd>
+            <dt>{{ t('deploymentOps.fields.modelVersionId').replace(/ ID$/i, '') }}</dt>
+            <dd>{{ modelVersionName || '—' }}</dd>
           </div>
           <div>
             <dt>{{ t('deploymentOps.fields.modelBuildId') }}</dt>
@@ -162,6 +162,7 @@
 </template>
 
 <script setup lang="ts">
+import { useCatalogVersionLabel } from '@/modules/models/composables/useCatalogVersionLabel'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -198,6 +199,9 @@ const props = defineProps<{
   summaryTone: StatusBadgeTone
 }>()
 
+const modelVersionName = useCatalogVersionLabel(() => [
+  props.open ? props.deployment?.project_id : undefined, props.deployment?.task_type, props.deployment?.model_version_id,
+])
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 

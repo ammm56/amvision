@@ -26,8 +26,8 @@ from backend.service.application.errors import OperationTimeoutError
 
 OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
 TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
-SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
-SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
+SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16", "int8"})
+SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16", "int8"})
 _CONVERSION_RUNTIME_BACKEND_BY_TARGET_FORMAT = {
     "onnx": "onnxruntime",
     "onnx-optimized": "onnxruntime",
@@ -55,7 +55,7 @@ def resolve_openvino_ir_build_precision(metadata: dict[str, object]) -> str:
         if normalized_precision in SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS:
             return normalized_precision
     raise InvalidRequestError(
-        "openvino_ir_precision 必须是 fp32 或 fp16",
+        "openvino_ir_precision 必须是 fp32、fp16 或 int8",
         details={OPENVINO_IR_PRECISION_OPTION_KEY: raw_precision},
     )
 
@@ -71,7 +71,7 @@ def resolve_tensorrt_engine_build_precision(metadata: dict[str, object]) -> str:
         if normalized_precision in SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS:
             return normalized_precision
     raise InvalidRequestError(
-        "tensorrt_engine_precision 必须是 fp32 或 fp16",
+        "tensorrt_engine_precision 必须是 fp32、fp16 或 int8",
         details={TENSORRT_ENGINE_PRECISION_OPTION_KEY: raw_precision},
     )
 

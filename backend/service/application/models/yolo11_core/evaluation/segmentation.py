@@ -18,6 +18,7 @@ from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
 )
 from backend.service.application.models.yolo_core_common.targets.segmentation import (
+    decode_coco_rle_mask,
     unpack_yolo_segmentation_evaluation_masks,
 )
 
@@ -30,6 +31,7 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     limit_segmentation_prediction_instances,
     resize_binary_mask_for_coco_evaluation,
     resolve_segmentation_primary_metrics,
+    serialize_segmentation_sample_masks,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     YoloTaskDataLoaderPlan,
@@ -164,6 +166,8 @@ def run_yolo11_segmentation_evaluation(
 
         image_width = int(prediction_result.image_width)
         image_height = int(prediction_result.image_height)
+        gt_mask_start = len(gt_mask_items)
+        pred_mask_start = len(pred_mask_items)
         for annotation in gt_annotations:
             category_id = int(annotation.get("category_id", 0))
             bbox = annotation.get("bbox")
@@ -221,6 +225,8 @@ def run_yolo11_segmentation_evaluation(
                 "gt_count": len(gt_annotations),
                 "pred_count": len(prediction_result.instances),
                 "latency_ms": prediction_result.latency_ms,
+                "ground_truth": serialize_segmentation_sample_masks(gt_mask_items[gt_mask_start:]),
+                "predictions": serialize_segmentation_sample_masks(pred_mask_items[pred_mask_start:]),
             },
         )
 
@@ -397,7 +403,14 @@ def _build_yolo11_segmentation_annotation_mask(
 ) -> Any:
     """把 YOLO11 segmentation 标注 polygon 转换为二值 mask。"""
 
-    polygons = _normalize_yolo11_segmentation_polygons(annotation.get("segmentation"))
+    segmentation = annotation.get("segmentation")
+    if isinstance(segmentation, dict):
+        import numpy as np
+
+        if segmentation.get("size") != [height, width]:
+            raise InvalidRequestError("segmentation 标注 mask 尺寸与样本不一致")
+        return decode_coco_rle_mask(segmentation=segmentation, np_module=np)
+    polygons = _normalize_yolo11_segmentation_polygons(segmentation)
     if not polygons:
         return None
     return _rasterize_yolo11_polygons(polygons=polygons, width=width, height=height)

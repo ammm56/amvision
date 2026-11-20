@@ -250,8 +250,20 @@ export async function listProjectDatasetExports(
   })
 }
 
-export async function getDatasetExportDetail(datasetExportId: string): Promise<DatasetExportDetail> {
-  return apiRequest<DatasetExportDetail>(`/datasets/exports/${encodeURIComponent(datasetExportId)}`)
+export async function getDatasetExportDetail(datasetExportId: string, signal?: AbortSignal): Promise<DatasetExportDetail> {
+  return apiRequest<DatasetExportDetail>(`/datasets/exports/${encodeURIComponent(datasetExportId)}`, { signal })
+}
+
+export function getDatasetExportManifest(datasetExportId: string, signal?: AbortSignal) {
+  return apiRequest<{ dataset_version_id: string; metadata?: Record<string, unknown> }>(
+    `/datasets/exports/${encodeURIComponent(datasetExportId)}/manifest`, { signal },
+  )
+}
+
+export function getDatasetExportText(datasetExportId: string, path: string, signal?: AbortSignal) {
+  return apiRequest<{ path: string; content: string; truncated: boolean }>(
+    `/datasets/exports/${encodeURIComponent(datasetExportId)}/file-text`, { query: { path }, signal },
+  )
 }
 
 export async function packageDatasetExport(datasetExportId: string): Promise<DatasetExportPackageResponse> {

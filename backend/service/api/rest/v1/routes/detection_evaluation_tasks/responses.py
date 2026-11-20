@@ -52,6 +52,7 @@ class DetectionEvaluationTaskSummaryResponse(BaseModel):
     result_package_object_key: str | None = Field(default=None, description="评估结果包 object key")
     map50: float | None = Field(default=None, description="当前评估 map50")
     map50_95: float | None = Field(default=None, description="当前评估 map50_95")
+    split_name: str | None = Field(default=None, description="实际或已请求的评估划分")
     report_summary: dict[str, object] = Field(default_factory=dict, description="评估摘要")
 
 
@@ -86,6 +87,14 @@ def build_detection_evaluation_task_summary_response(
     metadata = dict(task.metadata)
     report_summary = result.get("report_summary")
     report_summary_payload = dict(report_summary) if isinstance(report_summary, dict) else {}
+    progress = dict(task.progress)
+    extra_options = task_spec.get("extra_options")
+    split_name = (
+        _read_optional_str(report_summary_payload, "split_name")
+        or _read_optional_str(progress, "split_name")
+    )
+    if split_name is None and isinstance(extra_options, dict):
+        split_name = _read_optional_str(extra_options, "split")
     map50 = result.get("map50")
     map50_95 = result.get("map50_95")
     model_version_id = _read_optional_str(task_spec, "model_version_id")
@@ -102,7 +111,7 @@ def build_detection_evaluation_task_summary_response(
         current_attempt_no=task.current_attempt_no,
         started_at=task.started_at,
         finished_at=task.finished_at,
-        progress=dict(task.progress),
+        progress=progress,
         result=result,
         error_message=task.error_message,
         metadata=metadata,
@@ -128,6 +137,7 @@ def build_detection_evaluation_task_summary_response(
         result_package_object_key=_read_optional_str(result, "result_package_object_key"),
         map50=float(map50) if isinstance(map50, int | float) else None,
         map50_95=float(map50_95) if isinstance(map50_95, int | float) else None,
+        split_name=split_name,
         report_summary=report_summary_payload,
     )
 

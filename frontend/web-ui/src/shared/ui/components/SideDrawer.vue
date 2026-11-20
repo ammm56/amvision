@@ -15,7 +15,11 @@
           @keydown.tab="!nonmodal && trapFocus($event)"
         >
           <header class="side-drawer__header">
-            <h2 :id="titleId">{{ title }}</h2>
+            <div v-if="$slots['header-leading']" class="side-drawer__heading">
+              <slot name="header-leading" />
+              <h2 :id="titleId">{{ title }}</h2>
+            </div>
+            <h2 v-else :id="titleId">{{ title }}</h2>
             <button type="button" class="side-drawer__close" :aria-label="closeLabel" :disabled="busy" @click="closeDrawer">
               <X :size="16" />
             </button>
@@ -144,6 +148,12 @@ watch(() => props.open, (open) => {
   margin: 0;
   color: var(--am-text-strong);
   font-size: 18px;
+}
+.side-drawer__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--am-space-sm);
+  min-width: 0;
 }
 
 .side-drawer__content {

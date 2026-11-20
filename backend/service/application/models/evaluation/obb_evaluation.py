@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.service.application.models.evaluation.sample_diagnostics import explain_geometry_errors
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -63,6 +65,7 @@ class ObbEvaluationResult:
     per_class_metrics: list[dict] = field(default_factory=list)
     predictions_payload: list[dict] = field(default_factory=list)
     report_payload: dict[str, object] = field(default_factory=dict)
+    samples_payload: list[dict] = field(default_factory=list)
 
 
 def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
@@ -141,6 +144,10 @@ def _run_obb_evaluation_with_session(
             details={"image_ids": unknown_image_ids},
         )
     all_preds: list[dict] = []
+    samples_out: list[dict] = []
+    gt_by_image: dict[int, list[dict]] = {}
+    for gt in gt_items:
+        gt_by_image.setdefault(int(gt["image_id"]), []).append(gt)
     processed_count = 0
 
     # 必须包含没有 GT 的背景图片，否则这些图片上的误检不会计入 AP。
@@ -164,6 +171,7 @@ def _run_obb_evaluation_with_session(
 
         processed_count += 1
 
+        pred_start = len(all_preds)
         # 收集预测
         for det in _iter_obb_prediction_instances(result):
             bbox = _build_obb_prediction_bbox(det)
@@ -176,6 +184,14 @@ def _run_obb_evaluation_with_session(
                     "score": det.score,
                 }
             )
+
+        sample = {
+            "image_path": str(image_path),
+            "ground_truth": gt_by_image.get(img_id, []),
+            "predictions": all_preds[pred_start:],
+        }
+        sample["errors"] = explain_geometry_errors(sample, "obb")
+        samples_out.append(sample)
 
     category_names = {
         int(category.get("id", 0)): str(category.get("name", category.get("id", 0)))
@@ -205,9 +221,13 @@ def _run_obb_evaluation_with_session(
         "map50_95": obb_metrics.ap50_95,
         "duration_seconds": duration,
         "per_class_metrics": obb_metrics.per_class_metrics,
+        "iou_thresholds": list(request.iou_thresholds),
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
     }
+    split = select_independent_evaluation_split(request.manifest_payload.get("splits"))
+    if split is not None and not request.manifest_payload.get("images"):
+        report["split_name"] = split.get("name")
     dataset_storage.write_json(report_key, report)
 
     return ObbEvaluationResult(
@@ -218,6 +238,7 @@ def _run_obb_evaluation_with_session(
         report_object_key=report_key,
         per_class_metrics=obb_metrics.per_class_metrics,
         predictions_payload=all_preds,
+        samples_payload=samples_out,
         report_payload=report,
     )
 

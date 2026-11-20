@@ -14,7 +14,7 @@
           <td>{{ item.task_type }}</td>
           <td>{{ item.kind === 'model-version' ? tr('modelVersion') : item.kind === 'model-build' ? tr('modelBuild') : item.kind }}</td>
           <td class="asset-size">{{ (item.byte_size / 1024 / 1024).toFixed(1) }} MB</td>
-          <td>{{ tr('importOrigin') }}</td>
+          <td>{{ tr(item.source_kind === 'model-package-import' ? 'modelPackageOrigin' : 'importOrigin') }}</td>
           <td><Button variant="danger" size="sm" @click="selected = item; error = ''">{{ tr('delete') }}</Button></td>
         </tr></tbody>
       </table>
@@ -30,7 +30,7 @@ import { apiRequest } from '@/shared/api/http-client'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-interface Asset { kind: string; resource_id: string; model_name: string; task_type: string; byte_size: number }
+interface Asset { kind: string; resource_id: string; model_name: string; task_type: string; byte_size: number; source_kind?: string }
 const props = defineProps<{ projectId: string | null }>()
 const items = ref<Asset[]>([])
 const selected = ref<Asset | null>(null)
@@ -64,7 +64,9 @@ watch(() => props.projectId, () => { generation++; items.value = []; selected.va
 onBeforeUnmount(() => { generation++ })
 </script>
 <style scoped>
-.imported-assets table { min-width: 760px; }
-.imported-model-name { width: 45%; overflow-wrap: anywhere; }
+.imported-assets table { width:100%; table-layout:fixed; }
+.imported-assets :is(td,th) { overflow-wrap:anywhere; }
+.imported-assets th:first-child { width:35%; }
+.imported-model-name { overflow-wrap: anywhere; }
 .asset-size { white-space: nowrap; font-variant-numeric: tabular-nums; }
 </style>

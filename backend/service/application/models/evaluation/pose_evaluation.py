@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.service.application.models.evaluation.sample_diagnostics import explain_geometry_errors
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -61,6 +63,7 @@ class PoseEvaluationResult:
     per_class_metrics: list[dict] = field(default_factory=list)
     predictions_payload: list[dict] = field(default_factory=list)
     report_payload: dict[str, object] = field(default_factory=dict)
+    samples_payload: list[dict] = field(default_factory=list)
 
 
 def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
@@ -69,7 +72,7 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     manifest = request.manifest_payload
     score_threshold = request.score_threshold
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
-    _, samples, categories = _parse_pose_manifest(manifest, dataset_storage)
+    split_name, samples, categories = _parse_pose_manifest(manifest, dataset_storage)
 
     runtime_class = DefaultPoseModelRuntime
     if runtime_class is None:
@@ -90,6 +93,7 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
             dataset_storage=dataset_storage,
             score_threshold=score_threshold,
             output_prefix=output_prefix,
+            split_name=split_name,
             samples=samples,
             categories=categories,
             session=session,
@@ -104,6 +108,7 @@ def _run_pose_evaluation_with_session(
     dataset_storage: LocalDatasetStorage,
     score_threshold: float,
     output_prefix: str,
+    split_name: str,
     samples: list[dict[str, object]],
     categories: list[dict[str, Any]],
     session: RuntimeSessionLease,
@@ -120,6 +125,7 @@ def _run_pose_evaluation_with_session(
     # 收集预测
     all_preds: list[dict] = []
     all_gts: list[dict] = []
+    samples_out: list[dict] = []
     processed_count = 0
 
     for image_index, sample in enumerate(samples):
@@ -150,6 +156,8 @@ def _run_pose_evaluation_with_session(
 
         processed_count += 1
 
+        gt_start = len(all_gts)
+        pred_start = len(all_preds)
         # 收集 GT keypoints
         for gt_ann in gt_anns:
             if not isinstance(gt_ann, dict):
@@ -179,6 +187,12 @@ def _run_pose_evaluation_with_session(
                 }
             )
 
+        samples_out.append({
+            "image_path": image_path,
+            "ground_truth": all_gts[gt_start:],
+            "predictions": all_preds[pred_start:],
+        })
+
     category_names = {
         int(cat.get("id", 0)): str(cat.get("name", cat.get("id", 0)))
         for cat in categories
@@ -188,6 +202,8 @@ def _run_pose_evaluation_with_session(
         default=0,
     )
     oks_sigmas = policy.resolve_sigmas(keypoint_count)
+    for sample in samples_out:
+        sample["errors"] = explain_geometry_errors(sample, "pose", sigmas=oks_sigmas)
     bbox_metrics = compute_pycocotools_detection_ap(
         gt_items=all_gts,
         pred_items=all_preds,
@@ -209,6 +225,7 @@ def _run_pose_evaluation_with_session(
     # 写报告
     report_key = f"{output_prefix}/reports/pose_evaluation.json"
     report = {
+        "split_name": split_name,
         "evaluation_policy": {**policy.to_report(), "oks_sigmas": list(oks_sigmas)},
         "sample_count": processed_count,
         "bbox_map50": bbox_metrics.ap50,
@@ -217,6 +234,8 @@ def _run_pose_evaluation_with_session(
         "oks_ap50_95": oks_metrics.ap50_95,
         "duration_seconds": duration,
         "per_class_metrics": oks_metrics.per_class_metrics,
+        "keypoint_count": keypoint_count,
+        "keypoint_definitions": categories,
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
     }
@@ -232,6 +251,7 @@ def _run_pose_evaluation_with_session(
         report_object_key=report_key,
         per_class_metrics=oks_metrics.per_class_metrics,
         predictions_payload=all_preds,
+        samples_payload=samples_out,
         report_payload=report,
     )
 
@@ -350,7 +370,12 @@ def _normalize_pose_categories(categories_payload: object) -> list[dict[str, Any
         if not isinstance(category_id, int):
             continue
         categories.append(
-            {"id": category_id, "name": str(category.get("name", category_id))}
+            {
+                "id": category_id,
+                "name": str(category.get("name", category_id)),
+                "keypoints": category.get("keypoints", []),
+                "skeleton": category.get("skeleton", []),
+            }
         )
     return categories
 

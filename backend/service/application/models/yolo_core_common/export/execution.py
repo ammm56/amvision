@@ -37,7 +37,11 @@ def export_yolo_onnx(
     """按 core export plan 把 PyTorch 模型导出为 ONNX。"""
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    dummy_input = _build_dummy_input(session=session)
+    dynamic_batch = bool(getattr(export_plan, "dynamic_batch", False))
+    profile = getattr(export_plan, "spatial_profile", None)
+    nominal = profile[1] if profile else None
+    export_batch = 2 if profile and profile[0][0] < profile[2][0] else (nominal[0] if nominal else (2 if dynamic_batch else 1))
+    dummy_input = _build_dummy_input(session=session, batch_size=export_batch, input_size=nominal[2:] if nominal else None)
     with session.imports.torch.no_grad():
         with use_yolo_model_export_mode(
             session.model,
@@ -51,6 +55,8 @@ def export_yolo_onnx(
                 opset_version=export_plan.onnx_opset_version,
                 input_names=export_plan.input_names,
                 output_names=export_plan.output_names,
+                **({"dynamic_batch": True} if dynamic_batch else {}),
+                **({"spatial_profile": profile} if profile else {}),
             )
     return {
         "stage": "export-onnx",
@@ -87,7 +93,8 @@ def validate_yolo_onnx(
         expected_output_names=export_plan.output_names,
     )
 
-    dummy_input = _build_dummy_input(session=session)
+    profile = getattr(export_plan, "spatial_profile", None)
+    dummy_input = _build_dummy_input(session=session, input_size=profile[1][2:] if profile else None)
     with session.imports.torch.no_grad():
         with use_yolo_model_export_mode(
             session.model,
@@ -111,11 +118,10 @@ def validate_yolo_onnx(
         shape=ort_input.shape,
         dtype=ort_input.type,
     )
-    _validate_input_tensor_against_session(
-        session=session,
-        input_tensor=input_tensor,
-        artifact_format="onnx",
-    )
+    if profile:
+        validate_profile_input_tensor(input_tensor, profile)
+    else:
+        _validate_input_tensor_against_session(session=session, input_tensor=input_tensor, artifact_format="onnx")
     ort_outputs = ort_session.run(
         list(export_plan.output_names),
         {ort_input.name: dummy_input.detach().cpu().numpy()},
@@ -154,6 +160,21 @@ def validate_yolo_onnx(
             "ONNX 数值校验失败",
             details=dict(summary),
         )
+    if getattr(export_plan, "dynamic_batch", False):
+        if input_tensor["shape"][0] != -1:
+            raise ServiceConfigurationError("ONNX 导出未生成动态批次维度")
+        batch_input = _build_dummy_input(session=session, batch_size=2)
+        with session.imports.torch.no_grad(), use_yolo_model_export_mode(
+            session.model, enabled=export_plan.export_mode_enabled,
+        ):
+            batch_torch = normalize_yolo_export_model_outputs(session.model(batch_input), session.imports)
+        batch_onnx = ort_session.run(list(export_plan.output_names), {ort_input.name: batch_input.detach().cpu().numpy()})
+        comparison = summarize_yolo_onnx_numeric_validation(
+            np_module=session.imports.np, torch_outputs=batch_torch, ort_outputs=batch_onnx,
+        )
+        if not comparison["finite"] or not comparison["allclose"]:
+            raise ServiceConfigurationError("ONNX 动态批次数值校验失败", details=comparison)
+        summary["validated_batch_sizes"] = [1, 2]
     return summary
 
 
@@ -196,6 +217,7 @@ def build_yolo_openvino_ir(
     output_object_key: str,
     build_precision: str,
     run_conversion_script: ConversionScriptRunner,
+    int8_config_path: Path | None = None,
 ) -> dict[str, object]:
     """把 optimized ONNX 转换为 OpenVINO IR 并返回构建摘要。"""
 
@@ -207,16 +229,21 @@ def build_yolo_openvino_ir(
             str(source_path),
             str(output_path),
             build_precision,
+            *([str(int8_config_path)] if int8_config_path is not None else []),
         ],
     )
+    stdout_payload = _parse_last_json_line(completed_process.stdout)
     if completed_process.returncode != 0:
+        failure = stdout_payload if isinstance(stdout_payload, dict) else {}
+        diagnostics = failure.get("details")
         raise ServiceConfigurationError(
-            "OpenVINO IR 构建失败",
+            str(failure.get("message") or "OpenVINO IR 构建失败"),
             details={
                 "source_object_uri": source_object_key,
                 "output_object_uri": output_object_key,
                 "stdout": completed_process.stdout.strip(),
                 "stderr": completed_process.stderr.strip(),
+                **(diagnostics if isinstance(diagnostics, dict) else {}),
             },
         )
 
@@ -242,7 +269,6 @@ def build_yolo_openvino_ir(
         "compress_to_fp16": compress_to_fp16,
         "execution_mode": "subprocess-openvino-convert-model",
     }
-    stdout_payload = _parse_last_json_line(completed_process.stdout)
     if stdout_payload is not None:
         build_summary.update(dict(stdout_payload))
     return build_summary
@@ -256,6 +282,7 @@ def build_yolo_tensorrt_engine(
     output_object_key: str,
     build_precision: str,
     run_conversion_script: ConversionScriptRunner,
+    int8_config_path: Path | None = None,
 ) -> dict[str, object]:
     """把 optimized ONNX 转换为 TensorRT engine 并返回构建摘要。"""
 
@@ -266,6 +293,7 @@ def build_yolo_tensorrt_engine(
             str(source_path),
             str(output_path),
             build_precision,
+            *([str(int8_config_path)] if int8_config_path is not None else []),
         ],
     )
     if completed_process.returncode != 0:
@@ -427,14 +455,14 @@ def use_yolo_model_export_mode(model: object, *, enabled: bool):
             setattr(module, "export", original_value)
 
 
-def _build_dummy_input(*, session: object) -> object:
+def _build_dummy_input(*, session: object, batch_size: int = 1, input_size: tuple[int, ...] | None = None) -> object:
     """按输入尺寸生成固定 seed=0 的探针，与转换 runtime smoke 保持一致。
 
     局部 NumPy generator 不改变训练或应用的全局 RNG，也不随 CPU/CUDA 改变输入。
     固定探针只验证转换链；真实业务图片覆盖由独立精度验收提供。
     """
     image = session.imports.np.random.default_rng(0).standard_normal(
-        (1, 3, *session.runtime_target.input_size)
+        (batch_size, 3, *(input_size or session.runtime_target.input_size))
     ).astype(session.imports.np.float32)
     return session.imports.torch.from_numpy(image).to(
         device=session.device_name, dtype=session.imports.torch.float32,
@@ -559,6 +587,16 @@ def build_validated_yolo_runtime_input_tensor(
         artifact_format=artifact_format,
     )
     return input_tensor
+
+
+def validate_profile_input_tensor(input_tensor: object, profile: tuple[tuple[int, ...], ...]) -> dict[str, object]:
+    """动态轴必须出现在产物图中，固定轴保持 profile 值。"""
+    expected = [low if low == high else -1 for low, high in zip(profile[0], profile[2], strict=True)]
+    if not isinstance(input_tensor, dict) or (
+        input_tensor.get("shape"), input_tensor.get("layout"), input_tensor.get("dtype")
+    ) != (expected, "NCHW", "float32"):
+        raise ServiceConfigurationError("动态产物输入与 NCHW profile 不一致", details={"expected_shape": expected, "input_tensor": input_tensor})
+    return dict(input_tensor)
 
 
 def validate_yolo_converted_input_tensor(

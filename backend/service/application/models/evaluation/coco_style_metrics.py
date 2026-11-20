@@ -88,6 +88,11 @@ def encode_binary_mask_to_coco_rle(mask: object) -> dict[str, object]:
     }
 
 
+def serialize_segmentation_sample_masks(items: list[dict[str, object]]) -> list[dict[str, object]]:
+    """压缩报告样本的二值 mask，保留参与本次评估的几何。"""
+    return [{**item, "mask": encode_binary_mask_to_coco_rle(item["mask"])} for item in items]
+
+
 def resize_binary_mask_for_coco_evaluation(
     *,
     binary_mask: Any,

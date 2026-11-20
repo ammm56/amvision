@@ -101,3 +101,41 @@ def test_tensorrt_topk_checks_both_executions_and_unmarks_output(
         )
     assert marks == []
     assert len(onnx.load(path).graph.output) == 1
+
+
+def test_regular_tensorrt_reports_the_point_exceeding_relative_tolerance(tmp_path, monkeypatch):
+    """普通输出报告实际超限点，保留源值、目标值和该位置的容差。"""
+    h = onnx.helper
+    graph = h.make_graph(
+        [h.make_node("Identity", ["images"], ["predictions"])], "plain_output",
+        [h.make_tensor_value_info("images", onnx.TensorProto.FLOAT, [1, 3, 2, 2])],
+        [h.make_tensor_value_info("predictions", onnx.TensorProto.FLOAT, [1, 3, 2, 2])],
+    )
+    model = h.make_model(graph, opset_imports=[h.make_opsetid("", 18)])
+    model.ir_version = 9
+    path = tmp_path / "plain.onnx"
+    onnx.save(model, path)
+    index = (0, 1, 1, 0)
+
+    def execute(*, engine, trt, image):
+        """只改变一个位置，避免假定模型有样本名称或 TopK 排序。"""
+        output = image.copy()
+        output[index] += 0.5
+        return {"predictions": output}
+
+    monkeypatch.setattr(validation, "execute_validation_engine", execute)
+    with pytest.raises(ServiceConfigurationError) as raised:
+        validation.validate_tensorrt_engine_against_onnx(
+            source_path=path, engine=object(), network=object(), builder=object(),
+            config=object(), runtime=object(), trt=object(), build_precision="fp16",
+        )
+    evidence = raised.value.details["numeric_validation"]
+    assert evidence["input_kind"] == "generated_tensor"
+    assert evidence["check_count"] == 1
+    row, = evidence["failures"]
+    assert row["output_name"] == "predictions"
+    assert row["index"] == list(index)
+    assert row["target_value"] - row["source_value"] == pytest.approx(0.5)
+    assert row["allowed_error"] == pytest.approx(
+        evidence["absolute_tolerance"] + evidence["relative_tolerance"] * abs(row["target_value"]),
+    )

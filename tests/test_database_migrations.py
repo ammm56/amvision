@@ -41,7 +41,7 @@ from backend.service.application.workflows.trigger_sources.output_delivery impor
 )
 
 
-_DATABASE_HEAD = "c0f3e7a5b129"
+_DATABASE_HEAD = "1c92ab5f486e"
 
 
 def test_remove_preview_table_preserves_formal_policy_parameters(tmp_path):
@@ -172,6 +172,10 @@ def test_migrate_database_initializes_empty_sqlite_database(tmp_path: Path) -> N
         _assert_worker_instance_column(inspector)
         _assert_workflow_run_worker_instance_column(inspector)
         _assert_training_task_supports_multiple_model_versions(inspector)
+        assert "version_sequence" in {column["name"] for column in inspector.get_columns("models")}
+        assert "version_number" in {column["name"] for column in inspector.get_columns("model_versions")}
+        assert any(index["name"] == "uq_model_versions_number" and index["unique"]
+                   for index in inspector.get_indexes("model_versions"))
         _assert_task_attempt_claim_uniqueness(inspector)
         _assert_conversion_publication_reservation(inspector)
         _assert_workflow_publish_deduplication(inspector)
@@ -212,7 +216,9 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("f2b7d9a4c6e8").down_revision == "e7a9b1c3d5f8"
     assert script.get_revision("a8d6c4e2b019").down_revision == "f2b7d9a4c6e8"
     assert script.get_revision("b9e2d6f4a018").down_revision == "a8d6c4e2b019"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "b9e2d6f4a018"
+    assert script.get_revision("c0f3e7a5b129").down_revision == "b9e2d6f4a018"
+    assert script.get_revision("90ab3916f4cb").down_revision == "c0f3e7a5b129"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "90ab3916f4cb"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")
@@ -875,6 +881,7 @@ def _insert_second_model_version_for_migration_test(engine: Engine) -> None:
                 model_version_id="model-version-migration-2",
                 model_id="model-migration",
                 source_kind="training-output",
+                version_number=2,
                 dataset_version_id=None,
                 training_task_id="training-task-migration",
                 parent_version_id=None,

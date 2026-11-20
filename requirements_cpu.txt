@@ -52,7 +52,8 @@ polygraphy>=0.50,<1
 onnxruntime>=1.22,<2
 
 # openvino 推理
-openvino>=2026.1.0 
+openvino>=2026.1.0
+nncf>=3.4,<4
 
 # 自定义节点依赖
 zxing-cpp>=3.0,<4

@@ -15,16 +15,7 @@ import { CircleCheck, CircleX, CircleMinus, CircleHelp, Clock3, LoaderCircle, Ci
 
 import StatusBadge, { type StatusBadgeTone } from '@/shared/ui/data-display/StatusBadge.vue'
 import { humanizeStatusText } from '@/shared/ui/data-display/status-text'
-
-type CanonicalTaskState =
-  | 'queued'
-  | 'running'
-  | 'paused'
-  | 'succeeded'
-  | 'failed'
-  | 'timed_out'
-  | 'cancelled'
-  | 'unknown'
+import { normalizeTaskState, type CanonicalTaskState } from '../task-state'
 
 const props = withDefaults(defineProps<{ state: string | null | undefined; appearance?: 'badge' | 'icon' }>(), { appearance: 'badge' })
 const { t } = useI18n()
@@ -53,18 +44,6 @@ const statusLabel = computed(() => {
   return t(`tasks.status.${canonicalState.value}`)
 })
 
-function normalizeTaskState(value: string | null | undefined): CanonicalTaskState {
-  const state = String(value ?? '').trim().toLowerCase()
-  if (!state) return 'unknown'
-  if (state === 'paused' || state.includes('pause')) return 'paused'
-  if (state === 'timed_out' || state.includes('time_out') || state.includes('timeout')) return 'timed_out'
-  if (state.includes('cancel') || state.includes('revoke')) return 'cancelled'
-  if (state.includes('fail') || state.includes('error') || state.includes('terminate')) return 'failed'
-  if (state.includes('success') || state.includes('succeed') || state.includes('complete') || state.includes('finish')) return 'succeeded'
-  if (state.includes('run') || state.includes('process') || state.includes('validat') || state.includes('convert') || state.includes('train')) return 'running'
-  if (state.includes('queue') || state.includes('pending') || state.includes('received') || state.includes('created')) return 'queued'
-  return 'unknown'
-}
 </script>
 
 <style scoped>

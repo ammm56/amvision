@@ -653,7 +653,7 @@ describe('DeploymentOperationsPage', () => {
     const drawerText = document.body.textContent ?? ''
     expect(drawerText).toContain('状态信息')
     expect(drawerText).toContain('deployment-1')
-    expect(drawerText).toContain('model-version-1')
+    expect(drawerText).not.toContain('model-version-1')
     expect(drawerText).toContain('model-build-1')
     expect(drawerText).toContain('2048')
     expect(drawerText).toContain('runtime.started')

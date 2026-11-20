@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+from backend.service.application.conversions.advanced_options import (
+    YOLO_ONNX_OPSETS, is_openvino_int8_request, is_tensorrt_int8_request,
+    parse_openvino_int8_options, parse_tensorrt_int8_options,
+    resolve_conversion_onnx_opset, uses_conversion_dynamic_batch,
+)
+from backend.service.application.conversions.calibration_data import (
+    check_int8_sample_overlap, resolve_int8_sample_sets,
+)
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import os
@@ -17,6 +26,7 @@ from backend.service.application.backends import (
     DetectionConversionPlanStep,
 )
 from backend.service.application.conversions.conversion_result_snapshot import ConversionResultSnapshot
+from backend.service.application.conversions.stage_progress import ConversionStageRecorder
 from backend.service.application.conversions.deadline_policy import (
     ConversionCancellationProbe,
     validate_conversion_attempt_deadline_metadata,
@@ -88,9 +98,9 @@ YoloModelConversionRunResult = ConversionBackendRunResult
 
 _EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"})
 _OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
-_SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
+_SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16", "int8"})
 _TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
-_SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
+_SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16", "int8"})
 
 
 @dataclass(frozen=True)
@@ -201,27 +211,13 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         *,
         created_by: str | None = None,
         display_name: str = "",
+        expected_task_type: str | None = None,
     ) -> YoloConversionTaskSubmission:
         """创建并入队一条 YOLO 系列转换任务。"""
 
-        self._validate_request(request)
         task_kind = self._resolve_task_kind()
         queue_name = self._resolve_queue_name()
-        source_runtime_target = self._resolve_source_runtime_target(
-            request.project_id,
-            request.source_model_version_id,
-        )
-        plan = self.planner.build_plan(
-            self._resolve_planning_request_cls()(
-                project_id=request.project_id,
-                source_model_version_id=request.source_model_version_id,
-                target_formats=request.target_formats,
-                task_type=source_runtime_target.task_type,
-                runtime_profile_id=request.runtime_profile_id,
-                metadata=dict(request.extra_options),
-            )
-        )
-        self._validate_executable_targets(plan.target_formats)
+        source_runtime_target, plan = self._prepare_conversion(request, expected_task_type=expected_task_type)
         task_spec = self._build_task_spec(request=request, plan=plan)
         created_task = self.task_service.create_task(
             CreateTaskRequest(
@@ -234,6 +230,8 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 worker_pool=task_kind,
                 metadata={
                     "source_model_version_id": request.source_model_version_id,
+                    "source_model_name": source_runtime_target.model_name,
+                    "source_input_size": {"height": source_runtime_target.input_size[0], "width": source_runtime_target.input_size[1]},
                     "target_formats": list(plan.target_formats),
                     "runtime_profile_id": request.runtime_profile_id,
                     "model_type": self.model_type,
@@ -261,6 +259,70 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             source_model_version_id=request.source_model_version_id,
             target_formats=plan.target_formats,
         )
+
+    def _prepare_conversion(
+        self, request: YoloConversionTaskRequest,
+        *, expected_task_type: str | None = None,
+    ) -> tuple[RuntimeTargetSnapshot, YoloModelConversionPlan]:
+        """解析来源并生成转换方案，不创建任务。"""
+        self._validate_request(request)
+        source_runtime_target = self._resolve_source_runtime_target(
+            request.project_id,
+            request.source_model_version_id,
+        )
+        if expected_task_type is not None and source_runtime_target.task_type != expected_task_type:
+            raise InvalidRequestError(
+                "来源 ModelVersion 的 task_type 与转换请求不匹配",
+                details={"resolved_task_type": source_runtime_target.task_type, "requested_task_type": expected_task_type},
+            )
+        plan = self.planner.build_plan(
+            self._resolve_planning_request_cls()(
+                project_id=request.project_id,
+                source_model_version_id=request.source_model_version_id,
+                target_formats=request.target_formats,
+                task_type=source_runtime_target.task_type,
+                runtime_profile_id=request.runtime_profile_id,
+                metadata=dict(request.extra_options),
+            )
+        )
+        self._validate_executable_targets(plan.target_formats)
+        uses_conversion_dynamic_batch(
+            request.extra_options, model_type=source_runtime_target.model_type,
+            task_type=source_runtime_target.task_type, targets=plan.target_formats,
+        )
+        samples = self._resolve_int8_samples(request, source_runtime_target, plan)
+        if samples is not None and "openvino-ir" in plan.target_formats:
+            check_int8_sample_overlap(self._require_dataset_storage(), samples)
+        return source_runtime_target, plan
+
+    def _resolve_int8_samples(
+        self, request: YoloConversionTaskRequest, source: RuntimeTargetSnapshot, plan: YoloModelConversionPlan,
+    ) -> dict[str, list[str]] | None:
+        """验证默认运行尺寸，再读取当前项目的校准和独立校验样本。"""
+        adapter = dict(model_type=source.model_type, task_type=source.task_type, targets=plan.target_formats)
+        if is_openvino_int8_request(request.extra_options, **adapter):
+            options = parse_openvino_int8_options(request.extra_options)
+        elif is_tensorrt_int8_request(request.extra_options, **adapter):
+            options = parse_tensorrt_int8_options(request.extra_options)
+            default_shape = (1, 3, *source.input_size)
+            if any(not low <= size <= high for low, size, high in zip(options.shapes[0], default_shape, options.shapes[2], strict=True)):
+                raise InvalidRequestError("动态 profile 必须覆盖来源模型的默认输入尺寸", details={"default_shape": default_shape})
+        else:
+            return None
+        return resolve_int8_sample_sets(
+            session_factory=self.session_factory, storage=self._require_dataset_storage(),
+            project_id=request.project_id, options=options,
+        )
+
+    def preview_conversion_task(self, request: YoloConversionTaskRequest, *, expected_task_type: str | None = None) -> dict[str, object]:
+        """预检来源和转换方案；运行环境在执行时另行检查。"""
+        source, plan = self._prepare_conversion(request, expected_task_type=expected_task_type)
+        return {
+            "task_type": source.task_type,
+            "source_model_version_id": request.source_model_version_id,
+            "target_formats": list(plan.target_formats),
+            "steps": list(self._resolve_serialize_plan()(plan).get("steps", [])),
+        }
 
     def list_conversion_tasks(
         self,
@@ -391,11 +453,15 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         )
 
         publication_token: str | None = None
+        stage_recorder = ConversionStageRecorder(self.task_service, task_id, publication_fence)
         try:
             dataset_storage.write_json(
                 plan_object_key,
                 self._resolve_serialize_plan()(plan),
             )
+            int8_samples = self._resolve_int8_samples(request, source_runtime_target, plan)
+            if int8_samples is not None:
+                check_int8_sample_overlap(dataset_storage, int8_samples)
             file_attempt_id = attempt.attempt_id
             staging_prefix = (
                 f"{output_object_prefix}/attempts/{file_attempt_id}/staging"
@@ -415,17 +481,20 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                             "runtime_profile_id": request.runtime_profile_id,
                             "conversion_file_attempt_id": file_attempt_id,
                             **dict(request.extra_options),
+                            "int8_sample_sets": int8_samples,
                         },
                         attempt_deadline_at=str(attempt_deadline["deadline_at"]),
                         attempt_timeout_seconds=float(
                             attempt_deadline["timeout_seconds"]
                         ),
+                        report_stage=stage_recorder,
                         cancel_requested=ConversionCancellationProbe(
                             task_service=self.task_service,
                             task_id=task_id,
                         ),
                     )
                 )
+            stage_recorder("register-artifact", "running", self._now_iso())
             run_result = prepare_conversion_publication_result(
                 raw_run_result=raw_run_result,
                 conversion_task_id=task_id,
@@ -1510,7 +1579,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             session_factory=self.session_factory,
             dataset_storage=dataset_storage,
         )
-        return resolver.resolve_target(
+        target = resolver.resolve_target(
             RuntimeTargetResolveRequest(
                 project_id=project_id,
                 model_version_id=source_model_version_id,
@@ -1518,6 +1587,12 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 device_name="cpu",
             )
         )
+        if target.model_type != self.model_type:
+            raise InvalidRequestError(
+                "来源 ModelVersion 的模型类型与转换请求不匹配",
+                details={"resolved_model_type": target.model_type, "requested_model_type": self.model_type},
+            )
+        return target
 
     def _build_report_summary(
         self,
@@ -1531,7 +1606,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
     ) -> dict[str, object]:
         """组装转换报告摘要。"""
 
-        return build_detection_conversion_report_summary(
+        summary = build_detection_conversion_report_summary(
             phase=str(run_result.metadata.get("phase") or "phase-1-onnx"),
             source_model_version_id=source_runtime_target.model_version_id,
             source_checkpoint_uri=source_runtime_target.checkpoint_storage_uri,
@@ -1558,6 +1633,13 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             builds=tuple(serialize_yolo_conversion_build_summary(item) for item in build_summaries),
             output_files=output_files,
         )
+        device = run_result.metadata.get("device_lease")
+        if isinstance(device, dict):
+            summary["device_lease"] = {
+                "resolved_device": device.get("resolved_device"),
+                "cuda_index": device.get("cuda_index"),
+            }
+        return summary
 
     @staticmethod
     def _build_output_object_prefix(task_id: str) -> str:
@@ -1579,6 +1661,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             raise InvalidRequestError("source_model_version_id 不能为空")
         if not request.target_formats:
             raise InvalidRequestError("target_formats 不能为空")
+        resolve_conversion_onnx_opset(request.extra_options, supported=YOLO_ONNX_OPSETS)
         if "openvino-ir" in request.target_formats:
             _resolve_openvino_ir_build_precision(request.extra_options)
         if "tensorrt-engine" in request.target_formats:
@@ -1744,7 +1827,7 @@ def _resolve_openvino_ir_build_precision(extra_options: dict[str, object]) -> st
         if normalized_precision in _SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS:
             return normalized_precision
     raise InvalidRequestError(
-        "openvino_ir_precision 必须是 fp32 或 fp16",
+        "openvino_ir_precision 必须是 fp32、fp16 或 int8",
         details={_OPENVINO_IR_PRECISION_OPTION_KEY: raw_precision},
     )
 
@@ -1760,7 +1843,7 @@ def _resolve_tensorrt_engine_build_precision(extra_options: dict[str, object]) -
         if normalized_precision in _SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS:
             return normalized_precision
     raise InvalidRequestError(
-        "tensorrt_engine_precision 必须是 fp32 或 fp16",
+        "tensorrt_engine_precision 必须是 fp32、fp16 或 int8",
         details={_TENSORRT_ENGINE_PRECISION_OPTION_KEY: raw_precision},
     )
 
