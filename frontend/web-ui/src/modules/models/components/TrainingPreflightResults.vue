@@ -20,7 +20,11 @@
           <tr v-for="row in rows" :key="row.check">
             <th scope="row">{{ row.label }}</th>
             <td>
-              <span :class="'training-preflight__state--' + row.status">{{ statusLabels[row.status] }}</span>
+              <span class="training-preflight__state" :class="'training-preflight__state--' + row.status">
+                <CircleCheck v-if="row.status === 'passed'" :size="15" aria-hidden="true" />
+                <CircleX v-else-if="row.status === 'failed'" :size="15" aria-hidden="true" />
+                {{ statusLabels[row.status] }}
+              </span>
               <span v-if="row.message" class="training-preflight__detail">{{ row.message }}</span>
               <details v-if="row.missing_files?.length" class="training-preflight__files">
                 <summary>{{ text('查看缺失文件', 'View missing files') }} ({{ row.missing_files.length }})</summary>
@@ -40,7 +44,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Check, TriangleAlert } from '@lucide/vue'
+import { Check, CircleCheck, CircleX, TriangleAlert } from '@lucide/vue'
 import Button from '@/shared/ui/components/Button.vue'
 import type { ModelTrainingPreflightCheck } from '../services/model.service'
 
@@ -86,6 +90,7 @@ const failureSummary = computed(() => failedCount.value > 0
 .training-preflight { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--am-border); border-radius: 8px; background: var(--am-surface); }
 .training-preflight h3, .training-preflight p { margin: 0; }
 .training-preflight h3 { font-size: 15px; }
+.training-preflight__state { display:inline-flex; align-items:center; gap:6px; }
 .training-preflight__notice { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
 .training-preflight__notice > div { flex: 1; min-width: 180px; overflow-wrap: anywhere; }
 .training-preflight__notice svg { flex: none; }

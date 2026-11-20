@@ -1,138 +1,137 @@
 <template>
-  <form class="model-ops-form training-wizard" @submit.prevent="submitStep">
+  <form ref="wizard" class="model-ops-form training-wizard" @submit.prevent="submitStep">
     <div class="training-wizard__heading">
-      <Button type="button" variant="secondary" @click="$emit('cancel')">{{ locale.startsWith('zh') ? '返回' : 'Back' }}</Button>
-      <h2>{{ t('modelOps.trainingTitle') }}</h2>
+      <Button type="button" variant="ghost" @click="$emit('cancel')"><ChevronLeft :size="16" aria-hidden="true" />{{ zh ? '返回' : 'Back' }}</Button>
+      <span>{{ zh ? '训练任务' : 'Training tasks' }}</span>
       <slot name="submission-warning" />
     </div>
-    <ol class="training-wizard__steps" :aria-label="locale.startsWith('zh') ? '创建训练步骤' : 'Training steps'">
+    <h2 class="training-wizard__title">{{ zh ? '创建训练' : 'Create training' }}</h2>
+    <ol class="training-wizard__steps" :aria-label="zh ? '创建训练步骤' : 'Training steps'">
       <li v-for="(label, index) in stepLabels" :key="label" :class="{ 'is-current': step === index + 1, 'is-complete': step > index + 1 }" :aria-current="step === index + 1 ? 'step' : undefined">
-        <span>{{ index + 1 }}</span><strong>{{ label }}</strong>
+        <span><Check v-if="step > index + 1" :size="17" aria-hidden="true" /><template v-else>{{ index + 1 }}</template></span><strong>{{ label }}</strong>
       </li>
     </ol>
     <div class="form-grid model-ops-form__grid">
-      <section v-if="step === 1" class="training-parameter-section field field--wide">
-        <h3>{{ locale.startsWith('zh') ? '任务信息' : 'Task information' }}</h3>
-        <div class="form-grid training-parameter-grid">
-          <label class="field"><span>{{ t('modelOps.fields.trainingDisplayName') }}</span><input :value="trainingDisplayName" maxlength="50" @input="emitString('update:trainingDisplayName', $event)" /></label>
-          <label class="field"><span>{{ locale.startsWith('zh') ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="$emit('change-task-type', normalizeSelectValue($event))" /></label>
-          <label class="field field--wide"><span>{{ t('modelOps.fields.outputModelName') }}</span><input :value="outputModelName" maxlength="128" @input="emitString('update:outputModelName', $event)" /></label>
-        </div>
-      </section>
-      <div v-if="step === 1" class="field field--wide model-picker-field training-parameter-section">
-        <div class="model-picker-field__header">
-          <div class="model-picker-field__title">
-            <span>{{ t('modelOps.fields.trainingBaseModel') }}</span>
-            <span class="model-picker-chip">{{ selectedTaskType }}</span>
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            type="button"
-            :disabled="loading || baseModelsCount === 0"
-            @click="$emit('open-base-model-picker')"
-          >
-            {{ t('modelOps.actions.chooseBaseModel') }}
-          </Button>
-        </div>
-        <div class="model-picker-summary" :class="{ 'is-empty': !trainingSelectedModelSummary }">
-          <template v-if="trainingSelectedModelSummary">
-            <div class="model-picker-summary__top">
-              <div class="model-picker-summary__identity">
-                <strong>{{ modelDisplayName(trainingSelectedModelSummary) }}</strong>
-              </div>
-              <div class="model-picker-summary__chips">
-                <span class="model-picker-chip">
-                  {{ t('modelOps.picker.modelScaleTitle') }} · {{ trainingSelectedModelSummary.model_scale }}
-                </span>
-              </div>
+      <div v-if="step === 1" class="training-stage-panel field--wide">
+        <section class="training-stage-section">
+          <h3>{{ zh ? '任务信息' : 'Task information' }}</h3>
+          <label class="training-field-row">
+            <span>{{ zh ? '训练任务名称（可选）' : 'Task name (optional)' }}</span>
+            <span class="training-counted-input">
+              <input :value="trainingDisplayName" maxlength="50" @input="emitString('update:trainingDisplayName', $event)" />
+              <small aria-hidden="true">{{ trainingDisplayName.length }}/50</small>
+            </span>
+          </label>
+          <label class="training-field-row"><span>{{ zh ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions" :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="$emit('change-task-type', normalizeSelectValue($event))" /></label>
+        </section>
+        <section class="training-stage-section">
+          <h3>{{ zh ? '模型选择' : 'Model selection' }}</h3>
+          <div v-if="projectOutputModels.length" class="training-field-row">
+            <span>{{ zh ? '输出模型' : 'Output model' }}</span>
+            <div class="training-output-choice">
+              <SelectField :model-value="selectedOutputModel?.model_id ?? ''" :options="outputModelOptions" :aria-label="zh ? '选择输出模型' : 'Select output model'" @update:model-value="selectOutputModel" />
+              <Button v-if="selectedOutputModel" size="sm" variant="ghost" @click="$emit('update:outputModelName', '')"><Plus :size="16" aria-hidden="true" />{{ zh ? '新建模型' : 'New model' }}</Button>
             </div>
-          </template>
-          <template v-else>
-            <strong>{{ t('modelOps.baseModelEmptyTitle') }}</strong>
-            <span>{{ t('modelOps.baseModelEmptyDescription') }}</span>
-          </template>
-        </div>
+          </div>
+          <label v-if="!selectedOutputModel" class="training-field-row"><span>{{ t('modelOps.fields.outputModelName') }}</span><input :value="outputModelName" maxlength="128" @input="emitString('update:outputModelName', $event)" /></label>
+          <div v-if="baseCatalog?.length" class="training-architecture">
+            <label class="training-field-row"><span>{{ zh ? '模型系列' : 'Model family' }}</span><SelectField :model-value="trainingSelectedModelSummary?.model_type ?? ''" :options="modelFamilyOptions" :aria-label="zh ? '模型系列' : 'Model family'" @update:model-value="selectFamily" /></label>
+            <label class="training-field-row"><span>{{ zh ? '模型规格' : 'Model size' }}</span><SelectField :model-value="trainingSelectedModelSummary?.model_id ?? ''" :options="modelScaleOptions" :disabled="!modelScaleOptions.length" :aria-label="zh ? '模型规格' : 'Model size'" @update:model-value="$emit('select-architecture', String($event))" /></label>
+          </div>
+          <p v-if="outputArchitectureConflict" class="training-wizard__error" role="status">{{ outputArchitectureError }}</p>
+        </section>
+        <section class="training-stage-section">
+          <h3>{{ zh ? '基础资源' : 'Base resources' }}</h3>
+          <div class="training-selection-strip" :class="{ 'is-selected': trainingSelectedModelSummary }">
+            <Box :size="20" aria-hidden="true" />
+            <strong>{{ baseModelLabel }}</strong>
+            <span v-if="trainingSelectedModelSummary" class="training-selection-strip__state"><Check v-if="baseCheckpointPresent" :size="16" aria-hidden="true" />{{ baseCheckpointPresent ? (zh ? '本地权重文件存在' : 'Local weights present') : (zh ? '模型结构已登记' : 'Architecture registered') }}</span>
+            <Button size="sm" variant="ghost" :disabled="loading || baseModelsCount === 0" @click="$emit('open-base-model-picker')">{{ t('modelOps.actions.chooseBaseModel') }}</Button>
+          </div>
+          <p class="training-wizard__hint">{{ zh ? '完成训练后登记新版本，已有版本保持不变。' : 'Training registers a new version and preserves existing versions.' }}</p>
+        </section>
       </div>
 
-      <div v-if="step === 2" class="field field--wide model-picker-field training-parameter-section">
-        <div class="model-picker-field__header">
-          <div class="model-picker-field__title">
-            <span>{{ t('modelOps.fields.trainingDatasetExport') }}</span>
-            <span class="model-picker-chip">{{ selectedTaskType }}</span>
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            type="button"
-            :disabled="loading || trainingDatasetExportsCount === 0"
-            @click="$emit('open-training-dataset-export-picker')"
-          >
+      <div v-if="step === 2" class="training-stage-data field--wide">
+        <div class="training-selection-strip" :class="{ 'is-selected': selectedTrainingDatasetExport }">
+          <Database :size="20" aria-hidden="true" />
+          <strong>{{ selectedTrainingDatasetExport ? datasetVersionLabel : t('modelOps.trainingDatasetExportEmptyTitle') }}</strong>
+          <template v-if="selectedTrainingDatasetExport">
+            <span>{{ datasetFormatLabel(selectedTrainingDatasetExport.format_id) }}</span>
+            <span>{{ selectedTrainingDatasetExport.category_names.length }} {{ zh ? '类' : 'classes' }}</span>
+          </template>
+          <Button size="sm" variant="secondary" :disabled="loading || trainingDatasetExportsCount === 0" @click="$emit('open-training-dataset-export-picker')">
             {{ selectedTrainingDatasetExport ? t('modelOps.actions.changeTrainingDatasetExport') : t('modelOps.actions.chooseTrainingDatasetExport') }}
           </Button>
         </div>
-        <div class="model-picker-summary" :class="{ 'is-empty': !selectedTrainingDatasetExport }">
-          <template v-if="selectedTrainingDatasetExport">
-            <div class="model-picker-summary__top">
-              <div class="model-picker-summary__identity">
-                <strong>{{ selectedDatasetName }}<template v-if="selectedDatasetVersion"> · v{{ selectedDatasetVersion }}</template></strong>
-                <span>{{ selectedTrainingDatasetExport.dataset_export_id }}</span>
-              </div>
-              <div class="model-picker-summary__chips">
-                <span class="model-picker-chip">{{ selectedTrainingDatasetExport.task_type }}</span>
-                <span class="model-picker-chip">{{ selectedTrainingDatasetExport.format_id }}</span>
-              </div>
-            </div>
-            <div class="model-picker-summary__grid">
-              <div class="model-picker-summary__item">
-                <span>{{ t('datasetOps.fields.datasetId') }}</span>
-                <strong>{{ selectedTrainingDatasetExport.dataset_id }}</strong>
-              </div>
-              <div class="model-picker-summary__item">
-                <span>{{ t('datasetOps.columns.samples') }}</span>
-                <strong>{{ selectedTrainingDatasetExport.sample_count }}</strong>
-              </div>
-              <div class="model-picker-summary__item">
-                <span>{{ t('modelOps.columns.createdAt') }}</span>
-                <strong>{{ formatSystemDateTime(selectedTrainingDatasetExport.created_at) }}</strong>
-              </div>
-              <div class="model-picker-summary__item">
-                <span>{{ t('datasetOps.fields.categoryNames') }}</span>
-                <strong>{{ selectedTrainingDatasetExport.category_names.join(', ') || t('common.noValue') }}</strong>
-              </div>
-            </div>
-            <p v-if="selectedDatasetError" class="training-wizard__hint" role="status">{{ locale.startsWith('zh') ? '来源名称暂不可用，使用数据集 ID。' : 'Dataset name unavailable; showing its ID.' }} <button type="button" class="training-retry" @click="datasetSourceRetry++">{{ locale.startsWith('zh') ? '重试' : 'Retry' }}</button></p>
-          </template>
-          <template v-else>
-            <strong>{{ t('modelOps.trainingDatasetExportEmptyTitle') }}</strong>
-            <span>{{ t('modelOps.trainingDatasetExportEmptyDescription') }}</span>
-          </template>
-        </div>
-        <template v-if="selectedTrainingDatasetExport">
-          <p v-if="selectionError" role="alert" class="training-wizard__error">{{ selectionError }}</p>
-          <section class="training-splits" :aria-label="locale.startsWith('zh') ? '导出数据划分' : 'Exported splits'">
-            <div class="training-splits__heading"><h3>{{ locale.startsWith('zh') ? '数据集划分' : 'Dataset splits' }}</h3><span>{{ locale.startsWith('zh') ? '使用所选导出的固定划分。' : 'Uses the selected export’s fixed splits.' }}</span></div>
+        <p v-if="!selectedTrainingDatasetExport" class="training-wizard__hint">
+          {{ t('modelOps.trainingDatasetExportEmptyDescription') }}
+          <RouterLink v-if="!loading && trainingDatasetExportsCount === 0" to="/datasets?tab=exports" target="_blank">{{ zh ? '打开数据集导出' : 'Open dataset exports' }}</RouterLink>
+        </p>
+        <div v-else class="training-stage-panel">
+          <section class="training-stage-section training-splits">
+            <div class="training-splits__heading"><h3>{{ zh ? '数据集划分' : 'Dataset splits' }}</h3><span>{{ zh ? '使用所选导出中的固定划分。' : 'Uses the selected export’s fixed splits.' }}</span></div>
             <div class="training-splits__counts">
               <div v-for="split in exportSplits" :key="split.name"><span>{{ split.label }} ({{ split.name }})</span><strong>{{ split.value }}</strong></div>
+              <div><span>{{ zh ? '总样本数' : 'Total samples' }}</span><strong>{{ selectedTrainingDatasetExport.sample_count?.toLocaleString() ?? '—' }}</strong></div>
             </div>
+            <p v-if="validationSplitNote" class="training-wizard__hint">{{ validationSplitNote }}</p>
           </section>
-          <h3>{{ locale.startsWith('zh') ? '类别信息' : 'Categories' }} ({{ selectedTrainingDatasetExport.category_names.length }})</h3>
-          <div class="resource-table training-categories"><table><thead><tr><th>{{ locale.startsWith('zh') ? '类别 ID' : 'Category ID' }}</th><th>{{ locale.startsWith('zh') ? '类别名称' : 'Category name' }}</th></tr></thead><tbody><tr v-for="(name, index) in selectedTrainingDatasetExport.category_names" :key="index"><td>{{ index }}</td><td>{{ name }}</td></tr></tbody></table></div>
-        </template>
+          <section class="training-stage-section">
+            <h3>{{ zh ? '类别信息' : 'Categories' }} ({{ selectedTrainingDatasetExport.category_names.length }})</h3>
+            <div class="resource-table training-categories"><table><thead><tr><th>{{ zh ? '类别 ID' : 'Category ID' }}</th><th>{{ zh ? '类别名称' : 'Category name' }}</th></tr></thead><tbody><tr v-for="(name, index) in selectedTrainingDatasetExport.category_names" :key="index"><td>{{ index }}</td><td>{{ name }}</td></tr></tbody></table></div>
+          </section>
+          <section class="training-stage-section">
+            <h3>{{ zh ? '数据集导出' : 'Dataset export' }}</h3>
+            <p v-if="selectionError" role="alert" class="training-wizard__error">{{ selectionError }}</p>
+            <div class="resource-table training-export-record"><table>
+              <thead><tr><th>{{ zh ? '生成时间' : 'Created' }}</th><th>{{ zh ? '格式' : 'Format' }}</th><th>{{ zh ? '状态' : 'Status' }}</th><th>{{ zh ? '操作' : 'Actions' }}</th></tr></thead>
+              <tbody><tr><td>{{ formatSystemDateTime(selectedTrainingDatasetExport.created_at, 'minutes') }}</td><td>{{ datasetFormatLabel(selectedTrainingDatasetExport.format_id) }}</td>
+                <td>{{ selectionError ? (zh ? '不可用于训练' : 'Unavailable for training') : (zh ? '已完成' : 'Completed') }}</td>
+                <td class="training-export-record__links">
+                  <RouterLink v-if="selectedTrainingDatasetExport.dataset_id && selectedTrainingDatasetExport.dataset_version_id" :to="datasetVersionPath(selectedTrainingDatasetExport.dataset_id, selectedTrainingDatasetExport.dataset_version_id)" target="_blank">{{ zh ? '查看数据' : 'View data' }}</RouterLink>
+                  <RouterLink :to="'/datasets/exports/' + encodeURIComponent(selectedTrainingDatasetExport.dataset_export_id)" target="_blank">{{ zh ? '导出详情' : 'Export details' }}</RouterLink>
+                </td></tr></tbody>
+            </table></div>
+            <p v-if="selectedDatasetError && !selectedTrainingDatasetExport.display_name" class="training-wizard__hint" role="status">{{ zh ? '来源名称暂不可用，使用数据集 ID。' : 'Dataset name unavailable; showing its ID.' }} <button type="button" class="training-retry" @click="datasetSourceRetry++">{{ zh ? '重试' : 'Retry' }}</button></p>
+          </section>
+        </div>
       </div>
 
-      <section v-if="step === 3" class="training-parameter-section field field--wide training-initialization">
-        <h3>{{ locale.startsWith('zh') ? '初始化方式' : 'Initialization' }}</h3>
-        <label class="training-choice"><input type="radio" name="training-initialization" :checked="!warmStartModelVersionId" @change="$emit('clear-training-warm-start')" /><span><strong>{{ locale.startsWith('zh') ? '从头训练' : 'Train from scratch' }}</strong><small>{{ locale.startsWith('zh') ? '使用随机初始化的模型权重。' : 'Start with randomly initialized weights.' }}</small></span></label>
-        <div class="training-choice" :class="{ 'is-selected': !!warmStartModelVersionId }"><input type="radio" name="training-initialization" :aria-label="locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights'" :disabled="loading || !trainingTaskSupportsWarmStart" :checked="!!warmStartModelVersionId" @click.prevent="$emit('open-training-weight-picker')" /><span><strong>{{ locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights' }}</strong><small>{{ warmStartLabel || (locale.startsWith('zh') ? '选择可用的基础模型或项目版本。' : 'Choose available model weights.') }}</small><Button type="button" size="sm" variant="secondary" :disabled="loading || !trainingTaskSupportsWarmStart" @click="$emit('open-training-weight-picker')">{{ locale.startsWith('zh') ? '选择权重' : 'Choose weights' }}</Button></span></div>
-        <p class="training-wizard__hint">{{ locale.startsWith('zh') ? '权重初始化不会恢复优化器状态或训练进度。' : 'Initializing weights does not resume optimizer state or training progress.' }}</p>
-        <div class="training-choice"><span><strong>{{ locale.startsWith('zh') ? '恢复中断任务' : 'Resume an interrupted task' }}</strong><small>{{ locale.startsWith('zh') ? '暂停或失败的任务可在任务详情中检查 checkpoint 并恢复；已取消的任务不能恢复。' : 'Paused or failed tasks can be resumed from their detail page after checking the checkpoint; cancelled tasks cannot be resumed.' }}</small><Button type="button" size="sm" variant="secondary" @click="$emit('view-training-tasks')">{{ locale.startsWith('zh') ? '查看训练任务' : 'View training tasks' }}</Button></span></div>
+      <section v-if="step === 3" class="training-initialization field--wide" :aria-label="zh ? '初始化方式' : 'Initialization'">
+        <h3 class="sr-only">{{ zh ? '初始化方式' : 'Initialization' }}</h3>
+        <label class="training-choice" :class="{ 'is-selected': !warmStartModelVersionId }">
+          <input type="radio" name="training-initialization" :checked="!warmStartModelVersionId" @change="$emit('clear-training-warm-start')" />
+          <span><strong>{{ zh ? '从头训练' : 'Train from scratch' }}</strong><small>{{ zh ? '使用随机初始化的模型权重。' : 'Start with randomly initialized weights.' }}</small></span>
+        </label>
+        <div class="training-choice" :class="{ 'is-selected': !!warmStartModelVersionId }">
+          <input type="radio" name="training-initialization" :aria-label="zh ? '使用权重初始化' : 'Initialize from weights'" :disabled="loading || !trainingTaskSupportsWarmStart" :checked="!!warmStartModelVersionId" @click.prevent="$emit('open-training-weight-picker')" />
+          <div class="training-choice__content">
+            <div class="training-choice__heading"><strong>{{ zh ? '使用权重初始化' : 'Initialize from weights' }}</strong><Button size="sm" :disabled="loading || !trainingTaskSupportsWarmStart" @click="$emit('open-training-weight-picker')">{{ zh ? '选择权重' : 'Choose weights' }}</Button></div>
+            <small v-if="!warmStartModelVersionId">{{ zh ? '选择可用的基础模型或项目版本。' : 'Choose available base or project model weights.' }}</small>
+            <template v-else>
+              <dl class="training-weight-summary">
+                <div><dt>{{ zh ? '权重来源' : 'Weight source' }}</dt><dd>{{ warmStartSource || '—' }}</dd></div>
+                <div><dt>{{ zh ? '目标类别' : 'Target classes' }}</dt><dd>{{ selectedTrainingDatasetExport?.category_names.join(' / ') || '—' }}</dd></div>
+                <div><dt>{{ zh ? '模型版本' : 'Model version' }}</dt><dd>{{ warmStartLabel || '—' }}</dd></div>
+                <div><dt>{{ zh ? '本地权重' : 'Local weights' }}</dt><dd>{{ warmStartFileName || '—' }} <small v-if="warmStartFileStatus">{{ warmStartFileStatus }}</small></dd></div>
+              </dl>
+              <p class="training-wizard__hint">{{ zh ? '权重初始化不会恢复优化器状态或训练进度。' : 'Initializing weights does not resume optimizer state or training progress.' }}</p>
+            </template>
+          </div>
+        </div>
+        <div class="training-choice training-choice--resume"><History :size="18" aria-hidden="true" />
+          <div class="training-choice__content">
+            <div class="training-choice__heading"><strong>{{ zh ? '恢复中断任务' : 'Resume an interrupted task' }}</strong><Button size="sm" @click="$emit('view-training-tasks')">{{ zh ? '查看训练任务' : 'View training tasks' }}</Button></div>
+            <small>{{ zh ? '暂停或失败的任务可在任务详情中检查 checkpoint 并恢复；已取消的任务不能恢复。' : 'Paused or failed tasks can be resumed from their detail page after checking the checkpoint; cancelled tasks cannot be resumed.' }}</small>
+          </div>
+        </div>
       </section>
 
       <section v-if="step === 4" class="training-parameter-summary field--wide" :aria-label="locale.startsWith('zh') ? '训练配置摘要' : 'Training configuration summary'">
-        <strong>{{ trainingSelectedModelSummary?.model_type && trainingSelectedModelSummary?.model_scale ? `${trainingSelectedModelSummary.model_type.toUpperCase()}-${trainingSelectedModelSummary.model_scale}` : trainingSelectedModelSummary?.model_name || '—' }}</strong>
+        <strong><Box :size="18" aria-hidden="true" />{{ baseModelLabel }}</strong>
         <span>{{ selectedTaskType }}</span>
-        <span>{{ selectedDatasetName }}<template v-if="selectedDatasetVersion"> · v{{ selectedDatasetVersion }}</template></span>
+        <span>{{ datasetVersionLabel }}</span>
         <span>{{ warmStartModelVersionId ? (locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights') : (locale.startsWith('zh') ? '从头训练' : 'From scratch') }}</span>
       </section>
       <TrainingTaskRules v-if="step === 4 && selectedTaskType !== 'detection'" :task-type="selectedTaskType" :dataset-export="selectedTrainingDatasetExport" :workspace="selectedDatasetWorkspace">
@@ -160,7 +159,7 @@
           <div class="training-parameter-grid form-grid">
             <label class="field">
               <span>{{ t('modelOps.fields.outputModelName') }}</span>
-              <input :value="outputModelName" maxlength="128" @input="emitString('update:outputModelName', $event)" />
+              <input :value="outputModelLabel" :readonly="!!selectedOutputModel" maxlength="128" @input="emitString('update:outputModelName', $event)" />
             </label>
             <label class="field">
               <span>{{ t('modelOps.fields.maxEpochs') }}</span>
@@ -355,11 +354,6 @@
       </section>
       </details>
       <div v-if="step === 5" class="training-review field--wide">
-        <TrainingPreflightResults
-          :checks="previewChecks" :loading="previewLoading" :passed="previewPassed" :error="configurationError || previewError"
-          :warm-start="!!warmStartModelVersionId" :editable="!trainingSubmitting && !trainingSubmissionUncertain && !lastTrainingSubmission"
-          :zh="locale.startsWith('zh')" @retry="previewRetry++" @edit="step = $event"
-        />
         <section v-for="(group, index) in reviewGroups" :key="group.step" class="training-review__card">
           <h3><component :is="group.icon" :size="18" aria-hidden="true" />{{ index + 1 }}. {{ group.title }}</h3>
           <Button v-if="!trainingSubmissionUncertain" variant="ghost" size="sm" type="button" :aria-label="`${locale.startsWith('zh') ? '编辑' : 'Edit'} ${group.title}`" :disabled="trainingSubmitting" @click="step = group.step">
@@ -367,15 +361,21 @@
           </Button>
           <dl><div v-for="[label, value] in group.fields" :key="label"><dt>{{ label }}</dt><dd>{{ value }}</dd></div></dl>
           <p v-if="group.step === 1" class="training-review__initial">
-            {{ locale.startsWith('zh') ? '初始化' : 'Initialization' }} · {{ warmStartModelVersionId ? (warmStartLabel || '—') : (locale.startsWith('zh') ? '从头训练' : 'From scratch') }}
+            {{ zh ? '初始化' : 'Initialization' }} · {{ warmStartModelVersionId ? ([warmStartLabel, warmStartFileName].filter(Boolean).join(' · ') || '—') : (zh ? '从头训练' : 'From scratch') }}
           </p>
         </section>
+        <TrainingPreflightResults
+          :checks="previewChecks" :loading="previewLoading" :passed="previewPassed" :error="configurationError || previewError"
+          :warm-start="!!warmStartModelVersionId" :editable="!trainingSubmitting && !trainingSubmissionUncertain && !lastTrainingSubmission"
+          :zh="zh" @retry="previewRetry++" @edit="step = $event"
+        />
+        <p v-if="validationSplitNote" class="training-wizard__hint">{{ validationSplitNote }}</p>
       </div>
     </div>
     <p v-if="stepError" class="training-wizard__error" role="alert">{{ stepError }}</p>
     <slot name="submission-result" />
     <div class="training-wizard__actions">
-      <Button v-if="step > 1" type="button" variant="secondary" :disabled="trainingSubmitting || trainingSubmissionUncertain" @click="step--; stepError = ''">{{ (locale.startsWith('zh') ? '上一步 · ' : 'Previous · ') + stepLabels[step - 2] }}</Button><span v-else></span>
+      <Button v-if="step > 1" type="button" variant="secondary" :disabled="trainingSubmitting || trainingSubmissionUncertain" @click="step--; stepError = ''">{{ (zh ? '上一步：' : 'Previous: ') + stepLabels[step - 2] }}</Button><span v-else></span>
       <div><Button type="button" variant="secondary" @click="$emit('cancel')">{{ trainingSubmissionUncertain ? (locale.startsWith('zh') ? '返回任务列表' : 'Back to tasks') : (locale.startsWith('zh') ? '取消' : 'Cancel') }}</Button>
       <Button
         variant="primary"
@@ -384,7 +384,7 @@
         :loading="trainingSubmitting"
       >
         <Play v-if="step === 5" :size="16" />
-        {{ step < 5 ? (locale.startsWith('zh') ? '下一步 · ' : 'Next · ') + stepLabels[step] : trainingSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitTraining') }}
+        {{ step < 5 ? (zh ? '下一步：' : 'Next: ') + stepLabels[step] : trainingSubmitting ? t('modelOps.actions.submitting') : zh ? '开始训练' : 'Start training' }}
       </Button></div>
     </div>
     <TaskSubmissionNotice
@@ -397,12 +397,14 @@
 </template>
 
 <script setup lang="ts">
-import { Box, Database, Pencil, Play, Settings } from '@lucide/vue'
+import { Box, Check, ChevronLeft, Database, History, Pencil, Play, Plus, Settings } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 
+import { datasetFormatLabel } from '@/modules/datasets/dataset-workspace'
 import type { DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
-import { getDatasetWorkspace, type DatasetWorkspace } from '@/modules/datasets/services/dataset-workspace.service'
+import { datasetVersionPath, getDatasetWorkspace, type DatasetWorkspace } from '@/modules/datasets/services/dataset-workspace.service'
 import { ApiError } from '@/shared/api/error'
 import type {
   ModelTaskType,
@@ -450,6 +452,8 @@ const props = defineProps<{
   taskTypeOptions: Array<{ label: string; value: string }>
   loading: boolean
   baseModelsCount: number
+  baseCatalog?: PlatformBaseModelSummary[]
+  projectModels?: PlatformBaseModelSummary[]
   trainingDatasetExportsCount: number
   trainingSelectedModelSummary: PlatformBaseModelSummary | null
   selectedTrainingDatasetExport: DatasetExportSummary | null
@@ -471,6 +475,9 @@ const props = defineProps<{
   trainingDisplayName: string
   warmStartModelVersionId: string
   warmStartLabel?: string
+  warmStartSource?: string
+  warmStartFileName?: string
+  warmStartFileStatus?: string
   trainingTaskSupportsWarmStart: boolean
   trainingModelParameterFields: TrainingParameterField[]
   trainingAugmentationParameterFields: TrainingParameterField[]
@@ -496,6 +503,7 @@ const emit = defineEmits<{
   cancel: []
   'change-task-type': [value: string]
   'open-base-model-picker': []
+  'select-architecture': [modelId: string]
   'open-training-weight-picker': []
   'open-training-dataset-export-picker': []
   'clear-training-warm-start': []
@@ -520,6 +528,8 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
+const zh = computed(() => locale.value.startsWith('zh'))
+const wizard = ref<HTMLFormElement | null>(null)
 const taskRuleField = computed(() => {
   if (props.selectedTaskType === 'segmentation') return props.trainingModelParameterFields.find(field => field.key === 'mask_loss_weight')
   if (props.selectedTaskType === 'obb') return props.trainingAugmentationParameterFields.find(field => field.key === 'degrees')
@@ -533,6 +543,7 @@ const taskRuleFieldDisabled = computed(() => {
 const advancedModelFields = computed(() => props.trainingModelParameterFields.filter(field => field !== taskRuleField.value))
 const advancedAugmentationFields = computed(() => props.trainingAugmentationParameterFields.filter(field => field !== taskRuleField.value))
 const step = ref(1)
+watch(step, () => wizard.value?.scrollIntoView?.({ block: 'start' }), { flush: 'post' })
 const advancedOpen = ref(false)
 function rememberAdvancedState(event: Event): void {
   advancedOpen.value = (event.currentTarget as HTMLDetailsElement).open
@@ -586,10 +597,61 @@ const selectedDatasetError = ref(false)
 const datasetSourceRetry = ref(0)
 const selectedDatasetName = computed(() => selectedDatasetWorkspace.value?.dataset?.display_name || props.selectedTrainingDatasetExport?.display_name || props.selectedTrainingDatasetExport?.dataset_id || props.selectedTrainingDatasetExport?.dataset_export_id || '—')
 const selectedDatasetVersion = computed(() => selectedDatasetWorkspace.value?.version_number || props.selectedTrainingDatasetExport?.version_number || null)
+const datasetVersionLabel = computed(() => selectedDatasetName.value + (selectedDatasetVersion.value ? ` · v${selectedDatasetVersion.value}` : ''))
+const baseModelLabel = computed(() => {
+  const model = props.trainingSelectedModelSummary
+  if (model?.model_type && model.model_scale) return `${model.model_type.toUpperCase()}-${model.model_scale}`
+  return model ? modelDisplayName(model) : t('modelOps.baseModelEmptyTitle')
+})
+const baseCheckpointPresent = computed(() => props.trainingSelectedModelSummary?.available_versions?.some(version => version.checkpoint_state === 'present'))
+const modelFamilyOptions = computed(() => [...new Set((props.baseCatalog ?? []).map(model => model.model_type))]
+  .map(type => ({ value: type, label: type.toUpperCase() })))
+const modelScaleOptions = computed(() => (props.baseCatalog ?? [])
+  .filter(model => model.model_type === props.trainingSelectedModelSummary?.model_type)
+  .map(model => ({ value: model.model_id, label: model.model_scale })))
+const projectOutputModels = computed(() => (props.projectModels ?? []).filter(model => model.scope_kind === 'project'
+  && (props.baseCatalog ?? []).some(base => base.model_type === model.model_type && base.model_scale === model.model_scale)))
+const selectedOutputModel = computed(() => {
+  const base = props.trainingSelectedModelSummary
+  const models = projectOutputModels.value.filter(model => model.model_name === props.outputModelName || modelDisplayName(model) === props.outputModelName)
+  return (base && models.find(model => model.model_type === base.model_type && model.model_scale === base.model_scale)) || models[0]
+})
+const outputArchitectureConflict = computed(() => {
+  const model = selectedOutputModel.value
+  const base = props.trainingSelectedModelSummary
+  return !!model && !!base && (model.model_type !== base.model_type || model.model_scale !== base.model_scale)
+})
+const outputArchitectureError = computed(() => zh.value
+  ? '当前系列或规格与已有输出模型不一致。请选择匹配的规格，或新建输出模型。'
+  : 'The selected architecture differs from the output model. Choose a matching architecture or a new output model.')
+const outputModelLabel = computed(() => selectedOutputModel.value ? modelDisplayName(selectedOutputModel.value) : props.outputModelName)
+const outputModelOptions = computed(() => [
+  { value: '', label: zh.value ? '新建模型' : 'New model' },
+  ...projectOutputModels.value.map(model => ({ value: model.model_id, label: modelDisplayName(model) })),
+])
+
+function selectFamily(value: SelectValue): void {
+  const models = (props.baseCatalog ?? []).filter(model => model.model_type === value)
+  const preferred = models.find(model => model.model_scale === props.trainingSelectedModelSummary?.model_scale)
+    ?? models.find(model => model.available_versions.some(version => version.checkpoint_state === 'present'))
+    ?? models[0]
+  if (preferred) emit('select-architecture', preferred.model_id)
+}
+
+function selectOutputModel(value: SelectValue): void {
+  const model = projectOutputModels.value.find(item => item.model_id === value)
+  if (!model) {
+    emit('update:outputModelName', '')
+    return
+  }
+  const architecture = props.baseCatalog?.find(base => base.model_type === model.model_type && base.model_scale === model.model_scale)
+  if (architecture && architecture.model_id !== props.trainingSelectedModelSummary?.model_id) emit('select-architecture', architecture.model_id)
+  emit('update:outputModelName', model.model_name)
+}
 watch(() => selectedDatasetWorkspace.value?.dataset?.display_name || props.selectedTrainingDatasetExport?.display_name || '', name => {
   emit('dataset-name-resolved', name)
 }, { immediate: true })
-watch(() => [props.selectedTrainingDatasetExport?.dataset_id, props.selectedTrainingDatasetExport?.dataset_version_id, datasetSourceRetry.value] as const,
+watch([() => props.selectedTrainingDatasetExport?.dataset_id, () => props.selectedTrainingDatasetExport?.dataset_version_id, datasetSourceRetry],
   async ([datasetId, versionId], _previous, onCleanup) => {
     selectedDatasetWorkspace.value = null
     selectedDatasetError.value = false
@@ -620,24 +682,28 @@ const exportSplits = computed(() => {
     return { name, value, label: (chinese ? ['训练集', '验证集', '测试集'] : ['Training', 'Validation', 'Test'])[index] }
   })
 })
+const validationSplitNote = computed(() => {
+  const splits = props.selectedTrainingDatasetExport?.split_names ?? []
+  if (!splits.includes('val') || splits.includes('test')) return ''
+  return zh.value ? '所选导出未包含 test，训练验证使用 val。' : 'The selected export has no test split. Training validation uses val.'
+})
 const reviewGroups = computed(() => {
   const chinese = locale.value.startsWith('zh')
   const text = (zh: string, en: string) => chinese ? zh : en
   const model = props.trainingSelectedModelSummary
-  const version = selectedDatasetVersion.value ? ` · v${selectedDatasetVersion.value}` : ''
   const device = props.trainingDeviceOptions.find(option => option.value === props.trainingDevice)?.label
   return [
     { step: 1, icon: Box, title: stepLabels.value[0], fields: [
       [text('训练任务名称', 'Task name'), props.trainingDisplayName || '—'],
       [text('基础模型', 'Base model'), model?.model_type ? `${model.model_type.toUpperCase()}-${model.model_scale}` : model?.model_name || '—'],
       [text('任务类型', 'Task type'), props.selectedTaskType],
-      [text('输出到', 'Output model'), props.outputModelName],
+      [text('输出到', 'Output model'), outputModelLabel.value],
     ] },
     { step: 2, icon: Database, title: stepLabels.value[1], fields: [
-      [text('数据集', 'Dataset'), `${selectedDatasetName.value}${version}`],
+      [text('数据集', 'Dataset'), datasetVersionLabel.value],
       [text('数据划分', 'Splits'), exportSplits.value.map(split => `${split.name} ${split.value}`).join(' / ')],
       [text('类别数量', 'Classes'), props.selectedTrainingDatasetExport?.category_names?.length ?? '—'],
-      [text('导出格式', 'Export format'), props.selectedTrainingDatasetExport?.format_id || '—'],
+      [text('导出格式', 'Export format'), datasetFormatLabel(props.selectedTrainingDatasetExport?.format_id)],
     ] },
     { step: 4, icon: Settings, title: stepLabels.value[3], fields: [
       [text('最大轮数', 'Epochs'), props.maxEpochs],
@@ -645,6 +711,8 @@ const reviewGroups = computed(() => {
       [text('训练设备', 'Device'), device || props.trainingDevice || 'Auto'],
       [text('批大小策略', 'Batch size'), props.batchMode === 'auto' ? `AutoBatch · ${Math.round(props.batchTargetMemoryFraction * 100)}%` : props.batchSize],
       ['AMP', props.ampMode === 'disabled' ? text('关闭', 'Off') : props.ampDtype],
+      ...(props.batchRecoverOnOom ? [[text('首轮 OOM 重试', 'First-epoch OOM retries'), props.batchMaxOomRetries]] : []),
+      [text('验证间隔（轮）', 'Validation interval'), props.evaluationInterval],
       [text('保存间隔（轮）', 'Checkpoint interval'), props.checkpointInterval],
     ] },
   ]
@@ -656,6 +724,7 @@ function submitStep(): void {
     stepError.value = locale.value.startsWith('zh') ? '请填写输出模型名称并选择模型。' : 'Enter an output model name and choose a model.'
     return
   }
+  if (step.value === 1 && outputArchitectureConflict.value) return
   if (step.value === 2 && !props.selectedTrainingDatasetExport) {
     stepError.value = locale.value.startsWith('zh') ? '请选择用于训练的数据集导出。' : 'Choose a dataset export for training.'
     return
@@ -807,19 +876,47 @@ function normalizeModelParameterNumber(
 
 <style scoped>
 .training-retry { border:0; padding:0; background:none; color:var(--am-brand-primary); cursor:pointer; font:inherit; }
-.training-splits { display:grid; gap:14px; padding:16px; border:1px solid var(--am-border); border-radius:6px; }
+.training-stage-panel { min-width:0; border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface); }
+.training-stage-section,.training-stage-data { display:grid; min-width:0; gap:12px; }
+.training-stage-section { padding:16px 18px; }
+.training-stage-section + .training-stage-section { border-block-start:1px solid var(--am-border); }
+.training-stage-section h3 { margin:0; font-size:16px; }
+.training-field-row { display:grid; grid-template-columns:minmax(105px, 145px) minmax(0, 1fr); gap:10px; align-items:center; min-width:0; max-width:720px; }
+.training-field-row > input,.training-counted-input input { width:100%; min-width:0; min-height:36px; padding:6px 10px; border:1px solid var(--am-border-strong); border-radius:6px; background:var(--am-input); color:var(--am-text); }
+.training-field-row :deep(.ui-select) { min-width:0; width:100%; }
+.training-counted-input { position:relative; min-width:0; }
+.training-counted-input input { padding-inline-end:66px; }
+.training-counted-input small { position:absolute; inset-inline-end:12px; inset-block-start:50%; transform:translateY(-50%); color:var(--am-text-muted); pointer-events:none; }
+.training-architecture { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px 18px; max-width:1000px; }
+.training-output-choice,.training-selection-strip { display:flex; align-items:center; flex-wrap:wrap; min-width:0; gap:8px 14px; }
+.training-output-choice :deep(.ui-select) { flex:1 1 180px; }
+.training-selection-strip { padding:10px 14px; border:1px solid var(--am-border); border-radius:6px; background:var(--am-surface); color:var(--am-text); }
+.training-selection-strip.is-selected { background:var(--am-surface-soft); }
+.training-selection-strip strong { overflow-wrap:anywhere; }
+.training-selection-strip > .ui-button { margin-inline-start:auto; }
+.training-selection-strip__state { display:inline-flex; align-items:center; gap:6px; color:var(--am-text-muted); }
+.training-selection-strip__state svg { color:var(--am-success-text); }
+.training-export-record table { table-layout:fixed; }
+.training-export-record :is(th,td) { white-space:normal; overflow-wrap:anywhere; }
+.training-export-record__links a + a { margin-inline-start:10px; }
+.training-export-record__links a,.training-wizard__hint a { color:var(--am-action-primary-strong); white-space:nowrap; }
 .training-splits__heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px; }
 .training-splits__heading h3 { margin:0; }
 .training-splits__heading span, .training-splits__counts span { color:var(--am-text-muted); }
-.training-splits__counts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.training-splits__counts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
 .training-splits__counts div { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding-right:12px; }
 .training-splits__counts div:not(:last-child) { border-right:1px solid var(--am-border); }
-@media (max-width: 600px) { .training-splits__counts { grid-template-columns:1fr; } .training-splits__counts div:not(:last-child) { border-right:0; } }
-.training-wizard { display: grid; gap: 18px; min-width: 0; }
+@media (max-width:760px) {
+  .training-architecture,.training-splits__counts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .training-architecture .training-field-row { grid-template-columns:minmax(0,1fr); }
+  .training-splits__counts div:not(:last-child) { border-right:0; }
+}
+.training-wizard { display:grid; gap:16px; min-width:0; }
 .training-wizard__heading { display: flex; align-items: center; gap: 12px; }
 .training-wizard__heading { flex-wrap: wrap; }
 .training-wizard__heading :deep(.submission-resolution--warning) { flex: 0 1 auto; margin: 0 0 0 auto; }
-.training-wizard__heading h2 { margin: 0; }
+.training-wizard__heading > span { padding-inline-start:12px; border-inline-start:1px solid var(--am-border); }
+.training-wizard__title { margin:0; font-size:clamp(23px,2.3vw,30px); }
 .training-wizard__steps { display: flex; align-items: center; padding: 0; margin: 0; list-style: none; }
 .training-wizard__steps li { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; color: var(--am-text-muted); }
 .training-wizard__steps li:not(:last-child)::after { content: ''; height: 1px; background: var(--am-border); flex: 1; margin: 0 12px; }
@@ -827,12 +924,15 @@ function normalizeModelParameterNumber(
 .training-wizard__steps li strong { white-space: nowrap; font-weight: 500; }
 .training-wizard__steps li.is-current, .training-wizard__steps li.is-complete { color: var(--am-text); }
 .training-wizard__steps li.is-current span { color: white; background: var(--am-action-primary); border-color: var(--am-action-primary); }
-.training-wizard__actions { position: sticky; bottom: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; background: var(--am-surface-page, var(--am-surface)); }
-.training-wizard__actions > div { display: flex; gap: 12px; }
+.training-wizard__steps li.is-complete span { color:var(--am-action-primary-strong); border-color:var(--am-action-primary); }
+.training-wizard__steps li.is-complete::after { background:var(--am-action-primary); }
+.training-wizard__actions { position:sticky; bottom:0; z-index:1; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-block-start:1px solid var(--am-border); background:var(--am-page); }
+.training-wizard__actions > div { display:flex; flex-wrap:wrap; gap:12px; margin-inline-start:auto; }
 .training-wizard__hint { color: var(--am-text-muted); margin: 0; }
 .training-wizard__error { color: var(--am-danger, #d62d2d); margin: 0; }
 .training-parameter-summary { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; min-width:0; padding:12px 16px; border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface-soft); overflow-wrap:anywhere; }
 .training-parameter-summary > *:not(:first-child) { padding-inline-start:16px; border-inline-start:1px solid var(--am-border); }
+.training-parameter-summary strong { display:inline-flex; align-items:center; gap:8px; }
 .training-rule-parameter.field { display:grid; grid-template-columns:minmax(104px, 36%) minmax(0, 1fr); align-items:center; gap:8px; min-width:0; width:calc((100% - 24px) / 2); }
 .training-rule-parameter input { min-width:0; width:100%; }
 @media (max-width: 760px) { .training-rule-parameter.field { width:100%; } }
@@ -847,11 +947,21 @@ function normalizeModelParameterNumber(
 .training-parameter-group .training-runtime-switch input { justify-self:start; }
 .training-size > div, .training-percent { display:flex; align-items:center; gap:8px; min-width:0; }
 @media (max-width: 760px) { .training-parameter-group .form-grid { grid-template-columns:minmax(0, 1fr); } }
-.training-choice { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border: 1px solid var(--am-border); border-radius: 8px; }
-.training-choice.is-selected { border-color: var(--am-action-primary); }
+.training-initialization { display:grid; gap:12px; min-width:0; }
+.training-choice { display:flex; gap:14px; align-items:flex-start; min-width:0; padding:16px; border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface); }
+.training-choice.is-selected { border-color:var(--am-action-primary); }
+.training-choice--resume > svg { color:var(--am-text-muted); flex:none; margin-block-start:4px; }
 .training-choice input { accent-color: var(--am-action-primary); margin-top: 4px; }
-.training-choice span { display: grid; justify-items: start; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.training-choice > span,.training-choice__content { display:grid; gap:8px; min-width:0; overflow-wrap:anywhere; }
+.training-choice__content { flex:1; }
+.training-choice__heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
 .training-choice small { color: var(--am-text-muted); }
+.training-weight-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px; margin:6px 0; }
+.training-weight-summary > div { display:grid; grid-template-columns:minmax(84px,28%) 1fr; gap:8px; min-width:0; }
+.training-weight-summary dt { color:var(--am-text-muted); }
+.training-weight-summary dd { margin:0; min-width:0; overflow-wrap:anywhere; }
+.training-weight-summary small { margin-inline-start:6px; }
+@media (max-width:680px) { .training-weight-summary { grid-template-columns:1fr; } }
 .training-review { display:grid; gap:10px; min-width:0; }
 .training-review__card { display:grid; grid-template-columns:1fr auto; align-items:center; padding:11px 14px; gap:10px; border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface); min-width:0; }
 .training-review__card h3 { display:flex; align-items:center; gap:8px; margin:0; font-size:15px; }
@@ -946,160 +1056,12 @@ function normalizeModelParameterNumber(
   cursor: pointer;
 }
 
-.training-inline-summary {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface-soft);
-}
-
-.training-inline-summary.is-empty {
-  background: var(--am-surface);
-}
-
-.training-inline-summary strong {
-  overflow-wrap: anywhere;
-}
-
-.training-inline-summary span {
-  color: var(--am-text-muted);
-  font-size: 12px;
-}
-
-.training-inline-summary__actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.model-picker-field {
-  gap: 10px;
-}
-
-.model-picker-field__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.model-picker-field__title > span:first-child {
-  color: var(--am-text-muted);
-  font-weight: 600;
-}
-
-.model-picker-field__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.model-picker-summary {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface-soft);
-}
-
-.model-picker-summary.is-empty {
-  min-height: 120px;
-  align-content: center;
-}
-
-.model-picker-summary__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.model-picker-summary__identity {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.model-picker-summary__identity strong,
-.model-picker-summary__identity span,
-.model-picker-summary.is-empty strong,
-.model-picker-summary.is-empty span {
-  overflow-wrap: anywhere;
-}
-
-.model-picker-summary__identity span,
-.model-picker-summary.is-empty span,
-.model-picker-summary__footer {
-  color: var(--am-text-muted);
-  font-size: 12px;
-}
-
-.model-picker-summary__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.model-picker-summary__item {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface);
-}
-
-.model-picker-summary__item span {
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.model-picker-summary__item strong {
-  overflow-wrap: anywhere;
-}
-
-.model-picker-summary__chips {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.model-picker-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  color: var(--am-neutral-text);
-  background: var(--am-neutral-surface);
-  font-size: 12px;
-  font-weight: 700;
-}
-
 @media (max-width: 900px) {
-  .training-parameter-section__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .model-picker-field__header {
-    justify-content: flex-start;
-  }
-
-  .model-picker-summary__top {
-    flex-direction: column;
-  }
-
-  .model-picker-summary__grid {
-    grid-template-columns: 1fr;
-  }
+  .training-parameter-section__header { flex-direction:column; align-items:flex-start; }
+}
+@media (max-width:600px) {
+  .training-wizard__steps { flex-wrap:wrap; gap:10px; }
+  .training-wizard__steps li { flex:none; }
+  .training-wizard__steps li::after { display:none; }
 }
 </style>

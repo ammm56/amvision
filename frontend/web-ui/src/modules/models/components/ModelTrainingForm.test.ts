@@ -10,7 +10,10 @@ import ModelTrainingForm from './ModelTrainingForm.vue'
 import { ApiError } from '@/shared/api/error'
 import { getDatasetWorkspace } from '@/modules/datasets/services/dataset-workspace.service'
 
-vi.mock('@/modules/datasets/services/dataset-workspace.service', () => ({ getDatasetWorkspace: vi.fn() }))
+vi.mock('@/modules/datasets/services/dataset-workspace.service', async importOriginal => ({
+  ...await importOriginal<typeof import('@/modules/datasets/services/dataset-workspace.service')>(),
+  getDatasetWorkspace: vi.fn(),
+}))
 
 function mountWizard() {
   return shallowMount(ModelTrainingForm, {
@@ -98,7 +101,7 @@ describe('training wizard', () => {
     expect(wrapper.emitted('submit')).toBeUndefined()
     await wrapper.setProps({ outputModelName: 'test', trainingSelectedModelSummary: { model_name: 'yolo', model_id: 'm', model_type: 'yolo', model_scale: 's' } as never })
     await wrapper.find('form').trigger('submit')
-    expect(wrapper.text()).toContain('modelOps.fields.trainingDatasetExport')
+    expect(wrapper.text()).toContain('modelOps.trainingDatasetExportEmptyTitle')
     await wrapper.find('form').trigger('submit')
     expect(wrapper.text()).toContain('请选择用于训练的数据集导出')
     await wrapper.setProps({ selectedTrainingDatasetExport: { dataset_export_id: 'e1', category_names: [], task_type: 'detection', format_id: 'yolo' } as never })

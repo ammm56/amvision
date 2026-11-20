@@ -47,6 +47,8 @@
         :task-type-options="taskTypeOptions"
         :loading="loading"
         :base-models-count="baseModels.length"
+        :base-catalog="baseModels"
+        :project-models="projectSourceModels"
         :training-dataset-exports-count="trainingDatasetExports.length"
         :training-selected-model-summary="trainingSelectedModelSummary"
         :selected-training-dataset-export="selectedTrainingDatasetExport"
@@ -68,6 +70,9 @@
         :training-display-name="trainingDisplayName"
         :warm-start-model-version-id="warmStartModelVersionId"
         :warm-start-label="trainingWarmStartLabel"
+        :warm-start-source="trainingWarmStartSource"
+        :warm-start-file-name="trainingWarmStartFileName"
+        :warm-start-file-status="trainingWarmStartFileStatus"
         :training-task-supports-warm-start="trainingTaskSupportsWarmStart"
         :training-model-parameter-fields="trainingModelParameterFields"
         :training-augmentation-parameter-fields="trainingAugmentationParameterFields"
@@ -90,6 +95,7 @@
         @view-training-tasks="activeTab = 'training'; closeTrainingWizard()"
         @change-task-type="setTaskType"
         @open-base-model-picker="openTrainingBaseModelPicker"
+        @select-architecture="selectTrainingArchitecture"
         @open-training-weight-picker="openTrainingWeightPicker"
         @open-training-dataset-export-picker="openTrainingDatasetExportPicker"
         @clear-training-warm-start="clearTrainingWarmStart"
@@ -253,29 +259,18 @@
     <TrainingDatasetExportPickerDialog
       :open="trainingDatasetExportPickerOpen"
       :loading="loading"
+      :names-loading="trainingDatasetNamesLoading"
+      :names-error="trainingDatasetNamesError"
       :title="t('modelOps.datasetExportPicker.title')"
-      :description="t('modelOps.datasetExportPicker.description')"
       :close-label="t('modelOps.datasetExportPicker.close')"
       :search-value="trainingDatasetExportSearch"
-      :search-placeholder="t('modelOps.datasetExportPicker.searchPlaceholder')"
-      :list-title="t('modelOps.datasetExportPicker.listTitle')"
-      :detail-title="t('modelOps.datasetExportPicker.detailTitle')"
       :apply-label="t('modelOps.actions.useTrainingDatasetExport')"
       :empty-title="t('modelOps.datasetExportPicker.emptyTitle')"
-      :empty-description="t('modelOps.datasetExportPicker.emptyDescription')"
-      :no-results-title="t('modelOps.datasetExportPicker.noResultsTitle')"
-      :no-results-description="t('modelOps.datasetExportPicker.noResultsDescription')"
-      :detail-empty-title="t('modelOps.datasetExportPicker.detailEmptyTitle')"
-      :detail-empty-description="t('modelOps.datasetExportPicker.detailEmptyDescription')"
-      :dataset-id-label="t('datasetOps.fields.datasetId')"
-      :dataset-version-id-label="t('datasetOps.fields.datasetVersionId')"
-      :sample-count-label="t('datasetOps.columns.samples')"
-      :created-at-label="t('modelOps.columns.createdAt')"
-      :category-names-label="t('datasetOps.fields.categoryNames')"
-      :no-value-label="t('common.noValue')"
-      :exports="trainingDatasetExports"
+      :exports="namedTrainingDatasetExports"
+      :supported-formats="supportedTrainingExportFormats"
       :selected-export-id="trainingDatasetExportBrowseId || null"
       @close="closeTrainingDatasetExportPicker"
+      @retry-names="trainingDatasetNamesRetry++"
       @update:search-value="trainingDatasetExportSearch = $event"
       @select-export="selectTrainingDatasetExportBrowse"
       @apply-export="applyTrainingDatasetExport"
@@ -294,7 +289,7 @@ import {
   listProjectDatasetExports,
   type DatasetExportSummary,
 } from '@/modules/datasets/services/dataset.service'
-import { listDatasetVersionPage } from '@/modules/datasets/services/dataset-workspace.service'
+import { listDatasetVersionPage, type DatasetVersion } from '@/modules/datasets/services/dataset-workspace.service'
 import {
   getDeploymentSourceModelDetail,
   getModelConversionTaskDetail,
@@ -335,7 +330,7 @@ import TrainingTaskList from '../components/TrainingTaskList.vue'
 import { useModelConversionState } from '../composables/useModelConversionState'
 import { useModelConversionSourceSelection } from '../composables/useModelConversionSourceSelection'
 import { useModelTaskLists } from '../composables/useModelTaskLists'
-import { useModelTrainingState } from '../composables/useModelTrainingState'
+import { resolveSupportedTrainingExportFormats, useModelTrainingState } from '../composables/useModelTrainingState'
 import { usePlatformBaseModelSelection } from '../composables/usePlatformBaseModelSelection'
 import { useTrainingDatasetExportSelection } from '../composables/useTrainingDatasetExportSelection'
 import { savedTrainingText, useTrainingParameters } from '../composables/useTrainingParameters'
@@ -574,8 +569,15 @@ watch([activeTab, selectedProjectId, selectedTaskType, submissionPrincipal, conv
     if (!controller.signal.aborted) conversionCatalogNames.value = new Map([...conversionCatalogNames.value, ...names])
   } catch { /* 来源版本不可访问时继续显示任务保存的版本 ID。 */ }
 }, { immediate: true })
-const trainingDatasetVersions = ref(new Map<string, string>())
+const trainingDatasetVersions = ref(new Map<string, Pick<DatasetVersion, 'display_name' | 'version_number'>>())
+const trainingDatasetNamesRetry = ref(0)
+const trainingDatasetNamesLoading = ref(false)
+const trainingDatasetNamesError = ref(false)
 const trainingExports = computed(() => new Map(trainingDatasetExports.value.map(item => [item.dataset_export_id, item])))
+const namedTrainingDatasetExports = computed(() => trainingDatasetExports.value.map(item => {
+  const identity = trainingDatasetVersions.value.get(item.dataset_version_id)
+  return identity ? { ...item, ...identity } : item
+}))
 const relevantTrainingVersions = computed(() => {
   const ids = trainingTasks.value.flatMap(task => {
     const id = task.dataset_version_id || trainingExports.value.get(task.dataset_export_id || '')?.dataset_version_id
@@ -584,34 +586,46 @@ const relevantTrainingVersions = computed(() => {
   if (conversionWizardOpen.value) {
     ids.push(...trainingDatasetExports.value.filter(item => item.format_id === 'coco-detection-v1').map(item => item.dataset_version_id))
   }
+  if (trainingWizardOpen.value) ids.push(...trainingDatasetExports.value.map(item => item.dataset_version_id))
   return [...new Set(ids)].sort().join(',')
 })
 const trainingDatasetNames = computed(() => {
-  const labels = new Map(trainingDatasetVersions.value)
+  const labels = new Map([...trainingDatasetVersions.value].map(([id, identity]) => [id, `${identity.display_name} · v${identity.version_number}`]))
   for (const item of trainingDatasetExports.value) {
     const label = labels.get(item.dataset_version_id)
     if (label) labels.set(item.dataset_export_id, label)
   }
   return labels
 })
-watch([activeTab, selectedProjectId, selectedTaskType, submissionPrincipal, relevantTrainingVersions, conversionWizardOpen], async ([tab, project, type, principal, ids, conversionOpen], previous, onCleanup) => {
+watch([activeTab, selectedProjectId, selectedTaskType, submissionPrincipal, relevantTrainingVersions, conversionWizardOpen, trainingWizardOpen, trainingDatasetNamesRetry], async ([tab, project, type, principal, ids, conversionOpen, trainingOpen], previous, onCleanup) => {
   if (!previous || project !== previous[1] || type !== previous[2] || principal !== previous[3]) trainingDatasetVersions.value = new Map()
-  if ((tab !== 'training' && !conversionOpen) || !project || !ids) return
+  trainingDatasetNamesLoading.value = false
+  trainingDatasetNamesError.value = false
+  if ((tab !== 'training' && !conversionOpen && !trainingOpen) || !project || !ids) return
   const missing = new Set(ids.split(',').filter(id => !trainingDatasetVersions.value.has(id)))
   if (!missing.size) return
   const controller = new AbortController()
   onCleanup(() => controller.abort())
+  trainingDatasetNamesLoading.value = true
   const limit = 100
   const updated = new Map(trainingDatasetVersions.value)
   try {
     for (let offset = 0; missing.size; offset += limit) {
       const page = await listDatasetVersionPage({ project_id: project, task_type: type, offset, limit }, controller.signal)
       if (controller.signal.aborted) return
-      for (const row of page.items) if (missing.delete(row.dataset_version_id)) updated.set(row.dataset_version_id, `${row.display_name} · v${row.version_number}`)
+      for (const row of page.items) {
+        if (missing.delete(row.dataset_version_id)) updated.set(row.dataset_version_id, { display_name: row.display_name, version_number: row.version_number })
+      }
       if (!page.items.length || offset + limit >= page.total) break
     }
-    trainingDatasetVersions.value = updated
-  } catch { /* 数据集不可访问时，仍显示任务已保存的引用。 */ }
+  } catch {
+    if (!controller.signal.aborted) trainingDatasetNamesError.value = true
+  } finally {
+    if (!controller.signal.aborted) {
+      trainingDatasetVersions.value = updated
+      trainingDatasetNamesLoading.value = false
+    }
+  }
 }, { immediate: true })
 
 const {
@@ -626,7 +640,7 @@ const {
   applyTrainingDatasetExport,
   resetTrainingDatasetExportSelection,
   ensureTrainingDatasetExportSelectionVisible,
-} = useTrainingDatasetExportSelection(trainingDatasetExports)
+} = useTrainingDatasetExportSelection(namedTrainingDatasetExports)
 
 function setErrorMessage(message: string | null): void {
   errorMessage.value = message
@@ -691,6 +705,9 @@ const resolvedTrainingManifestKey = computed(
 const resolvedTrainingModelType = computed(
   () => trainingSelectedModelSummary.value?.model_type?.trim() ?? '',
 )
+const supportedTrainingExportFormats = computed(() => resolveSupportedTrainingExportFormats(
+  selectedTaskType.value, resolvedTrainingModelType.value, trainingExportFormatsByTaskAndModelType.value,
+))
 const resolvedTrainingModelScale = computed(
   () => trainingSelectedModelSummary.value?.model_scale?.trim() ?? '',
 )
@@ -1211,14 +1228,39 @@ const basePickerModels = computed(() => {
   return basePickerWeightsOnly.value && model ? [model] : baseModels.value
 })
 const trainingWarmStartLabel = computed(() => {
-  const id = warmStartModelVersionId.value
-  const model = [...projectSourceModels.value, ...baseModels.value].find(item => item.available_versions.some(version => version.model_version_id === id))
-  const version = model?.available_versions.find(item => item.model_version_id === id)
+  const model = trainingWarmStartModel.value
+  const version = trainingWarmStartVersion.value
   return model && version ? `${modelDisplayName(model)} · ${modelVersionDisplayName(version, true)}` : ''
+})
+const trainingWarmStartModel = computed(() => {
+  const id = warmStartModelVersionId.value
+  return [...projectSourceModels.value, ...baseModels.value].find(item => item.available_versions.some(version => version.model_version_id === id))
+})
+const trainingWarmStartVersion = computed(() => trainingWarmStartModel.value?.available_versions.find(version => version.model_version_id === warmStartModelVersionId.value))
+const trainingWarmStartSource = computed(() => {
+  if (!trainingWarmStartModel.value) return ''
+  return trainingWarmStartModel.value.scope_kind === 'project'
+    ? (zh.value ? '项目训练版本' : 'Project training version')
+    : (zh.value ? '平台基础模型' : 'Platform base model')
+})
+const trainingWarmStartFileName = computed(() => trainingWarmStartVersion.value?.checkpoint_storage_uri?.split(/[\\/]/).pop() ?? '')
+const trainingWarmStartFileStatus = computed(() => {
+  const state = trainingWarmStartVersion.value?.checkpoint_state
+  if (state === 'present') return zh.value ? '文件存在' : 'File present'
+  if (state === 'missing') return zh.value ? '文件缺失' : 'File missing'
+  return state === 'unavailable' ? (zh.value ? '无法检查' : 'Cannot check') : ''
 })
 function syncTrainingDatasetName(name: string): void {
   trainingDatasetTitle.value = name
   if (trainingSelectedModelSummary.value) syncSuggestedOutputModelName(trainingSelectedModelSummary.value, name)
+}
+
+function selectTrainingArchitecture(modelId: string): void {
+  if (modelId === trainingSelectedModelSummary.value?.model_id) return
+  const model = baseModels.value.find(item => item.model_id === modelId)
+  if (!model) return
+  applyTrainingModelSelection(model)
+  syncSuggestedOutputModelName(model, trainingDatasetTitle.value)
 }
 
 function applyTrainingModel(model: PlatformBaseModelDetail): void {

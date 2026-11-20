@@ -105,7 +105,7 @@ export function useModelTrainingState(options: {
     if (normalizeText(datasetExport.task_type) !== normalizeText(options.selectedTaskType.value)) {
       return options.messages.trainingExportTaskMismatch()
     }
-    if (!options.resolvedTrainingManifestKey.value) {
+    if (!options.resolvedTrainingManifestKey.value || datasetExport.metadata?.files_cleaned_at) {
       return options.messages.trainingExportManifestMissing()
     }
 

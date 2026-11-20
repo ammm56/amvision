@@ -23,12 +23,14 @@
 
       <div class="model-picker-shell__content">
         <div class="model-picker-shell__toolbar">
-          <span v-if="taskTypeLabel" class="model-picker-shell__label">{{ taskTypeLabel }}</span>
-          <div class="model-picker-shell__tabs" role="tablist" :aria-label="taskTypeLabel || title">
-            <button v-for="option in taskTypeOptions" :key="option.value" type="button" role="tab" class="model-picker-shell__tab" :class="{ 'is-active': option.value === selectedTaskType }" :aria-selected="option.value === selectedTaskType" @click.stop="$emit('change-task-type', option.value)">
-              {{ option.label }}
-            </button>
-          </div>
+          <slot name="toolbar">
+            <span v-if="taskTypeLabel" class="model-picker-shell__label">{{ taskTypeLabel }}</span>
+            <div v-if="taskTypeOptions?.length" class="model-picker-shell__tabs" role="tablist" :aria-label="taskTypeLabel || title">
+              <button v-for="option in taskTypeOptions" :key="option.value" type="button" role="tab" class="model-picker-shell__tab" :class="{ 'is-active': option.value === selectedTaskType }" :aria-selected="option.value === selectedTaskType" @click.stop="$emit('change-task-type', option.value)">
+                {{ option.label }}
+              </button>
+            </div>
+          </slot>
         </div>
 
         <div class="model-picker-shell__body" :aria-busy="loading">
@@ -71,8 +73,8 @@ const props = defineProps<{
   description?: string
   closeLabel: string
   taskTypeLabel?: string
-  taskTypeOptions: Array<{ label: string; value: string }>
-  selectedTaskType: string
+  taskTypeOptions?: Array<{ label: string; value: string }>
+  selectedTaskType?: string
   listTitle: string
   listCount: number
   detailTitle: string
