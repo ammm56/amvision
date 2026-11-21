@@ -351,7 +351,7 @@ def test_pose_evaluation_manifest_supports_yolo_export(tmp_path: Path) -> None:
     )
 
     assert split_name == "val"
-    assert categories == [{"id": 0, "name": "person"}]
+    assert categories == [{"id": 0, "name": "person", "keypoints": [], "skeleton": []}]
     assert len(samples) == 1
     assert samples[0]["image_path"] == "exports/sample/images/val/sample-1.jpg"
     assert samples[0]["annotations"][0]["bbox"] == pytest.approx([10.0, 5.0, 60.0, 20.0])
