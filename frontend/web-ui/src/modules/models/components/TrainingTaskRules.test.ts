@@ -14,6 +14,29 @@ function exportRecord(id: string, format: string): DatasetExportSummary {
   return { dataset_export_id: id, dataset_version_id: id + '-version', format_id: format, split_names: ['train', 'val'] } as DatasetExportSummary
 }
 
+it('renders the exported classification class IDs and names in their original order', async () => {
+  const categories = ['slot_pcb_surface_full', 'slot_empty', 'slot_back_surface_full']
+  const wrapper = mount(TrainingTaskRules, {
+    props: {
+      taskType: 'classification',
+      datasetExport: { ...exportRecord('c', 'imagenet'), category_names: categories },
+      workspace: null,
+    },
+  })
+
+  const list = wrapper.get('ol[aria-label="类别顺序"]')
+  expect(list.attributes('start')).toBe('0')
+  expect(list.findAll('li').map(item => item.findAll('span').map(part => part.text()))).toEqual(
+    categories.map((name, index) => [String(index), name]),
+  )
+  expect(wrapper.text()).toContain('Top-1 Accuracy')
+
+  await wrapper.setProps({ datasetExport: null })
+  expect(wrapper.find('ol').exists()).toBe(false)
+  expect(wrapper.get('.training-task-rules__classes').text()).toBe('—')
+  wrapper.unmount()
+})
+
 describe('pose training rules', () => {
   it('ignores an outdated YOLO definition and retries only the current export', async () => {
     let finishPrevious!: (value: Awaited<ReturnType<typeof getDatasetExportManifest>>) => void

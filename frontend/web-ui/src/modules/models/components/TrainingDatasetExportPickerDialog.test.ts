@@ -9,7 +9,7 @@ const exported: DatasetExportSummary = {
   dataset_id: 'dataset-id', dataset_version_id: 'version-id', dataset_export_id: 'export-v3',
   display_name: '零件检测', version_number: 3, project_id: 'project-id', format_id: 'coco-detection-v1',
   status: 'completed', task_type: 'detection', created_at: '2026-01-01T10:00:00Z', include_test_split: false,
-  split_names: ['train', 'val'], sample_count: 16, category_names: ['bolt'], manifest_object_key: 'exports/manifest.json', metadata: {},
+  split_names: ['train', 'val'], sample_count: 16, category_names: ['bolt', 'washer_long_name'], manifest_object_key: 'exports/manifest.json', metadata: {},
 }
 
 describe('training dataset export picker', () => {
@@ -25,6 +25,7 @@ describe('training dataset export picker', () => {
     try {
       expect(wrapper.findAll('.training-export-picker__dataset')).toHaveLength(2)
       expect(wrapper.text()).toContain('零件检测')
+      expect(wrapper.findAll('.training-export-picker__category-list li').map(item => item.text())).toEqual(['bolt', 'washer_long_name'])
       expect(wrapper.text()).not.toContain('dataset-id')
       const apply = () => wrapper.findAll('button').find(button => button.text() === '用于训练')!
       await wrapper.setProps({ searchValue: 'v1' })

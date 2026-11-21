@@ -509,20 +509,6 @@ export function supportsTrainingWarmStart(taskType: ModelTaskType): boolean {
   return ['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(taskType)
 }
 
-export function getDefaultTrainingEvaluationInterval(
-  taskType: ModelTaskType,
-  modelType: string | null | undefined,
-): number {
-  const normalizedModelType = normalizeModelType(modelType)
-  if (taskType === 'classification') {
-    return 1
-  }
-  if (taskType === 'segmentation' && normalizedModelType === 'rfdetr') {
-    return 1
-  }
-  return 5
-}
-
 export function getDefaultTrainingModelParameterValues(
   taskType: ModelTaskType,
   modelType: string | null | undefined,

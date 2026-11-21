@@ -4,11 +4,8 @@
     <dl v-if="taskType === 'classification'" class="training-task-rules__details">
       <div>
         <dt>{{ label('类别顺序', 'Class order') }}</dt>
-        <dd>
-          <ol v-if="datasetExport?.category_names.length" start="0" tabindex="0" :aria-label="label('类别顺序', 'Class order')">
-            <li v-for="(name, index) in datasetExport.category_names" :key="index">{{ name }}</li>
-          </ol>
-          <span v-else>—</span>
+        <dd class="training-task-rules__classes" :class="{ 'is-empty': !datasetExport?.category_names?.length }">
+          <TrainingCategoryList :categories="datasetExport?.category_names" :label="label('类别顺序', 'Class order')" ordered />
         </dd>
       </div>
       <div><dt>{{ label('验证主指标', 'Primary validation metric') }}</dt><dd>Top-1 Accuracy</dd></div>
@@ -61,6 +58,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import { getDatasetExportManifest, getDatasetExportText, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
 import type { DatasetWorkspace } from '@/modules/datasets/services/dataset-workspace.service'
 import type { ModelTaskType } from '../services/model.service'
+import TrainingCategoryList from './TrainingCategoryList.vue'
 
 const props = defineProps<{
   taskType: ModelTaskType
@@ -154,9 +152,9 @@ watch([poseExport, poseRetry], async ([selected], _, onCleanup) => {
 <style scoped>
 .training-task-rules {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-  padding: 14px;
+  padding: 12px 16px;
   background: var(--am-surface);
   border: 1px solid var(--am-border);
   border-radius: 8px;
@@ -171,13 +169,22 @@ watch([poseExport, poseRetry], async ([selected], _, onCleanup) => {
 }
 .training-task-rules__details > div {
   display: grid;
-  grid-template-columns: minmax(104px, 36%) minmax(0, 1fr);
-  align-items: baseline;
+  min-width: 0;
+  grid-template-columns: minmax(124px, 39%) minmax(0, 1fr);
+  align-items: start;
   gap: 8px;
 }
-.training-task-rules dt { color: var(--am-text-muted); }
-.training-task-rules dd { margin: 0; padding: 7px 10px; background: var(--am-hover-surface); border-radius: 5px; overflow-wrap: anywhere; }
-.training-task-rules ol { max-height: 106px; overflow-y: auto; padding-inline-start: 2em; margin: 0; }
+.training-task-rules dt { padding-block: 8px; color: var(--am-text-muted); }
+.training-task-rules dd {
+  min-width: 0;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+  background: var(--am-surface-muted);
+  overflow-wrap: anywhere;
+}
+.training-task-rules__classes:not(.is-empty) { padding: 0; border: 0; background: transparent; }
 .training-task-rules :deep(.ui-button) { justify-self: start; }
 .training-task-rules__skeleton summary { cursor: pointer; }
 .training-task-rules__skeleton ul { display: grid; gap: 6px; padding-inline-start: 20px; }
@@ -186,5 +193,9 @@ watch([poseExport, poseRetry], async ([selected], _, onCleanup) => {
 .training-task-rules__edges { display: inline-block; }
 @media (max-width: 760px) {
   .training-task-rules__details { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 440px) {
+  .training-task-rules__details > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .training-task-rules dt { padding-block: 0; }
 }
 </style>

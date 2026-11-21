@@ -138,7 +138,9 @@ describe('ModelOperationsPage copied training draft', () => {
     await flushPromises()
     expect(router.currentRoute.value.query.trainingFrom).toBeUndefined()
     await wrapper.findAll('button').find(item => item.text() === '创建训练')!.trigger('click')
-    expect(wrapper.getComponent(ModelTrainingForm).props()).toMatchObject({ maxEpochs: 100, warmStartModelVersionId: '', selectedTrainingDatasetExport: null })
+    expect(wrapper.getComponent(ModelTrainingForm).props()).toMatchObject({
+      maxEpochs: 100, evaluationInterval: 5, warmStartModelVersionId: '', selectedTrainingDatasetExport: null,
+    })
     expect(createModelTrainingTask).not.toHaveBeenCalled()
   })
 

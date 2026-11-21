@@ -146,7 +146,8 @@ const scaleOrder = ['tiny', 'nano', 'n', 'xs', 'small', 's', 'medium', 'm', 'bas
 const scaleRank = new Map(scaleOrder.map((scale, index) => [scale, index]))
 
 watch(() => props.open, open => { if (!open) query.value = '' })
-watch([() => props.open, () => props.selectedModelId], () => { pendingChoice.value = null })
+watch(() => props.selectedTaskType, () => { query.value = '' })
+watch([() => props.open, () => props.selectedTaskType, () => props.selectedModelId], () => { pendingChoice.value = null })
 
 const modelGroups = computed(() => {
   const groups = new Map<string, ModelGroup>()

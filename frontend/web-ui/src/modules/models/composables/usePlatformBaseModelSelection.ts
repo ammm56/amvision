@@ -23,6 +23,8 @@ interface ResetPlatformBaseModelSelectionOptions {
 
 export function usePlatformBaseModelSelection(options: {
   baseModels: Ref<PlatformBaseModelSummary[]>
+  pickerModels?: Ref<PlatformBaseModelSummary[]>
+  restrictPickerToTrainingModel?: Ref<boolean>
   sourceModels: Ref<DeploymentSourceModelSummary[]>
   detailFailedMessage: () => string
 }) {
@@ -38,6 +40,10 @@ export function usePlatformBaseModelSelection(options: {
   const trainingSelectedModelSummary = computed(
     () => options.baseModels.value.find((model) => model.model_id === trainingSelectedModelId.value) ?? null,
   )
+  const basePickerModels = computed(() => {
+    const model = trainingSelectedModelSummary.value
+    return options.restrictPickerToTrainingModel?.value && model ? [model] : (options.pickerModels ?? options.baseModels).value
+  })
 
   const selectedModelDerivedTrainingVersions = computed<PlatformBaseModelVersionListItem[]>(() => {
     const selectedModel = selectedModelDetail.value
@@ -119,13 +125,13 @@ export function usePlatformBaseModelSelection(options: {
 
   async function openBaseModelPicker(): Promise<void> {
     baseModelPickerOpen.value = true
-    if (options.baseModels.value.length === 0) {
+    if (basePickerModels.value.length === 0) {
       return
     }
     const preferred = trainingSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id
     const available = (model: PlatformBaseModelSummary) => model.available_versions.some(version => version.checkpoint_state === 'present')
-    const preferredModelId = options.baseModels.value.find(model => model.model_id === preferred)?.model_id
-      || options.baseModels.value.find(available)?.model_id || options.baseModels.value[0].model_id
+    const preferredModelId = basePickerModels.value.find(model => model.model_id === preferred)?.model_id
+      || basePickerModels.value.find(available)?.model_id || basePickerModels.value[0].model_id
     if (preferredModelId && selectedModelDetail.value?.model_id !== preferredModelId) {
       await selectBaseModel(preferredModelId)
     }
@@ -148,16 +154,20 @@ export function usePlatformBaseModelSelection(options: {
     warmStartModelVersionId.value = payload.modelVersionId
   }
 
-  function clearTrainingWarmStart(): void {
-    warmStartModelVersionId.value = ''
-  }
-
-  function resetPlatformBaseModelSelection(options: ResetPlatformBaseModelSelectionOptions = {}): void {
+  function resetBaseModelBrowse(): void {
     detailRequestSerial += 1
     selectedModelDetail.value = null
     selectedModelBrowseId.value = ''
     selectedModelDetailLoading.value = false
     selectedModelDetailError.value = ''
+  }
+
+  function clearTrainingWarmStart(): void {
+    warmStartModelVersionId.value = ''
+  }
+
+  function resetPlatformBaseModelSelection(options: ResetPlatformBaseModelSelectionOptions = {}): void {
+    resetBaseModelBrowse()
     if (options.keepPickerOpen !== true) {
       baseModelPickerOpen.value = false
     }
@@ -168,13 +178,9 @@ export function usePlatformBaseModelSelection(options: {
   function ensureSelectedModelStillVisible(): void {
     const selectedModelId = selectedModelBrowseId.value || selectedModelDetail.value?.model_id || ''
     const selectedModelStillVisible = selectedModelId !== ''
-      && options.baseModels.value.some((model) => model.model_id === selectedModelId)
+      && basePickerModels.value.some((model) => model.model_id === selectedModelId)
     if (!selectedModelStillVisible) {
-      detailRequestSerial += 1
-      selectedModelBrowseId.value = ''
-      selectedModelDetail.value = null
-      selectedModelDetailLoading.value = false
-      selectedModelDetailError.value = ''
+      resetBaseModelBrowse()
     }
     if (!options.baseModels.value.some((model) => model.model_id === trainingSelectedModelId.value)) {
       trainingSelectedModelId.value = ''
@@ -191,12 +197,14 @@ export function usePlatformBaseModelSelection(options: {
     trainingSelectedModelId,
     warmStartModelVersionId,
     trainingSelectedModelSummary,
+    basePickerModels,
     selectedModelDerivedTrainingVersions,
     selectBaseModel,
     openBaseModelPicker,
     closeBaseModelPicker,
     applyTrainingModelSelection,
     applyTrainingVersionSelection,
+    resetBaseModelBrowse,
     clearTrainingWarmStart,
     resetPlatformBaseModelSelection,
     ensureSelectedModelStillVisible,

@@ -41,10 +41,13 @@
             <small :class="{ 'is-ready': canUse(item) }">{{ stateLabel(item) }}</small>
           </label>
         </fieldset>
-        <div class="training-export-picker__categories">
-          <strong>{{ zh ? '类别' : 'Classes' }} ({{ selectedExport.category_names.length }})</strong>
-          <span>{{ selectedExport.category_names.join(' / ') || '—' }}</span>
-        </div>
+        <section class="training-export-picker__categories">
+          <h3>{{ zh ? '类别' : 'Classes' }} <small>{{ count(selectedExport.category_names.length) }}</small></h3>
+          <ul v-if="selectedExport.category_names.length" class="training-export-picker__category-list" role="list">
+            <li v-for="(name, index) in selectedExport.category_names" :key="index">{{ name }}</li>
+          </ul>
+          <p v-else>{{ zh ? '此导出没有类别' : 'This export has no classes' }}</p>
+        </section>
       </div>
       <p v-else class="training-export-picker__hint">{{ zh ? '选择数据集以查看它的训练导出。' : 'Select a dataset to see its training exports.' }}</p>
     </template>
@@ -157,14 +160,20 @@ function applyExport(): void {
 .training-export-picker__dataset svg,.training-export-picker__export input { flex:none; }
 .training-export-picker__dataset:hover,.training-export-picker__export:not(.is-disabled):hover { background:var(--am-hover-surface); }
 .training-export-picker__dataset[aria-pressed='true'],.training-export-picker__export.is-selected { border-color:var(--am-action-primary); background:var(--am-row-selected); }
-.training-export-picker__dataset small,.training-export-picker__export small,.training-export-picker__hint,.training-export-picker__categories span { color:var(--am-text-muted); }
+.training-export-picker__dataset small,.training-export-picker__export small,.training-export-picker__hint { color:var(--am-text-muted); }
 .training-export-picker__export-copy { display:grid; gap:3px; }
 .training-export-picker__export input { accent-color:var(--am-action-primary); }
 .training-export-picker__export.is-disabled { cursor:not-allowed; }
 .training-export-picker__export .is-ready { color:var(--am-success-text); }
 .training-export-picker__versions { display:grid; gap:8px; padding:0; margin:0; border:0; min-inline-size:0; }
 .training-export-picker__versions legend { margin-block-end:8px; color:var(--am-text-strong); font-weight:600; overflow-wrap:anywhere; }
-.training-export-picker__categories { display:grid; gap:5px; padding:10px 12px; border:1px solid var(--am-border); border-radius:6px; overflow-wrap:anywhere; }
+.training-export-picker__categories { display:grid; gap:8px; min-width:0; padding-block:10px 2px; border-block-start:1px solid var(--am-border); }
+.training-export-picker__categories h3,.training-export-picker__categories p { margin:0; }
+.training-export-picker__categories h3 { display:flex; align-items:center; gap:8px; font-size:14px; }
+.training-export-picker__categories h3 small { color:var(--am-text-muted); font-weight:500; }
+.training-export-picker__categories p { color:var(--am-text-muted); }
+.training-export-picker__category-list { display:flex; flex-wrap:wrap; gap:6px; min-width:0; padding:0; margin:0; list-style:none; }
+.training-export-picker__category-list li { max-width:100%; padding:4px 8px; border:1px solid var(--am-border); border-radius:5px; background:var(--am-surface-muted); color:var(--am-text); font-size:13px; overflow-wrap:anywhere; }
 .training-export-picker__hint { margin:0; padding:8px 10px; overflow-wrap:anywhere; }
 @media (max-width:960px) { .training-export-picker__list { max-height:260px; } }
 </style>

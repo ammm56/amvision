@@ -44,9 +44,7 @@
       <ModelTrainingForm
         v-if="trainingWizardOpen"
         :selected-task-type="selectedTaskType"
-        :task-type-options="taskTypeOptions"
         :loading="loading"
-        :base-models-count="baseModels.length"
         :base-catalog="baseModels"
         :project-models="projectSourceModels"
         :training-dataset-exports-count="trainingDatasetExports.length"
@@ -54,6 +52,7 @@
         :selected-training-dataset-export="selectedTrainingDatasetExport"
         :training-device-options="trainingDeviceOptions"
         :output-model-name="outputModelName"
+        :output-model-name-taken="outputModelNameTaken"
         :max-epochs="maxEpochs"
         :batch-mode="batchMode"
         :batch-size="batchSize"
@@ -93,9 +92,7 @@
         @submit="submitTraining"
         @cancel="closeTrainingWizard"
         @view-training-tasks="activeTab = 'training'; closeTrainingWizard()"
-        @change-task-type="setTaskType"
         @open-base-model-picker="openTrainingBaseModelPicker"
-        @select-architecture="selectTrainingArchitecture"
         @open-training-weight-picker="openTrainingWeightPicker"
         @open-training-dataset-export-picker="openTrainingDatasetExportPicker"
         @clear-training-warm-start="clearTrainingWarmStart"
@@ -211,8 +208,8 @@
 
     <PlatformBaseModelPickerDialog
       :open="baseModelPickerOpen"
-      :loading="loading"
-      :list-error="errorMessage"
+      :loading="pickerUsesPageCatalog ? loading : pickerLoading"
+      :list-error="pickerUsesPageCatalog ? errorMessage : pickerError"
       :detail-loading="selectedModelDetailLoading"
       :detail-error="selectedModelDetailError"
       :weights-only="basePickerWeightsOnly"
@@ -222,7 +219,7 @@
       :close-label="t('modelOps.picker.close')"
       :task-type-label="t('modelOps.fields.taskType')"
       :task-type-options="basePickerTaskTypeOptions"
-      :selected-task-type="selectedTaskType"
+      :selected-task-type="pickerTaskType ?? selectedTaskType"
       :model-list-title="t('modelOps.picker.modelSelectionTitle')"
       :model-name-label="t('modelOps.picker.modelNameTitle')"
       :detail-title="t('modelOps.picker.detailTitle')"
@@ -238,13 +235,13 @@
       :extra-versions="selectedModelDerivedTrainingVersions"
       :applied-model-id="trainingSelectedModelSummary?.model_id"
       :selected-version-id="warmStartModelVersionId"
-      @close="closeCatalogBaseModelPicker"
-      @change-task-type="setTaskType"
+      @close="closeBaseModelPicker"
+      @change-task-type="selectPickerTaskType"
       @select-model="selectBaseModel"
       @retry-detail="selectedModelBrowseId && selectBaseModel(selectedModelBrowseId)"
-      @retry-list="refreshPage"
-      @apply-model="applyTrainingModel"
-      @apply-training-version="applyTrainingVersion"
+      @retry-list="refreshPickerCatalog"
+      @apply-model="applyPickerModel({ model: $event })"
+      @apply-training-version="applyPickerModel"
     />
 
     <ModelConversionSourcePickerDialog
@@ -485,6 +482,13 @@ const trainingParameterSchemas = ref<TrainingParameterSchemaItem[]>([])
 const loading = ref(true)
 const errorMessage = ref<string | null>(null)
 const selectedTaskType = ref<ModelTaskType>('detection')
+const pickerTaskType = ref<ModelTaskType | null>(null)
+const pickerCatalog = ref<{ models: PlatformBaseModelSummary[]; sources: DeploymentSourceModelSummary[] } | null>(null)
+const pickerLoading = ref(false)
+const pickerError = ref<string | null>(null)
+let pickerRequest = 0
+const pickerUsesPageCatalog = computed(() => pickerTaskType.value === null || pickerTaskType.value === selectedTaskType.value)
+const basePickerSources = computed(() => pickerUsesPageCatalog.value ? projectSourceModels.value : pickerCatalog.value?.sources ?? [])
 const conversionTarget = ref<ConversionTargetKey>('onnx')
 const conversionRuntimeProfileId = ref('')
 const conversionOpsetVersion = ref<number>()
@@ -535,7 +539,7 @@ const taskTypeOptions = computed(() => {
   return supportedOptions.length > 0 ? supportedOptions : defaultTaskTypeOptions
 })
 const basePickerTaskTypeOptions = computed(() => taskTypeOptions.value
-  .filter(option => basePickerFromCatalog.value || option.value === selectedTaskType.value)
+  .filter(option => !basePickerWeightsOnly.value || option.value === selectedTaskType.value)
   .map(({ value }) => ({ value, label: evaluationTypes[value][zh.value ? 0 : 1] })))
 
 const {
@@ -661,13 +665,28 @@ const {
   applyTrainingModelSelection,
   applyTrainingVersionSelection,
   clearTrainingWarmStart,
+  resetBaseModelBrowse,
   resetPlatformBaseModelSelection,
   ensureSelectedModelStillVisible,
+  basePickerModels,
 } = usePlatformBaseModelSelection({
   baseModels,
-  sourceModels: projectSourceModels,
+  pickerModels: computed(() => pickerUsesPageCatalog.value ? baseModels.value : pickerCatalog.value?.models ?? []),
+  restrictPickerToTrainingModel: basePickerWeightsOnly,
+  sourceModels: basePickerSources,
   detailFailedMessage: () => t('modelOps.messages.detailFailed'),
 })
+watch(baseModelPickerOpen, open => {
+  if (open) return
+  pickerRequest++
+  pickerTaskType.value = null
+  pickerCatalog.value = null
+  pickerLoading.value = false
+  pickerError.value = null
+  basePickerFromCatalog.value = false
+  basePickerWeightsOnly.value = false
+  resetBaseModelBrowse()
+}, { flush: 'sync' })
 
 const {
   conversionModels, conversionSourcePickerOpen, conversionBrowseModelId, conversionBrowseModel,
@@ -761,7 +780,12 @@ const {
   resolvedTrainingModelType,
   resolvedTrainingModelScale,
   trainingParameterSchema: currentTrainingParameterSchema,
+  isOutputModelNameTaken,
   translate: (key, params) => t(key, params ?? {}),
+})
+const outputModelNameTaken = computed(() => isOutputModelNameTaken(outputModelName.value))
+watch(trainingSelectedModelSummary, model => {
+  if (model) syncSuggestedOutputModelName(model, trainingDatasetTitle.value)
 })
 
 watch(trainingDeviceOptions, (options) => {
@@ -1111,10 +1135,16 @@ async function setTaskType(value: SelectValue): Promise<void> {
   }
   if (router && transferRoute?.path === '/models') {
     if (transferRoute.query.trainingFrom) resetTrainingCopy()
-    await router.replace({ query: { ...transferRoute.query, task: nextValue, page: undefined, datasetExport: undefined, trainingFrom: undefined } })
+    await updateTaskTypeRoute(nextValue)
     return
   }
   await applyTaskType(nextValue as ModelTaskType)
+}
+
+async function updateTaskTypeRoute(task: string): Promise<void> {
+  if (router && transferRoute?.path === '/models') {
+    await router.replace({ query: { ...transferRoute.query, task, page: undefined, datasetExport: undefined, trainingFrom: undefined } })
+  }
 }
 
 watch(() => transferRoute?.query.task, (value) => {
@@ -1123,7 +1153,7 @@ watch(() => transferRoute?.query.task, (value) => {
   if (taskType !== selectedTaskType.value) void applyTaskType(taskType)
 })
 
-async function applyTaskType(nextValue: ModelTaskType): Promise<void> {
+async function applyTaskType(nextValue: ModelTaskType, selection?: { model: PlatformBaseModelDetail; modelVersionId?: string }): Promise<void> {
   selectedTaskType.value = nextValue
   baseModels.value = []
   projectSourceModels.value = []
@@ -1131,11 +1161,13 @@ async function applyTaskType(nextValue: ModelTaskType): Promise<void> {
   trainingParameterSchemas.value = []
   trainingTasks.value = []
   conversionTasks.value = []
-  resetPlatformBaseModelSelection({ keepPickerOpen: baseModelPickerOpen.value })
+  resetPlatformBaseModelSelection()
   resetConversionSourceSelection(conversionSourcePickerOpen.value)
   lastTrainingSubmission.value = null
   resetTrainingDatasetExportSelection()
-  resetSuggestedOutputModelName()
+  trainingDatasetTitle.value = ''
+  if (selection) commitTrainingSelection(selection)
+  else resetSuggestedOutputModelName()
   await refreshPage()
 }
 
@@ -1205,9 +1237,8 @@ async function refreshPage(): Promise<boolean> {
     trainingParameterSchemas.value = parameterCatalog.items
     ensureSelectedModelStillVisible()
     ensureTrainingDatasetExportSelectionVisible()
-    if (baseModelPickerOpen.value && !selectedModelBrowseId.value && baseModels.value.length) {
-      const first = baseModels.value.find(model => model.available_versions.some(version => version.checkpoint_state === 'present')) || baseModels.value[0]
-      void selectBaseModel(first.model_id)
+    if (baseModelPickerOpen.value && pickerUsesPageCatalog.value && !selectedModelBrowseId.value) {
+      void openBaseModelPicker()
     }
     return true
   } catch (error) {
@@ -1223,10 +1254,6 @@ async function refreshPage(): Promise<boolean> {
 }
 
 const trainingDatasetTitle = ref('')
-const basePickerModels = computed(() => {
-  const model = trainingSelectedModelSummary.value
-  return basePickerWeightsOnly.value && model ? [model] : baseModels.value
-})
 const trainingWarmStartLabel = computed(() => {
   const model = trainingWarmStartModel.value
   const version = trainingWarmStartVersion.value
@@ -1255,53 +1282,85 @@ function syncTrainingDatasetName(name: string): void {
   if (trainingSelectedModelSummary.value) syncSuggestedOutputModelName(trainingSelectedModelSummary.value, name)
 }
 
-function selectTrainingArchitecture(modelId: string): void {
-  if (modelId === trainingSelectedModelSummary.value?.model_id) return
-  const model = baseModels.value.find(item => item.model_id === modelId)
-  if (!model) return
-  applyTrainingModelSelection(model)
+function isOutputModelNameTaken(name: string): boolean {
+  const normalized = name.trim().toLowerCase()
+  return !!normalized && projectSourceModels.value.some(model => model.scope_kind === 'project'
+    && [model.model_name, modelDisplayName(model)].some(value => value.trim().toLowerCase() === normalized))
+}
+
+function commitTrainingSelection({ model, modelVersionId }: { model: PlatformBaseModelDetail; modelVersionId?: string }): void {
+  if (modelVersionId) applyTrainingVersionSelection({ model, modelVersionId })
+  else applyTrainingModelSelection(model)
   syncSuggestedOutputModelName(model, trainingDatasetTitle.value)
 }
 
-function applyTrainingModel(model: PlatformBaseModelDetail): void {
-  applyTrainingModelSelection(model)
-  syncSuggestedOutputModelName(model, trainingDatasetTitle.value)
+function applyPickerModel(selection: { model: PlatformBaseModelDetail; modelVersionId?: string }): void {
+  const task = pickerTaskType.value ?? selectedTaskType.value
+  if (selection.model.task_type !== task) return
+  const fromCatalog = basePickerFromCatalog.value
   closeBaseModelPicker()
-  if (basePickerFromCatalog.value) startTraining()
-  basePickerFromCatalog.value = false
-}
-
-function applyTrainingVersion(payload: {
-  model: PlatformBaseModelDetail
-  modelVersionId: string
-}): void {
-  applyTrainingVersionSelection(payload)
-  syncSuggestedOutputModelName(payload.model, trainingDatasetTitle.value)
-  closeBaseModelPicker()
-  if (basePickerFromCatalog.value) startTraining()
-  basePickerFromCatalog.value = false
+  if (task === selectedTaskType.value) commitTrainingSelection(selection)
+  else {
+    if (transferRoute?.query.trainingFrom) resetTrainingCopy()
+    void applyTaskType(task, selection)
+    void updateTaskTypeRoute(task)
+  }
+  if (fromCatalog) startTraining()
 }
 
 function openCatalogBaseModels(): void {
-  basePickerWeightsOnly.value = false
   basePickerFromCatalog.value = true
-  void openBaseModelPicker()
+  openTrainingBaseModelPicker()
 }
 
 function openTrainingBaseModelPicker(): void {
   basePickerWeightsOnly.value = false
+  pickerTaskType.value = selectedTaskType.value
   void openBaseModelPicker()
 }
 
 function openTrainingWeightPicker(): void {
   basePickerWeightsOnly.value = true
+  pickerTaskType.value = selectedTaskType.value
   void openBaseModelPicker()
 }
 
-function closeCatalogBaseModelPicker(): void {
-  basePickerFromCatalog.value = false
-  closeBaseModelPicker()
+function selectPickerTaskType(value: string): void {
+  const task = taskTypeOptions.value.find(option => option.value === value)?.value
+  if (!task || task === pickerTaskType.value) return
+  pickerTaskType.value = task
+  resetBaseModelBrowse()
+  void refreshPickerCatalog()
 }
+
+async function refreshPickerCatalog(): Promise<void> {
+  const request = ++pickerRequest
+  const task = pickerTaskType.value
+  pickerCatalog.value = null
+  pickerError.value = null
+  if (!task || pickerUsesPageCatalog.value) {
+    pickerLoading.value = false
+    if (errorMessage.value || !baseModels.value.length) await refreshPage()
+    if (request === pickerRequest && !selectedModelBrowseId.value) void openBaseModelPicker()
+    return
+  }
+  pickerLoading.value = true
+  try {
+    const project = selectedProjectId.value
+    const [models, sources] = await Promise.all([
+      listPlatformBaseModels(task),
+      project ? listDeploymentSourceModels(project, task) : Promise.resolve([]),
+    ])
+    if (request !== pickerRequest) return
+    pickerCatalog.value = { models, sources }
+    void openBaseModelPicker()
+  } catch (error) {
+    if (request === pickerRequest) pickerError.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
+  } finally {
+    if (request === pickerRequest) pickerLoading.value = false
+  }
+}
+
 </script>
 
 <style scoped>

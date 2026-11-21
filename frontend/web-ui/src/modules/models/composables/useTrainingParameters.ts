@@ -7,7 +7,6 @@ import type {
   TrainingParameterSchemaItem,
 } from '../services/model.service'
 import {
-  getDefaultTrainingEvaluationInterval,
   getDefaultTrainingModelParameterValues,
   getModelLayerTrainingFields,
   isTrainingAugmentationField,
@@ -63,6 +62,7 @@ export function useTrainingParameters(options: {
   resolvedTrainingModelType: ComputedRef<string>
   resolvedTrainingModelScale: ComputedRef<string>
   trainingParameterSchema: ComputedRef<TrainingParameterSchemaItem | null>
+  isOutputModelNameTaken?: (name: string) => boolean
   translate: (key: string, params?: Record<string, string>) => string
 }) {
   const outputModelName = ref('')
@@ -198,7 +198,12 @@ export function useTrainingParameters(options: {
     if (currentValue && currentValue !== lastSuggestedOutputModelName.value) {
       return
     }
-    const nextValue = buildSuggestedOutputModelName(model, datasetName)
+    const title = buildSuggestedOutputModelName(model, datasetName)
+    let nextValue = title
+    for (let index = 2; options.isOutputModelNameTaken?.(nextValue); index += 1) {
+      const suffix = ` · ${index}`
+      nextValue = title.slice(0, 128 - suffix.length) + suffix
+    }
     outputModelName.value = nextValue
     lastSuggestedOutputModelName.value = nextValue
   }
@@ -280,7 +285,6 @@ export function useTrainingParameters(options: {
         if (!sameModel || !(key in trainingModelParameterValues)) trainingModelParameterValues[key] = value
       }
       if (!sameModel) {
-        evaluationInterval.value = getDefaultTrainingEvaluationInterval(taskType, modelType)
         trainingAugmentationEnabled.value = true
       }
     },

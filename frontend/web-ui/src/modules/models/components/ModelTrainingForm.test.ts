@@ -19,8 +19,7 @@ function mountWizard() {
   return shallowMount(ModelTrainingForm, {
     global: { stubs: { TrainingPreflightResults: false } },
     props: {
-      selectedTaskType: 'detection', taskTypeOptions: [{ label: 'detection', value: 'detection' }],
-      loading: false, baseModelsCount: 1, trainingDatasetExportsCount: 1,
+      selectedTaskType: 'detection', loading: false, trainingDatasetExportsCount: 1,
       trainingSelectedModelSummary: null, selectedTrainingDatasetExport: null,
       trainingDeviceOptions: [], outputModelName: '', maxEpochs: 100, batchMode: 'auto',
       batchSize: 4, batchTargetMemoryFraction: 0.6, batchRecoverOnOom: true,
@@ -37,6 +36,30 @@ function mountWizard() {
 }
 
 describe('training wizard', () => {
+  it('chooses initialization through the picker and treats an existing output as a separate selection', async () => {
+    const wrapper = mountWizard()
+    const base = { model_id: 'base', model_name: 'YOLO11', model_type: 'yolo11', model_scale: 's' }
+    const target = { ...base, model_id: 'project', model_name: 'existing', scope_kind: 'project' }
+    await wrapper.setProps({ baseCatalog: [base as never], projectModels: [target as never], outputModelName: 'existing', outputModelNameTaken: true })
+    expect(wrapper.findAll('select-field-stub')).toHaveLength(1)
+    expect(wrapper.text()).toContain('已有同名模型')
+    await wrapper.get('.training-selection-strip button-stub').trigger('click')
+    expect(wrapper.emitted('open-base-model-picker')).toHaveLength(1)
+    wrapper.getComponent({ name: 'SelectField' }).vm.$emit('update:modelValue', target.model_id)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('update:outputModelName')).toEqual([['existing']])
+    expect(wrapper.text()).toContain('在所选模型下登记新版本')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.text()).toContain('请填写输出模型名称并选择模型')
+    await wrapper.setProps({ trainingSelectedModelSummary: { ...base, model_scale: 'm' } as never })
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.text()).toContain('选择与输出模型匹配的系列和规格')
+    expect(wrapper.text()).not.toContain('modelOps.trainingDatasetExportEmptyTitle')
+    await wrapper.setProps({ trainingSelectedModelSummary: base as never })
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.text()).toContain('modelOps.trainingDatasetExportEmptyTitle')
+  })
+
   it('uses the selected dataset name and ignores an outdated workspace response', async () => {
     let finishOld!: (value: Awaited<ReturnType<typeof getDatasetWorkspace>>) => void
     vi.mocked(getDatasetWorkspace).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))

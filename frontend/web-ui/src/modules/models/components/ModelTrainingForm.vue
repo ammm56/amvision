@@ -22,33 +22,32 @@
               <small aria-hidden="true">{{ trainingDisplayName.length }}/50</small>
             </span>
           </label>
-          <label class="training-field-row"><span>{{ zh ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions" :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="$emit('change-task-type', normalizeSelectValue($event))" /></label>
         </section>
         <section class="training-stage-section">
           <h3>{{ zh ? '模型选择' : 'Model selection' }}</h3>
-          <div v-if="projectOutputModels.length" class="training-field-row">
+          <div v-if="projectOutputModels.length || selectedOutputModelId" class="training-field-row">
             <span>{{ zh ? '输出模型' : 'Output model' }}</span>
             <div class="training-output-choice">
-              <SelectField :model-value="selectedOutputModel?.model_id ?? ''" :options="outputModelOptions" :aria-label="zh ? '选择输出模型' : 'Select output model'" @update:model-value="selectOutputModel" />
-              <Button v-if="selectedOutputModel" size="sm" variant="ghost" @click="$emit('update:outputModelName', '')"><Plus :size="16" aria-hidden="true" />{{ zh ? '新建模型' : 'New model' }}</Button>
+              <SelectField :model-value="selectedOutputModelId" :options="outputModelOptions" :aria-label="zh ? '选择输出模型' : 'Select output model'" @update:model-value="selectOutputModel" />
+              <Button v-if="selectedOutputModelId" size="sm" variant="ghost" @click="selectOutputModel('')"><Plus :size="16" aria-hidden="true" />{{ zh ? '新建模型' : 'New model' }}</Button>
             </div>
           </div>
           <label v-if="!selectedOutputModel" class="training-field-row"><span>{{ t('modelOps.fields.outputModelName') }}</span><input :value="outputModelName" maxlength="128" @input="emitString('update:outputModelName', $event)" /></label>
-          <div v-if="baseCatalog?.length" class="training-architecture">
-            <label class="training-field-row"><span>{{ zh ? '模型系列' : 'Model family' }}</span><SelectField :model-value="trainingSelectedModelSummary?.model_type ?? ''" :options="modelFamilyOptions" :aria-label="zh ? '模型系列' : 'Model family'" @update:model-value="selectFamily" /></label>
-            <label class="training-field-row"><span>{{ zh ? '模型规格' : 'Model size' }}</span><SelectField :model-value="trainingSelectedModelSummary?.model_id ?? ''" :options="modelScaleOptions" :disabled="!modelScaleOptions.length" :aria-label="zh ? '模型规格' : 'Model size'" @update:model-value="$emit('select-architecture', String($event))" /></label>
-          </div>
-          <p v-if="outputArchitectureConflict" class="training-wizard__error" role="status">{{ outputArchitectureError }}</p>
+          <p v-if="outputSelectionError" class="training-wizard__error" role="status">{{ outputSelectionError }}</p>
         </section>
         <section class="training-stage-section">
           <h3>{{ zh ? '基础资源' : 'Base resources' }}</h3>
           <div class="training-selection-strip" :class="{ 'is-selected': trainingSelectedModelSummary }">
             <Box :size="20" aria-hidden="true" />
             <strong>{{ baseModelLabel }}</strong>
-            <span v-if="trainingSelectedModelSummary" class="training-selection-strip__state"><Check v-if="baseCheckpointPresent" :size="16" aria-hidden="true" />{{ baseCheckpointPresent ? (zh ? '本地权重文件存在' : 'Local weights present') : (zh ? '模型结构已登记' : 'Architecture registered') }}</span>
-            <Button size="sm" variant="ghost" :disabled="loading || baseModelsCount === 0" @click="$emit('open-base-model-picker')">{{ t('modelOps.actions.chooseBaseModel') }}</Button>
+            <span v-if="trainingSelectedModelSummary" class="training-selection-strip__state">
+              {{ evaluationTypes[selectedTaskType][zh ? 0 : 1] }} · {{ warmStartModelVersionId ? warmStartLabel || warmStartSource : (zh ? '从头训练' : 'From scratch') }}
+            </span>
+            <Button size="sm" variant="ghost" @click="$emit('open-base-model-picker')">{{ t('modelOps.actions.chooseBaseModel') }}</Button>
           </div>
-          <p class="training-wizard__hint">{{ zh ? '完成训练后登记新版本，已有版本保持不变。' : 'Training registers a new version and preserves existing versions.' }}</p>
+          <p class="training-wizard__hint">{{ selectedOutputModel
+            ? (zh ? '训练完成后，在所选模型下登记新版本。' : 'Training registers a new version of the selected model.')
+            : (zh ? '训练完成后，登记新模型的首个版本。' : 'Training registers the first version of the new model.') }}</p>
         </section>
       </div>
 
@@ -112,7 +111,12 @@
             <template v-else>
               <dl class="training-weight-summary">
                 <div><dt>{{ zh ? '权重来源' : 'Weight source' }}</dt><dd>{{ warmStartSource || '—' }}</dd></div>
-                <div><dt>{{ zh ? '目标类别' : 'Target classes' }}</dt><dd>{{ selectedTrainingDatasetExport?.category_names.join(' / ') || '—' }}</dd></div>
+                <div>
+                  <dt>{{ zh ? '目标类别' : 'Target classes' }}</dt>
+                  <dd>
+                    <TrainingCategoryList :categories="selectedTrainingDatasetExport?.category_names" :label="zh ? '目标类别' : 'Target classes'" />
+                  </dd>
+                </div>
                 <div><dt>{{ zh ? '模型版本' : 'Model version' }}</dt><dd>{{ warmStartLabel || '—' }}</dd></div>
                 <div><dt>{{ zh ? '本地权重' : 'Local weights' }}</dt><dd>{{ warmStartFileName || '—' }} <small v-if="warmStartFileStatus">{{ warmStartFileStatus }}</small></dd></div>
               </dl>
@@ -128,11 +132,28 @@
         </div>
       </section>
 
-      <section v-if="step === 4" class="training-parameter-summary field--wide" :aria-label="locale.startsWith('zh') ? '训练配置摘要' : 'Training configuration summary'">
-        <strong><Box :size="18" aria-hidden="true" />{{ baseModelLabel }}</strong>
-        <span>{{ selectedTaskType }}</span>
-        <span>{{ datasetVersionLabel }}</span>
-        <span>{{ warmStartModelVersionId ? (locale.startsWith('zh') ? '使用权重初始化' : 'Initialize from weights') : (locale.startsWith('zh') ? '从头训练' : 'From scratch') }}</span>
+      <section v-if="step === 4" class="training-parameter-summary field--wide" :aria-label="zh ? '训练配置摘要' : 'Training configuration summary'">
+        <dl>
+          <div>
+            <dt class="visually-hidden">{{ zh ? '基础模型' : 'Base model' }}</dt>
+            <dd><Box :size="20" aria-hidden="true" /><strong>{{ baseModelLabel }}</strong></dd>
+          </div>
+          <div>
+            <dt class="visually-hidden">{{ zh ? '任务类型' : 'Task type' }}</dt>
+            <dd><Target :size="20" aria-hidden="true" /><span>{{ evaluationTypes[selectedTaskType][zh ? 0 : 1] }}</span></dd>
+          </div>
+          <div>
+            <dt class="visually-hidden">{{ zh ? '数据集版本' : 'Dataset version' }}</dt>
+            <dd><FileText :size="20" aria-hidden="true" /><span>{{ datasetVersionLabel }}</span></dd>
+          </div>
+          <div>
+            <dt class="visually-hidden">{{ zh ? '初始化方式' : 'Initialization' }}</dt>
+            <dd>
+              <Database :size="20" aria-hidden="true" />
+              <span>{{ warmStartModelVersionId ? (zh ? '使用权重初始化' : 'Initialize from weights') : (zh ? '从头训练' : 'From scratch') }}</span>
+            </dd>
+          </div>
+        </dl>
       </section>
       <TrainingTaskRules v-if="step === 4 && selectedTaskType !== 'detection'" :task-type="selectedTaskType" :dataset-export="selectedTrainingDatasetExport" :workspace="selectedDatasetWorkspace">
         <template v-if="taskRuleField">
@@ -316,10 +337,7 @@
             <span>{{ trainingAugmentationEnabled ? t('modelOps.trainingParameters.augmentationEnabled') : t('modelOps.trainingParameters.augmentationDisabled') }}</span>
           </label>
         </div>
-        <div
-          class="form-grid training-parameter-grid"
-          :class="{ 'training-parameter-grid--disabled': !trainingAugmentationEnabled }"
-        >
+        <div class="form-grid training-parameter-grid">
           <label
             v-for="field in advancedAugmentationFields"
             :key="field.key"
@@ -397,7 +415,8 @@
 </template>
 
 <script setup lang="ts">
-import { Box, Check, ChevronLeft, Database, History, Pencil, Play, Plus, Settings } from '@lucide/vue'
+import { Box, Check, ChevronLeft, Database, FileText, History, Pencil, Play, Plus, Settings, Target } from '@lucide/vue'
+import { evaluationTypes } from '../model-evaluation-types'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
@@ -426,6 +445,7 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotice.vue'
+import TrainingCategoryList from './TrainingCategoryList.vue'
 import TrainingTaskRules from './TrainingTaskRules.vue'
 import TrainingPreflightResults from './TrainingPreflightResults.vue'
 import { modelDisplayName } from '../model-display-name'
@@ -449,9 +469,7 @@ type UpdateBooleanEvent =
 
 const props = defineProps<{
   selectedTaskType: ModelTaskType
-  taskTypeOptions: Array<{ label: string; value: string }>
   loading: boolean
-  baseModelsCount: number
   baseCatalog?: PlatformBaseModelSummary[]
   projectModels?: PlatformBaseModelSummary[]
   trainingDatasetExportsCount: number
@@ -459,6 +477,7 @@ const props = defineProps<{
   selectedTrainingDatasetExport: DatasetExportSummary | null
   trainingDeviceOptions: TrainingParameterFieldOption[]
   outputModelName: string
+  outputModelNameTaken?: boolean
   maxEpochs: number
   batchMode: 'auto' | 'fixed'
   batchSize: number
@@ -501,9 +520,7 @@ const emit = defineEmits<{
   'view-training-tasks': []
   submit: []
   cancel: []
-  'change-task-type': [value: string]
   'open-base-model-picker': []
-  'select-architecture': [modelId: string]
   'open-training-weight-picker': []
   'open-training-dataset-export-picker': []
   'clear-training-warm-start': []
@@ -603,51 +620,41 @@ const baseModelLabel = computed(() => {
   if (model?.model_type && model.model_scale) return `${model.model_type.toUpperCase()}-${model.model_scale}`
   return model ? modelDisplayName(model) : t('modelOps.baseModelEmptyTitle')
 })
-const baseCheckpointPresent = computed(() => props.trainingSelectedModelSummary?.available_versions?.some(version => version.checkpoint_state === 'present'))
-const modelFamilyOptions = computed(() => [...new Set((props.baseCatalog ?? []).map(model => model.model_type))]
-  .map(type => ({ value: type, label: type.toUpperCase() })))
-const modelScaleOptions = computed(() => (props.baseCatalog ?? [])
-  .filter(model => model.model_type === props.trainingSelectedModelSummary?.model_type)
-  .map(model => ({ value: model.model_id, label: model.model_scale })))
+const selectedOutputModelId = ref('')
 const projectOutputModels = computed(() => (props.projectModels ?? []).filter(model => model.scope_kind === 'project'
   && (props.baseCatalog ?? []).some(base => base.model_type === model.model_type && base.model_scale === model.model_scale)))
-const selectedOutputModel = computed(() => {
-  const base = props.trainingSelectedModelSummary
-  const models = projectOutputModels.value.filter(model => model.model_name === props.outputModelName || modelDisplayName(model) === props.outputModelName)
-  return (base && models.find(model => model.model_type === base.model_type && model.model_scale === base.model_scale)) || models[0]
-})
-const outputArchitectureConflict = computed(() => {
+const selectedOutputModel = computed(() => projectOutputModels.value.find(model => model.model_id === selectedOutputModelId.value))
+const outputSelectionError = computed(() => {
   const model = selectedOutputModel.value
   const base = props.trainingSelectedModelSummary
-  return !!model && !!base && (model.model_type !== base.model_type || model.model_scale !== base.model_scale)
+  if (model && base && (model.model_type !== base.model_type || model.model_scale !== base.model_scale)) {
+    return zh.value ? '请在基础模型对话框中选择与输出模型匹配的系列和规格。'
+      : 'Choose a matching family and size in the base model dialog.'
+  }
+  if (selectedOutputModelId.value && !model && !props.loading) {
+    return zh.value ? '所选输出模型已不可用，请重新选择。' : 'The selected output model is unavailable. Choose a model again.'
+  }
+  if (!selectedOutputModelId.value && props.outputModelNameTaken) {
+    return zh.value ? '已有同名模型。请换个名称，或选择已有模型以登记新版本。'
+      : 'A model with this name already exists. Enter another name or select the existing model to register a new version.'
+  }
+  return ''
 })
-const outputArchitectureError = computed(() => zh.value
-  ? '当前系列或规格与已有输出模型不一致。请选择匹配的规格，或新建输出模型。'
-  : 'The selected architecture differs from the output model. Choose a matching architecture or a new output model.')
 const outputModelLabel = computed(() => selectedOutputModel.value ? modelDisplayName(selectedOutputModel.value) : props.outputModelName)
 const outputModelOptions = computed(() => [
   { value: '', label: zh.value ? '新建模型' : 'New model' },
   ...projectOutputModels.value.map(model => ({ value: model.model_id, label: modelDisplayName(model) })),
 ])
 
-function selectFamily(value: SelectValue): void {
-  const models = (props.baseCatalog ?? []).filter(model => model.model_type === value)
-  const preferred = models.find(model => model.model_scale === props.trainingSelectedModelSummary?.model_scale)
-    ?? models.find(model => model.available_versions.some(version => version.checkpoint_state === 'present'))
-    ?? models[0]
-  if (preferred) emit('select-architecture', preferred.model_id)
-}
-
 function selectOutputModel(value: SelectValue): void {
-  const model = projectOutputModels.value.find(item => item.model_id === value)
-  if (!model) {
-    emit('update:outputModelName', '')
-    return
-  }
-  const architecture = props.baseCatalog?.find(base => base.model_type === model.model_type && base.model_scale === model.model_scale)
-  if (architecture && architecture.model_id !== props.trainingSelectedModelSummary?.model_id) emit('select-architecture', architecture.model_id)
-  emit('update:outputModelName', model.model_name)
+  selectedOutputModelId.value = normalizeSelectValue(value)
+  emit('update:outputModelName', selectedOutputModel.value?.model_name ?? '')
 }
+watch(() => props.selectedTaskType, () => {
+  if (selectedOutputModelId.value) selectOutputModel('')
+  step.value = 1
+  stepError.value = ''
+})
 watch(() => selectedDatasetWorkspace.value?.dataset?.display_name || props.selectedTrainingDatasetExport?.display_name || '', name => {
   emit('dataset-name-resolved', name)
 }, { immediate: true })
@@ -724,7 +731,11 @@ function submitStep(): void {
     stepError.value = locale.value.startsWith('zh') ? '请填写输出模型名称并选择模型。' : 'Enter an output model name and choose a model.'
     return
   }
-  if (step.value === 1 && outputArchitectureConflict.value) return
+  if (step.value === 1 && (props.loading || outputSelectionError.value)) return
+  if (step.value === 4 && outputSelectionError.value) {
+    stepError.value = outputSelectionError.value
+    return
+  }
   if (step.value === 2 && !props.selectedTrainingDatasetExport) {
     stepError.value = locale.value.startsWith('zh') ? '请选择用于训练的数据集导出。' : 'Choose a dataset export for training.'
     return
@@ -887,15 +898,13 @@ function normalizeModelParameterNumber(
 .training-counted-input { position:relative; min-width:0; }
 .training-counted-input input { padding-inline-end:66px; }
 .training-counted-input small { position:absolute; inset-inline-end:12px; inset-block-start:50%; transform:translateY(-50%); color:var(--am-text-muted); pointer-events:none; }
-.training-architecture { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px 18px; max-width:1000px; }
 .training-output-choice,.training-selection-strip { display:flex; align-items:center; flex-wrap:wrap; min-width:0; gap:8px 14px; }
 .training-output-choice :deep(.ui-select) { flex:1 1 180px; }
 .training-selection-strip { padding:10px 14px; border:1px solid var(--am-border); border-radius:6px; background:var(--am-surface); color:var(--am-text); }
 .training-selection-strip.is-selected { background:var(--am-surface-soft); }
 .training-selection-strip strong { overflow-wrap:anywhere; }
 .training-selection-strip > .ui-button { margin-inline-start:auto; }
-.training-selection-strip__state { display:inline-flex; align-items:center; gap:6px; color:var(--am-text-muted); }
-.training-selection-strip__state svg { color:var(--am-success-text); }
+.training-selection-strip__state { min-width:0; color:var(--am-text-muted); overflow-wrap:anywhere; }
 .training-export-record table { table-layout:fixed; }
 .training-export-record :is(th,td) { white-space:normal; overflow-wrap:anywhere; }
 .training-export-record__links a + a { margin-inline-start:10px; }
@@ -907,8 +916,7 @@ function normalizeModelParameterNumber(
 .training-splits__counts div { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding-right:12px; }
 .training-splits__counts div:not(:last-child) { border-right:1px solid var(--am-border); }
 @media (max-width:760px) {
-  .training-architecture,.training-splits__counts { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .training-architecture .training-field-row { grid-template-columns:minmax(0,1fr); }
+  .training-splits__counts { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .training-splits__counts div:not(:last-child) { border-right:0; }
 }
 .training-wizard { display:grid; gap:16px; min-width:0; }
@@ -930,10 +938,21 @@ function normalizeModelParameterNumber(
 .training-wizard__actions > div { display:flex; flex-wrap:wrap; gap:12px; margin-inline-start:auto; }
 .training-wizard__hint { color: var(--am-text-muted); margin: 0; }
 .training-wizard__error { color: var(--am-danger, #d62d2d); margin: 0; }
-.training-parameter-summary { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; min-width:0; padding:12px 16px; border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface-soft); overflow-wrap:anywhere; }
-.training-parameter-summary > *:not(:first-child) { padding-inline-start:16px; border-inline-start:1px solid var(--am-border); }
-.training-parameter-summary strong { display:inline-flex; align-items:center; gap:8px; }
-.training-rule-parameter.field { display:grid; grid-template-columns:minmax(104px, 36%) minmax(0, 1fr); align-items:center; gap:8px; min-width:0; width:calc((100% - 24px) / 2); }
+.training-parameter-summary { min-width:0; padding:16px 20px; border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface); }
+.training-parameter-summary dl { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.3fr) minmax(0,1fr); align-items:center; gap:12px 22px; max-width:1040px; margin:0; }
+.training-parameter-summary dl > div { min-width:0; }
+.training-parameter-summary dl > div:not(:first-child) { padding-inline-start:22px; border-inline-start:1px solid var(--am-border); }
+.training-parameter-summary dd { display:flex; align-items:center; gap:10px; margin:0; overflow-wrap:anywhere; }
+.training-parameter-summary dd svg { flex:none; color:var(--am-text-muted); }
+@media (max-width: 760px) {
+  .training-parameter-summary dl { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .training-parameter-summary dl > div:nth-child(odd) { padding-inline-start:0; border-inline-start:0; }
+}
+@media (max-width: 440px) {
+  .training-parameter-summary dl { grid-template-columns:minmax(0,1fr); }
+  .training-parameter-summary dl > div:nth-child(n) { padding-inline-start:0; border-inline-start:0; }
+}
+.training-rule-parameter.field { display:grid; grid-template-columns:minmax(min(124px, 42%), 39%) minmax(0, 1fr); align-items:center; gap:8px; min-width:0; width:calc((100% - 24px) / 2); }
 .training-rule-parameter input { min-width:0; width:100%; }
 @media (max-width: 760px) { .training-rule-parameter.field { width:100%; } }
 .training-rule-hint { margin:0; color:var(--am-text-muted); }
@@ -941,12 +960,14 @@ function normalizeModelParameterNumber(
 .training-parameter-group { padding:12px 16px; }
 .training-parameter-group + .training-parameter-group { border-top:1px solid var(--am-border); }
 .training-parameter-group h3 { margin:0 0 10px; font-size:15px; }
-.training-parameter-group .form-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px 24px; }
-.training-parameter-group .field { display:grid; grid-template-columns:minmax(124px, 39%) minmax(0, 1fr); align-items:center; gap:8px; min-width:0; }
-.training-parameter-group input:not([type='checkbox']) { width:100%; min-width:0; }
+.training-parameter-grid.form-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px 24px; }
+.training-parameter-grid > .field { grid-template-columns:minmax(min(124px, 42%), 39%) minmax(0, 1fr); align-items:center; gap:8px; min-width:0; }
+.training-parameter-grid > .field > span:first-child { min-width:0; overflow-wrap:anywhere; }
+.training-parameter-grid input:not([type='checkbox']),
+.training-parameter-grid :deep(.ui-select) { width:100%; min-width:0; }
 .training-parameter-group .training-runtime-switch input { justify-self:start; }
 .training-size > div, .training-percent { display:flex; align-items:center; gap:8px; min-width:0; }
-@media (max-width: 760px) { .training-parameter-group .form-grid { grid-template-columns:minmax(0, 1fr); } }
+@media (max-width: 760px) { .training-parameter-grid.form-grid { grid-template-columns:minmax(0, 1fr); } }
 .training-initialization { display:grid; gap:12px; min-width:0; }
 .training-choice { display:flex; gap:14px; align-items:flex-start; min-width:0; padding:16px; border:1px solid var(--am-border); border-radius:8px; background:var(--am-surface); }
 .training-choice.is-selected { border-color:var(--am-action-primary); }
@@ -972,7 +993,7 @@ function normalizeModelParameterNumber(
 .training-review__initial { grid-column:1 / -1; margin:0; }
 .training-review__initial { padding:9px 10px; border-radius:5px; background:var(--am-surface-soft); overflow-wrap:anywhere; }
 .training-advanced { border: 1px solid var(--am-border); border-radius: 8px; background: var(--am-surface); }
-.training-advanced summary { padding: 14px; cursor: pointer; font-weight: 600; }
+.training-advanced summary { padding: 14px 16px; cursor: pointer; font-weight: 600; }
 .training-advanced .training-parameter-section { border: 0; border-top: 1px solid var(--am-border); border-radius: 0; }
 .model-ops-form,
 .model-ops-form__grid {
@@ -981,8 +1002,8 @@ function normalizeModelParameterNumber(
 
 .training-parameter-section {
   display: grid;
-  gap: 14px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px 16px;
   border: 1px solid var(--am-border);
   border-radius: 12px;
   background: var(--am-surface);
@@ -998,7 +1019,7 @@ function normalizeModelParameterNumber(
 
 .training-parameter-section__header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .training-parameter-section__description {
@@ -1012,12 +1033,8 @@ function normalizeModelParameterNumber(
   align-content: start;
 }
 
-.training-parameter-grid--disabled {
-  opacity: 0.72;
-}
-
-.field--disabled {
-  opacity: 0.58;
+.training-advanced .field--disabled > span {
+  color: var(--am-text-disabled);
 }
 
 .training-augmentation-switch {
