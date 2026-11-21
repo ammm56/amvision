@@ -8,6 +8,7 @@ vi.mock('vue-i18n', async (importOriginal) => ({
 
 import TrainingTaskList from './TrainingTaskList.vue'
 import ConversionTaskList from './ConversionTaskList.vue'
+import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 
 describe.each([
   ['training', TrainingTaskList, 'trainingTasks', { task_id: 'task-1', progress: {}, state: 'succeeded' }],
@@ -15,7 +16,10 @@ describe.each([
 ] as const)('%s task list', (_name, component, key, task) => {
   it('distinguishes loading, failed loading and a genuinely empty list', async () => {
     const wrapper = shallowMount(component, { props: { selectedTaskType: 'detection', [key]: [], loading: true } as never })
-    expect(wrapper.text()).toContain('modelOps.messages.loadingTasks')
+    expect(wrapper.getComponent(LoadingPanel).props()).toMatchObject({
+      title: 'modelOps.messages.loadingTasks',
+      compact: true,
+    })
     expect(wrapper.findComponent({ name: 'EmptyState' }).exists()).toBe(false)
     await wrapper.setProps({ loading: false, loadError: true })
     expect(wrapper.text()).toContain('modelOps.messages.tasksUnavailable')
@@ -24,7 +28,7 @@ describe.each([
     expect(wrapper.findComponent({ name: 'EmptyState' }).exists()).toBe(true)
     await wrapper.setProps({ [key]: [task], loading: true })
     expect(wrapper.find('table').exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('modelOps.messages.loadingTasks')
+    expect(wrapper.findComponent(LoadingPanel).exists()).toBe(false)
     if (key === 'trainingTasks') {
       await wrapper.setProps({ loading: false, loadError: true })
       expect(wrapper.text()).toContain('刷新失败，当前显示上次加载的任务')

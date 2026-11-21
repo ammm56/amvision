@@ -3,7 +3,7 @@
     <div class="loading-panel__spinner" aria-hidden="true" />
     <div>
       <h2>{{ title }}</h2>
-      <p>{{ description }}</p>
+      <p v-if="description">{{ description }}</p>
     </div>
   </section>
 </template>
@@ -11,7 +11,7 @@
 <script setup lang="ts">
 defineProps<{
   title: string
-  description: string
+  description?: string
   compact?: boolean
 }>()
 </script>
@@ -78,6 +78,10 @@ defineProps<{
   font-size: 12px;
 }
 
+.loading-panel h2:only-child {
+  margin-bottom: 0;
+}
+
 .loading-panel--compact .loading-panel__spinner {
   width: 40px;
   height: 40px;
@@ -103,7 +107,7 @@ defineProps<{
 }
 
 @media (max-width: 640px) {
-  .loading-panel {
+  .loading-panel:not(.loading-panel--compact) {
     align-items: flex-start;
     padding: 22px;
   }

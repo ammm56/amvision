@@ -8,7 +8,7 @@
     </ModelListToolbar>
     <p v-if="trainingTasks.length >= 100" class="training-list__hint">{{ zh ? '当前最多加载 100 条任务，筛选在已加载的任务内进行。' : 'At most 100 tasks are loaded; filters apply to those tasks.' }}</p>
     <p v-if="trainingTasks.length && loadError" class="training-list__hint" role="status">{{ zh ? '刷新失败，当前显示上次加载的任务。' : 'Refresh failed; showing the last loaded tasks.' }} <template v-if="updatedAt">{{ zh ? '最后更新：' : 'Last updated: ' }}{{ formatSystemDateTime(updatedAt, 'minutes') }}</template></p>
-    <p v-if="!trainingTasks.length && loading" role="status">{{ t('modelOps.messages.loadingTasks') }}</p>
+    <LoadingPanel v-if="!trainingTasks.length && loading" compact :title="t('modelOps.messages.loadingTasks')" />
     <p v-else-if="!trainingTasks.length && loadError" role="status">{{ t('modelOps.messages.tasksUnavailable') }}</p>
     <EmptyState
       v-else-if="trainingTasks.length === 0"
@@ -75,6 +75,7 @@ import { Activity, Copy, RefreshCw } from '@lucide/vue'
 import type { ModelTaskType, ModelTrainingTaskSummary } from '../services/model.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { normalizeTaskState } from '@/modules/tasks/task-state'

@@ -1,6 +1,6 @@
 <template>
   <DropdownMenuRoot>
-    <DropdownMenuTrigger as-child><Button ref="trigger" size="sm" icon-only :aria-label="label" :title="label" @click.stop><Ellipsis :size="18" /></Button></DropdownMenuTrigger>
+    <DropdownMenuTrigger as-child><Button ref="trigger" :size="size ?? 'sm'" icon-only :aria-label="label" :title="label" @click.stop><Ellipsis :size="18" /></Button></DropdownMenuTrigger>
     <DropdownMenuPortal><DropdownMenuContent class="resource-menu" align="end" :side-offset="4" @close-auto-focus="afterClose">
       <DropdownMenuItem v-for="item in items" :key="item.id" class="resource-menu__item" :class="{'resource-menu__item--danger':item.danger}" :disabled="item.disabled" @select="pending = item.id"><component :is="item.icon" v-if="item.icon" :size="16" />{{ item.label }}</DropdownMenuItem>
     </DropdownMenuContent></DropdownMenuPortal>
@@ -11,7 +11,7 @@ import { ref, type Component } from 'vue'
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui'
 import { Ellipsis } from '@lucide/vue'
 import Button from './Button.vue'
-defineProps<{label:string;items:{id:string;label:string;icon?:Component;danger?:boolean;disabled?:boolean}[]}>()
+defineProps<{label:string;size?:'sm'|'md';items:{id:string;label:string;icon?:Component;danger?:boolean;disabled?:boolean}[]}>()
 const emit=defineEmits<{action:[id:string]}>(), trigger=ref<InstanceType<typeof Button>|null>(null)
 let pending:string|undefined
 function afterClose(event:Event) { if(!pending)return; event.preventDefault(); trigger.value?.$el.focus({preventScroll:true}); const id=pending; pending=undefined; emit('action',id) }

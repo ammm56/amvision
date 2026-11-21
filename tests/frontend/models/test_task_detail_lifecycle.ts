@@ -100,6 +100,42 @@ it('shows conversion stages only as completed when the task report confirms them
   expect(wrapper.find('.conversion-validation').text()).toContain('—')
 })
 
+it('shows the loading panel before opening conversion details in separate drawers', async () => {
+  const pending = deferred<service.ModelConversionTaskDetail>()
+  vi.mocked(service.getModelConversionTaskDetail).mockReturnValueOnce(pending.promise)
+  const { wrapper, router } = await openPage('conversion')
+  expect(wrapper.get('.loading-panel').text()).toContain('正在加载转换详情')
+  expect(wrapper.find('.conversion-output').exists()).toBe(false)
+
+  pending.resolve({
+    ...conversionTask('a'),
+    runtime_profile_id: 'openvino-cpu',
+    report_summary: { validation_summary: { allclose: true, target_runtime: 'OpenVINO' } },
+    events: [{ task_id: 'a', event_id: 'log-1', event_type: 'status', message: 'conversion succeeded', created_at: '2026-10-21T00:00:00Z', payload: {} }],
+  })
+  await flushPromises()
+  expect(wrapper.find('.loading-panel').exists()).toBe(false)
+  const output = wrapper.get('.conversion-output')
+  expect(output.get('h2').text()).toBe('输出文件')
+  expect(output.text()).not.toContain('conversion succeeded')
+
+  await button(wrapper, '运行日志').trigger('click')
+  expect(wrapper.get('[role="dialog"]').text()).toContain('conversion succeeded')
+  await wrapper.get('[role="dialog"] .side-drawer__close').trigger('click')
+  await button(wrapper, '参数配置').trigger('click')
+  expect(wrapper.get('[role="dialog"]').text()).toContain('转换设置')
+  expect(wrapper.get('[role="dialog"]').text()).toContain('openvino-cpu')
+  await wrapper.get('[role="dialog"] .side-drawer__close').trigger('click')
+  await button(wrapper, '环境信息').trigger('click')
+  expect(wrapper.get('[role="dialog"]').text()).toContain('运行时校验通过')
+  expect(wrapper.findAll('[role="dialog"]')).toHaveLength(1)
+  expect(wrapper.find('.conversion-output').exists()).toBe(true)
+
+  await router.push(url('conversion', 'b'))
+  await flushPromises()
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+})
+
 it('shows the cancelled stage, unstarted publication, elapsed duration, and log from the task record', async () => {
   const base = conversionTask('a')
   vi.mocked(service.getModelConversionTaskDetail).mockResolvedValue({
@@ -128,6 +164,7 @@ it('cancels a conversion report download when switching tasks', async () => {
   vi.mocked(service.downloadModelConversionReport).mockReturnValue(pending.promise)
   const { wrapper, router } = await openPage('conversion')
   await flushPromises()
+  expect(wrapper.get('.conversion-output table').text()).toContain('conversion-report.json')
   await button(wrapper, '下载报告').trigger('click')
   const signal = vi.mocked(service.downloadModelConversionReport).mock.calls[0]?.[2]
   await router.push(url('conversion', 'b'))

@@ -394,7 +394,6 @@ describe('TrainingTaskDetailPage', () => {
     const bestFile = wrapper.findAll('.training-output-layout tbody tr').find(row => row.text().includes('best-checkpoint.pt'))
     expect(bestFile?.findAll('td')[4].text()).toBe('1')
     expect(wrapper.getComponent(TrainingMetricsCharts).props('bestEpoch')).toBe(1)
-    expect(wrapper.text()).toContain('最后一次达到最佳指标是第 2 轮。此任务的最佳权重文件保存于第 1 轮。')
     await trainFile.get('button').trigger('click')
     await flushPromises()
     const preview = document.querySelector('[role="dialog"]')

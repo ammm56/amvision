@@ -1,12 +1,12 @@
 <template>
   <section class="page-stack training-detail model-workspace">
-    <PageHeader :title="task?.display_name || taskId">
+    <PageHeader :title="detailTitle">
       <template #heading>
         <ButtonLink class="training-detail-back" variant="ghost" :to="modelTaskListLocation('training', taskType || undefined, route.query)">
           <ArrowLeft :size="16" />{{ t('trainingDetail.actions.backToModels') }}
         </ButtonLink>
         <div class="training-detail-title">
-          <h1>{{ task?.display_name || taskId }}</h1>
+          <h1>{{ detailTitle }}</h1>
           <StatusBadge v-if="cancellingTraining" tone="warning" role="status">{{ zh ? '正在取消' : 'Cancelling' }}</StatusBadge>
           <StatusBadge v-else-if="task?.state === 'running' || task?.state === 'succeeded'" tone="success" with-dot>
             {{ t(task.state === 'running' ? 'tasks.status.running' : 'tasks.status.succeeded') }}
@@ -32,7 +32,7 @@
           <Trash2 :size="16" />
           {{ t('trainingDetail.actions.delete') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
+        <Button v-if="task || !loading" variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -57,6 +57,7 @@
 
     <InlineError :message="errorMessage" />
     <InlineError :message="linkedModelError" />
+    <LoadingPanel v-if="!task && loading" compact :title="t('tasks.loadingDetailTitle')" />
     <InlineMessage v-if="outputVersionDeleted" tone="info" :message="zh
       ? '输出模型版本已删除。训练记录和任务目录中的文件继续保留。'
       : 'The output model version was deleted. Training history and task-owned files are retained.'" />
@@ -203,14 +204,13 @@
             </tbody>
           </table>
         </div>
-        <p v-if="historicalCheckpointNote" class="training-metric-hint">{{ historicalCheckpointNote }}</p>
       </div>
     </section>
 
     <details v-if="task && !cancelledTraining" class="resource-section training-more" @toggle="detailedChartsOpen = ($event.target as HTMLDetailsElement).open">
       <summary>
+        <span>{{ zh ? '任务状态与详细指标' : 'Status and detailed metrics' }}</span>
         <ChevronRight :size="16" aria-hidden="true" />
-        {{ zh ? '任务状态与详细指标' : 'Status and detailed metrics' }}
       </summary>
       <div class="training-more__body">
         <section class="training-detail-group" aria-labelledby="training-diagnostics-title">
@@ -491,6 +491,7 @@ import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import { ApiError } from '@/shared/api/error'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
@@ -588,6 +589,7 @@ const taskType = computed<ModelTaskType | null>(() => {
 const taskScope = useModelTaskScope(() => taskType.value, () => taskId.value)
 let deleteTarget: ModelTaskTarget | null = null
 const zh = computed(() => locale.value.startsWith('zh'))
+const detailTitle = computed(() => task.value?.display_name || task.value?.task_id || (zh.value ? '训练详情' : 'Training details'))
 const sessionStore = useSessionStore()
 const trainingCopyLocation = computed(() => {
   const source = task.value
@@ -879,14 +881,6 @@ const bestCheckpointEpoch = computed(() => {
   return bestMetricEpochs.value.length === 1 || savesFirstBest ? bestMetricEpochs.value[0] : undefined
 })
 const bestMetricEpoch = computed(() => bestCheckpointEpoch.value ?? bestMetricEpochs.value.at(-1))
-const historicalCheckpointNote = computed(() => {
-  const saved = bestCheckpointEpoch.value
-  const best = bestMetricEpochs.value.at(-1)
-  if (saved == null || best == null || saved === best || task.value?.state !== 'succeeded') return ''
-  return zh.value
-    ? `最后一次达到最佳指标是第 ${best} 轮。此任务的最佳权重文件保存于第 ${saved} 轮。`
-    : `Epoch ${best} was the last to reach the best score. This task saved its best weights at epoch ${saved}.`
-})
 const latestCheckpointEpoch = computed(() => readNumber(task.value?.training_summary.latest_checkpoint_epoch)
   ?? readNumber(task.value?.result.latest_checkpoint_epoch) ?? readNumber(task.value?.control_status.last_save_epoch)
   ?? (task.value?.state === 'succeeded' ? completedTrainingEpoch.value : null))
@@ -1753,12 +1747,13 @@ function formatPlainValue(value: unknown): string {
 .training-failed-note { display:flex; gap:10px; padding:13px 16px; border:1px solid var(--am-danger-border); background:var(--am-danger-surface); border-radius:var(--am-radius-md); color:var(--am-danger-text); overflow-wrap:anywhere; }
 .training-failed-note svg { flex:none; }
 .training-failed-note p { margin:6px 0 0; color:var(--am-text); }
-.training-more { padding:0; }
+.training-more { display:block; padding:0; }
 .training-more > summary {
   display:flex;
   align-items:center;
+  justify-content:space-between;
   gap:8px;
-  padding:14px 18px;
+  padding:14px var(--am-space-2xl);
   cursor:pointer;
   font-weight:600;
   list-style:none;
@@ -1767,7 +1762,7 @@ function formatPlainValue(value: unknown): string {
 .training-more > summary svg { flex:none; color:var(--am-text-muted); }
 .training-more[open] > summary { border-block-end:1px solid var(--am-border); }
 .training-more[open] > summary svg { rotate:90deg; }
-.training-more__body { display:grid; min-width:0; padding:0 18px; }
+.training-more__body { display:grid; min-width:0; padding:0 var(--am-space-2xl); }
 .training-detail-group { display:grid; gap:12px; min-width:0; padding-block:16px; }
 .training-detail-group + .training-detail-group { border-block-start:1px solid var(--am-border); }
 .training-detail-group h2 { margin:0; font-size:14px; }

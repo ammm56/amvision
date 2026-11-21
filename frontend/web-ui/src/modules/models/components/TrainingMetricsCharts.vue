@@ -58,6 +58,7 @@ import {
   MarkLineComponent,
   MarkPointComponent,
   TooltipComponent,
+  type TooltipComponentOption,
 } from 'echarts/components'
 import { init, use, type ECharts, type EChartsCoreOption } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -428,16 +429,28 @@ function metricLine(name: string, history: TrainingMetricPoint[], key: string, e
 }
 
 function buildLearningRateOption(history: TrainingScalarPoint[]): EChartsCoreOption {
-  return buildBaseOption([{
-    name: 'learning_rate',
+  const option = buildBaseOption([{
     type: 'line',
     showSymbol: history.length <= 80,
     symbolSize: 5,
     data: history.map((point) => [point.epoch, point.value]),
-  }], formatLearningRate)
+  }])
+  const { valueFormatter, ...tooltipOptions } = option.tooltip
+  const tooltip: TooltipComponentOption = {
+    ...tooltipOptions,
+    formatter(params) {
+      const point = Array.isArray(params) ? params[0] : params
+      const value = point?.value
+      if (!Array.isArray(value)) return ''
+      const [epoch, rate] = value
+      if (typeof epoch !== 'number' || typeof rate !== 'number') return ''
+      return `${zh.value ? `第 ${epoch} 轮` : `Epoch ${epoch}`} · ${formatLearningRate(rate)}`
+    },
+  }
+  return { ...option, legend: { show: false }, tooltip, grid: { ...option.grid, top: 20 } }
 }
 
-function buildBaseOption(series: unknown[], format: (value: number) => string = formatTrainingMetric): EChartsCoreOption {
+function buildBaseOption(series: unknown[]) {
   const visual = chartVisual()
   const lastEpoch = compactLastEpoch.value
   const axisMax = lastEpoch && lastEpoch > 1 ? lastEpoch : undefined
@@ -445,7 +458,7 @@ function buildBaseOption(series: unknown[], format: (value: number) => string = 
     animation: false,
     color: visual.palette,
     textStyle: { color: visual.text, fontFamily: workbenchFontFamily() },
-    tooltip: { trigger: 'axis', ...visual.tooltip, valueFormatter: modelChartValueFormatter(format) },
+    tooltip: { trigger: 'axis' as const, ...visual.tooltip, valueFormatter: modelChartValueFormatter(formatTrainingMetric) },
     legend: {
       type: 'scroll', top: 0, left: props.compact ? 'auto' : 0, right: props.compact ? 0 : 'auto',
       icon: props.compact ? 'circle' : undefined,

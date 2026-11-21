@@ -8,7 +8,7 @@
           <input v-model.trim="query" :aria-label="zh ? '搜索日志内容' : 'Search the run log'" :placeholder="zh ? '搜索日志内容' : 'Search the run log'" />
         </label>
         <label v-if="live" class="training-log__pause"><input v-model="paused" type="checkbox" />{{ zh ? '暂停自动滚动' : 'Pause auto-scroll' }}</label>
-        <Button size="sm" :disabled="!entries.length" @click="download"><Download :size="16" />{{ zh ? '下载日志' : 'Download log' }}</Button>
+        <Button size="sm" :disabled="!entries.length" @click="downloadLog ? downloadLog() : download()"><Download :size="16" />{{ zh ? '下载日志' : 'Download log' }}</Button>
       </div>
       <ol v-if="visible.length" ref="list" class="training-log__rows">
         <li v-for="entry in visible" :key="entry.id">
@@ -42,7 +42,7 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import { formatModelNumber } from '../model-number-format'
 import type { ModelTrainingTaskEvent } from '../services/model.service'
 
-const props = defineProps<{ open: boolean; taskId: string; taskName: string; events: ModelTrainingTaskEvent[]; zh: boolean; live: boolean }>()
+const props = defineProps<{ open: boolean; taskId: string; taskName: string; events: ModelTrainingTaskEvent[]; zh: boolean; live: boolean; downloadLog?: () => void }>()
 const emit = defineEmits<{ close: [] }>()
 const level = ref('')
 const query = ref('')
