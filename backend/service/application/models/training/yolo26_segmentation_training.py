@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import io
+from functools import partial
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.training.segmentation_checkpoint_epoch import (
+    load_yolo_segmentation_best_checkpoint,
+)
 from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
@@ -34,6 +38,10 @@ from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
     build_yolo_disabled_warm_start_summary,
     build_yolo_warm_start_summary,
+)
+from backend.service.application.models.yolo_core_common.training.segmentation_validation import (
+    SegmentationBatchLoss,
+    weighted_segmentation_loss,
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
@@ -148,6 +156,7 @@ class Yolo26SegmentationTrainingSavePoint:
     epoch: int
     learning_rate: float
     is_best: bool = False
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +217,8 @@ class Yolo26SegmentationTrainingExecutionResult:
     test_metrics_payload: dict[str, object] | None = None
     test_split_name: str | None = None
     test_sample_count: int = 0
+    # best checkpoint 文件内记录的完成轮次，从 1 开始。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 class Yolo26SegmentationTrainingPausedError(Exception):
@@ -394,11 +405,11 @@ def run_yolo26_segmentation_training(
     validation_history: list[dict[str, float]] = []
     best_metric_value = -1.0
     best_metric_name = "val_map50_95"
-    best_checkpoint_bytes = (
-        request.previous_best_checkpoint_path.read_bytes()
-        if request.previous_best_checkpoint_path is not None
-        and request.previous_best_checkpoint_path.is_file()
-        else b""
+    best_checkpoint_bytes, best_checkpoint_saved_epoch = (
+        load_yolo_segmentation_best_checkpoint(
+            request.previous_best_checkpoint_path,
+            torch_module=imports.torch,
+        )
     )
     if resume is not None:
         restore_yolo26_segmentation_training_state(
@@ -470,6 +481,7 @@ def run_yolo26_segmentation_training(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         learning_rate=resolve_yolo_optimizer_base_learning_rate(
             optimizer=optimizer,
             initial_learning_rate=training_schedule.initial_lr,
@@ -497,6 +509,13 @@ def run_yolo26_segmentation_training(
 
     stride_values = model.stride if hasattr(model, "stride") else (8, 16, 32)
     num_classes = len(labels)
+    loss_weights = {
+        "class_loss": class_loss_weight,
+        "box_loss": box_loss_weight,
+        "dfl_loss": dfl_loss_weight,
+        "mask_loss": mask_loss_weight,
+        "semantic_loss": mask_loss_weight,
+    }
     dataloader_plan = resolve_yolo_task_dataloader_plan(
         extra_options=extra,
         device=device,
@@ -542,10 +561,7 @@ def run_yolo26_segmentation_training(
             assign_topk=assign_topk,
             assign_alpha=assign_alpha,
             assign_beta=assign_beta,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            mask_loss_weight=mask_loss_weight,
+            loss_weights=loss_weights,
             control_callback=observe_control,
             input_size=input_size,
             learning_rate=resolve_yolo_optimizer_base_learning_rate(
@@ -571,17 +587,32 @@ def run_yolo26_segmentation_training(
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
             control_callback=observe_control,
+            batch_loss=partial(
+                _compute_yolo26_segmentation_validation_batch_loss,
+                imports=imports,
+                model=ema.model,
+                stride_values=stride_values,
+                device=device,
+                num_classes=num_classes,
+                assign_topk=assign_topk,
+                assign_alpha=assign_alpha,
+                assign_beta=assign_beta,
+                loss_weights=loss_weights,
+                epoch=epoch + 1,
+                max_epochs=max_epochs,
+            ),
         )
         if val_metrics:
             validation_history.append(
                 build_yolo_epoch_history_item(epoch_index=epoch, metrics=val_metrics)
             )
-        current_metric = float(val_metrics.get("map50_95", 0.0))
-        best_metric_improved = bool(val_metrics) and is_better_training_metric(
+        current_metric = val_metrics.get("map50_95")
+        best_metric_improved = is_better_training_metric(
             current_value=current_metric,
             best_value=best_metric_value,
             direction="maximize",
             maximum=1.0,
+            prefer_latest_on_tie=True,
         )
         if best_metric_improved:
             best_metric_value = current_metric
@@ -647,6 +678,7 @@ def run_yolo26_segmentation_training(
         )
         if best_metric_improved:
             best_checkpoint_bytes = latest_checkpoint_bytes
+            best_checkpoint_saved_epoch = epoch + 1
         last_completed_savepoint = Yolo26SegmentationTrainingSavePoint(
             latest_checkpoint_bytes=latest_checkpoint_bytes,
             train_metrics=train_metrics,
@@ -659,6 +691,7 @@ def run_yolo26_segmentation_training(
                 initial_learning_rate=training_schedule.initial_lr,
             ),
             is_best=best_metric_improved,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
         if (
             checkpoint_decision.should_persist
@@ -676,6 +709,7 @@ def run_yolo26_segmentation_training(
     )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
+        best_checkpoint_saved_epoch = last_completed_savepoint.epoch
     test_metrics_payload = build_detection_test_metrics_report(
         available=False,
         sample_count=0,
@@ -718,6 +752,8 @@ def run_yolo26_segmentation_training(
             category_names=labels,
             task_type="segmentation",
         )
+        if best_checkpoint_saved_epoch is not None:
+            test_metrics_payload["epoch"] = best_checkpoint_saved_epoch
     final_validation = validation_history[-1] if validation_history else {}
     return Yolo26SegmentationTrainingExecutionResult(
         best_metric_value=best_metric_value,
@@ -746,6 +782,7 @@ def run_yolo26_segmentation_training(
         warm_start_summary=warm_start_summary,
         best_checkpoint_bytes=best_checkpoint_bytes,
         test_metrics_payload=test_metrics_payload,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         test_split_name="test" if test_annotations else None,
         test_sample_count=len(test_annotations),
     )
@@ -769,10 +806,7 @@ def _run_yolo26_segmentation_epoch(
     assign_topk: int,
     assign_alpha: float,
     assign_beta: float,
-    class_loss_weight: float,
-    box_loss_weight: float,
-    dfl_loss_weight: float,
-    mask_loss_weight: float,
+    loss_weights: dict[str, float],
     control_callback: Callable[[], None] | None,
     input_size: tuple[int, int],
     learning_rate: float,
@@ -827,32 +861,17 @@ def _run_yolo26_segmentation_epoch(
             assign_topk=assign_topk,
             assign_alpha=assign_alpha,
             assign_beta=assign_beta,
-            dfl_loss_weight=dfl_loss_weight,
+            dfl_loss_weight=loss_weights["dfl_loss"],
             epoch=epoch + 1,
             max_epochs=max_epochs,
         )
-        optimization_total_loss = (
-            class_loss_weight * loss_payload["class_loss"]
-            + box_loss_weight * loss_payload["box_loss"]
-            + dfl_loss_weight * loss_payload["dfl_loss"]
-            + mask_loss_weight * loss_payload["mask_loss"]
-            + mask_loss_weight * loss_payload["semantic_loss"]
-        )
-        reported_class_loss = class_loss_weight * loss_payload.get(
-            "reported_class_loss", loss_payload["class_loss"]
-        )
-        reported_box_loss = box_loss_weight * loss_payload.get(
-            "reported_box_loss", loss_payload["box_loss"]
-        )
-        reported_dfl_loss = dfl_loss_weight * loss_payload.get(
-            "reported_dfl_loss", loss_payload["dfl_loss"]
-        )
-        reported_mask_loss = mask_loss_weight * loss_payload.get(
-            "reported_mask_loss", loss_payload["mask_loss"]
-        )
-        reported_semantic_loss = mask_loss_weight * loss_payload.get(
-            "reported_semantic_loss", loss_payload["semantic_loss"]
-        )
+        reported = weighted_segmentation_loss(loss_payload, loss_weights)
+        reported_class_loss = reported["class_loss"]
+        reported_box_loss = reported["box_loss"]
+        reported_dfl_loss = reported["dfl_loss"]
+        reported_mask_loss = reported["mask_loss"]
+        optimization_total_loss = reported["loss"]
+        reported_semantic_loss = reported["semantic_loss"]
         batch_sample_count = len(batch.targets)
         # 两个 end-to-end 分支均按全 batch 归一化并乘 B，组合后直接反传。
         optimization_loss = optimization_total_loss
@@ -1156,6 +1175,26 @@ def _compute_yolo26_segmentation_training_loss(
     }
 
 
+def _compute_yolo26_segmentation_validation_batch_loss(
+    outputs: dict[str, Any],
+    targets: list[dict[str, Any]],
+    *,
+    loss_weights: dict[str, float],
+    **criterion_options: Any,
+) -> dict[str, Any]:
+    """用训练损失函数计算验证 batch 的各项损失。"""
+    raw_outputs = _normalize_yolo26_segmentation_training_outputs(outputs)
+    if raw_outputs is None:
+        raise InvalidRequestError("YOLO26 segmentation 验证输出缺少损失计算所需张量")
+    loss_terms = _compute_yolo26_segmentation_training_loss(
+        raw_outputs=raw_outputs,
+        targets_list=targets,
+        dfl_loss_weight=loss_weights["dfl_loss"],
+        **criterion_options,
+    )
+    return weighted_segmentation_loss(loss_terms, loss_weights)
+
+
 def _run_yolo26_segmentation_validation(
     *,
     imports: Any,
@@ -1170,6 +1209,7 @@ def _run_yolo26_segmentation_validation(
     epoch: int,
     max_epochs: int,
     evaluation_interval: int,
+    batch_loss: SegmentationBatchLoss,
     control_callback: Callable[[], None] | None = None,
 ) -> dict[str, float]:
     """按 YOLO26 segmentation 规则执行训练期 validation。"""
@@ -1182,7 +1222,7 @@ def _run_yolo26_segmentation_validation(
     )
     if not should_evaluate:
         return {}
-    return evaluate_yolo26_segmentation_samples(
+    metrics = evaluate_yolo26_segmentation_samples(
         model=model,
         samples=val_annotations,
         labels=labels,
@@ -1193,7 +1233,9 @@ def _run_yolo26_segmentation_validation(
         imports=imports,
         batch_size=batch_size,
         control_callback=control_callback,
+        batch_loss=batch_loss,
     )
+    return serialize_yolo26_spatial_loss_metrics(metrics)
 
 
 __all__ = [

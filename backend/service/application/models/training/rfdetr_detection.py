@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend.service.application.models.rfdetr_core.training.platform_runner import (
@@ -57,6 +57,7 @@ class RfdetrTrainingEpochProgress:
     max_epochs: int
     learning_rate: float
     train_metrics: dict[str, float]
+    validation_metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,8 @@ class RfdetrTrainingExecutionRequest:
         RfdetrTrainingControlCommand | None,
     ] | None = None
     savepoint_callback: Callable[[RfdetrTrainingSavePoint], None] | None = None
+    previous_best_checkpoint_path: Path | None = None
+    best_checkpoint_callback: Callable[[Path, int], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +143,7 @@ class RfdetrTrainingExecutionResult:
     warm_start_summary: dict[str, object]
     best_checkpoint_bytes: bytes | None = None
     test_metrics_payload: dict[str, object] | None = None
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @training_engine_entrypoint
@@ -171,6 +175,8 @@ def run_rfdetr_training(
                 control_callback=_build_platform_control_callback(request),
                 epoch_callback=_build_platform_epoch_callback(request),
                 savepoint_callback=_build_platform_savepoint_callback(request),
+                previous_best_checkpoint_path=request.previous_best_checkpoint_path,
+                best_checkpoint_callback=request.best_checkpoint_callback,
             )
         )
     except RfdetrPlatformTrainingControlSignal as signal:
@@ -189,6 +195,7 @@ def run_rfdetr_training(
         warm_start_summary=result.warm_start_summary,
         best_checkpoint_bytes=result.best_checkpoint_bytes,
         test_metrics_payload=result.test_metrics_payload,
+        best_checkpoint_saved_epoch=result.best_checkpoint_saved_epoch,
     )
 
 
@@ -258,6 +265,7 @@ def _build_platform_epoch_callback(
                 max_epochs=progress.max_epochs,
                 learning_rate=progress.learning_rate,
                 train_metrics=dict(progress.train_metrics),
+                validation_metrics=dict(progress.validation_metrics),
             )
         )
         if command is None:

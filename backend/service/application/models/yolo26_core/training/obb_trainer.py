@@ -6,6 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.training.yolo_obb_training_checkpoints import (
+    read_yolo_obb_checkpoint_epoch,
+)
 from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
@@ -83,6 +86,8 @@ class Yolo26ObbTrainingSavePoint:
     epoch: int
     learning_rate: float
     is_best: bool = False
+    # 当前已保存 best checkpoint 的轮次。首次验证之前为空。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,8 @@ class Yolo26ObbTrainingLoopResult:
     best_checkpoint_bytes: bytes
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
+    # 当前 best checkpoint 的轮次。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 class Yolo26ObbTrainingPausedError(Exception):
@@ -174,6 +181,10 @@ def run_yolo26_obb_training_loop(
         torch_module=imports.torch,
     )
     best_checkpoint_bytes = previous_best_checkpoint_bytes
+    best_checkpoint_saved_epoch = read_yolo_obb_checkpoint_epoch(
+        torch_module=imports.torch,
+        checkpoint_bytes=best_checkpoint_bytes,
+    )
     last_completed_savepoint = Yolo26ObbTrainingSavePoint(
         latest_checkpoint_bytes=checkpoint_bytes,
         train_metrics=dict(metrics_history[-1]) if metrics_history else {},
@@ -183,6 +194,7 @@ def run_yolo26_obb_training_loop(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         learning_rate=resolve_yolo_optimizer_base_learning_rate(
             optimizer=optimizer,
             initial_learning_rate=training_schedule.initial_lr,
@@ -283,6 +295,7 @@ def run_yolo26_obb_training_loop(
             epoch=epoch,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
+            assign_topk2=assign_topk2,
             control_callback=observe_control,
         )
         if validation_metrics:
@@ -298,6 +311,7 @@ def run_yolo26_obb_training_loop(
             best_value=best_metric_value,
             direction="maximize",
             maximum=1.0,
+            prefer_latest_on_tie=True,
         )
         if best_metric_improved:
             best_metric_value = current_metric
@@ -351,6 +365,7 @@ def run_yolo26_obb_training_loop(
         )
         if best_metric_improved:
             best_checkpoint_bytes = checkpoint_bytes
+            best_checkpoint_saved_epoch = epoch + 1
         last_completed_savepoint = Yolo26ObbTrainingSavePoint(
             latest_checkpoint_bytes=checkpoint_bytes,
             train_metrics=epoch_metrics,
@@ -363,6 +378,7 @@ def run_yolo26_obb_training_loop(
                 initial_learning_rate=training_schedule.initial_lr,
             ),
             is_best=best_metric_improved,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
         if checkpoint_decision.should_persist and savepoint_callback is not None:
             savepoint_callback(last_completed_savepoint)
@@ -374,11 +390,13 @@ def run_yolo26_obb_training_loop(
     training_loader_lifecycle.close()
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = checkpoint_bytes
+        best_checkpoint_saved_epoch = last_completed_savepoint.epoch
     return Yolo26ObbTrainingLoopResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         latest_checkpoint_bytes=checkpoint_bytes,
         best_checkpoint_bytes=best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         metrics_history=metrics_history,
         validation_history=validation_history,
     )
@@ -430,53 +448,20 @@ def _run_yolo26_obb_epoch(
         )
         with autocast_context():
             raw_outputs = model(batch.images)
-            if (
-                isinstance(raw_outputs, dict)
-                and "one2many" in raw_outputs
-                and "one2one" in raw_outputs
-            ):
-                raw_for_loss = raw_outputs["one2many"]
-                one2many_payload = compute_yolo26_obb_loss(
-                    torch=imports.torch,
-                    model=model,
-                    raw_outputs=raw_outputs["one2many"],
-                    batch_targets=batch.targets,
-                    num_classes=0,
-                    assign_topk=10,
-                    assign_topk2=None,
-                )
-                one2one_payload = compute_yolo26_obb_loss(
-                    torch=imports.torch,
-                    model=model,
-                    raw_outputs=raw_outputs["one2one"],
-                    batch_targets=batch.targets,
-                    num_classes=0,
-                    assign_topk=7,
-                    assign_topk2=1,
-                )
-                one2many_weight, one2one_weight = resolve_yolo26_end2end_loss_weights(
-                    epoch=epoch + 1,
-                    max_epochs=max_epochs,
-                )
-                loss_payload = combine_yolo26_end2end_loss_payloads(
-                    one2many_payload=one2many_payload,
-                    one2one_payload=one2one_payload,
-                    one2many_weight=one2many_weight,
-                    one2one_weight=one2one_weight,
-                )
-            else:
-                raw_for_loss = raw_outputs
-                loss_payload = compute_yolo26_obb_loss(
-                    torch=imports.torch,
-                    model=model,
-                    raw_outputs=raw_for_loss,
-                    batch_targets=batch.targets,
-                    num_classes=0,
-                    assign_topk2=assign_topk2,
-                )
+            loss_payload = _compute_yolo26_obb_batch_loss(
+                torch=imports.torch,
+                model=model,
+                raw_outputs=raw_outputs,
+                batch_targets=batch.targets,
+                assign_topk2=assign_topk2,
+                epoch=epoch + 1,
+                max_epochs=max_epochs,
+            )
         total_loss = loss_payload["loss"]
         if not total_loss.requires_grad:
-            total_loss = _build_zero_grad_loss(raw_for_loss, imports.torch)
+            total_loss = _build_zero_grad_loss(
+                raw_outputs.get("one2many", raw_outputs), imports.torch
+            )
         optimizer_step.backward_and_step(
             loss=total_loss,
             iteration_index=global_iteration,
@@ -537,6 +522,7 @@ def _run_yolo26_obb_validation(
     epoch: int,
     max_epochs: int,
     evaluation_interval: int,
+    assign_topk2: int | None,
     control_callback: Callable[[], None] | None,
 ) -> dict[str, float]:
     """执行 YOLO26 OBB 训练期 validation。"""
@@ -549,7 +535,7 @@ def _run_yolo26_obb_validation(
     )
     if not should_evaluate:
         return {}
-    return evaluate_yolo26_obb_samples(
+    metrics = evaluate_yolo26_obb_samples(
         model=model,
         samples=val_annotations,
         labels=labels,
@@ -560,6 +546,68 @@ def _run_yolo26_obb_validation(
         imports=imports,
         batch_size=batch_size,
         control_callback=control_callback,
+        compute_batch_loss=lambda outputs, targets: _compute_yolo26_obb_batch_loss(
+            torch=imports.torch,
+            model=model,
+            raw_outputs=outputs,
+            batch_targets=targets,
+            assign_topk2=assign_topk2,
+            epoch=epoch + 1,
+            max_epochs=max_epochs,
+        ),
+    )
+    return serialize_yolo26_spatial_loss_metrics(metrics)
+
+
+def _compute_yolo26_obb_batch_loss(
+    *,
+    torch: Any,
+    model: Any,
+    raw_outputs: dict[str, Any],
+    batch_targets: tuple[Any, ...],
+    assign_topk2: int | None,
+    epoch: int,
+    max_epochs: int,
+) -> dict[str, Any]:
+    """按同一轮次的分配和权重计算训练与验证的 OBB 损失。"""
+
+    if "one2many" not in raw_outputs or "one2one" not in raw_outputs:
+        return compute_yolo26_obb_loss(
+            torch=torch,
+            model=model,
+            raw_outputs=raw_outputs,
+            batch_targets=batch_targets,
+            num_classes=0,
+            assign_topk2=assign_topk2,
+        )
+
+    one2many_payload = compute_yolo26_obb_loss(
+        torch=torch,
+        model=model,
+        raw_outputs=raw_outputs["one2many"],
+        batch_targets=batch_targets,
+        num_classes=0,
+        assign_topk=10,
+        assign_topk2=None,
+    )
+    one2one_payload = compute_yolo26_obb_loss(
+        torch=torch,
+        model=model,
+        raw_outputs=raw_outputs["one2one"],
+        batch_targets=batch_targets,
+        num_classes=0,
+        assign_topk=7,
+        assign_topk2=1,
+    )
+    one2many_weight, one2one_weight = resolve_yolo26_end2end_loss_weights(
+        epoch=epoch,
+        max_epochs=max_epochs,
+    )
+    return combine_yolo26_end2end_loss_payloads(
+        one2many_payload=one2many_payload,
+        one2one_payload=one2one_payload,
+        one2many_weight=one2many_weight,
+        one2one_weight=one2one_weight,
     )
 
 

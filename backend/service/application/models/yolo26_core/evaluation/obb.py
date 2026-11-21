@@ -9,6 +9,9 @@ from typing import Any
 
 from backend.service.application.models.evaluation.model_mode import evaluating_model
 
+from backend.service.application.models.yolo_core_common.training.validation_loss import (
+    YoloValidationLossAccumulator,
+)
 from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
 )
@@ -88,12 +91,16 @@ def evaluate_yolo26_obb_samples(
     batch_size: int = 1,
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
     control_callback: Callable[[], None] | None = None,
+    compute_batch_loss: (
+        Callable[[dict[str, Any], tuple[Any, ...]], dict[str, Any]] | None
+    ) = None,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO26 OBB 训练期评估。"""
 
     gt_items: list[dict[str, object]] = []
     pred_items: list[dict[str, object]] = []
     total_predictions = 0
+    validation_losses = YoloValidationLossAccumulator()
     evaluation_loader = build_yolo_task_evaluation_dataloader(
         torch_module=imports.torch,
         samples=samples,
@@ -128,6 +135,11 @@ def evaluate_yolo26_obb_samples(
             )
             with _yolo26_evaluation_autocast(imports, precision, device):
                 outputs = model(batch.images)
+                if compute_batch_loss is not None:
+                    validation_losses.add_batch(
+                        payload=compute_batch_loss(outputs[1], batch.targets),
+                        sample_count=len(batch.targets),
+                    )
             prediction_array = _yolo26_tensor_to_np(outputs, imports)
             for image_index, target, output_slices in iter_yolo_task_evaluation_items(
                 targets=batch.targets,
@@ -165,6 +177,7 @@ def evaluate_yolo26_obb_samples(
         ),
     )
     return {
+        **validation_losses.metrics(),
         "map50": round(rotated_metrics.ap50, 6),
         "map50_95": round(rotated_metrics.ap50_95, 6),
         "rotated_map50": round(rotated_metrics.ap50, 6),

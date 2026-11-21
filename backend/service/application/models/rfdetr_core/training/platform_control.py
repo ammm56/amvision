@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -43,6 +43,7 @@ class RfdetrPlatformEpochProgress:
     max_epochs: int
     learning_rate: float
     train_metrics: dict[str, float]
+    validation_metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -116,8 +117,17 @@ class _RfdetrPlatformTrainingCallbackMixin:
         self.epoch_callback = epoch_callback
         self.savepoint_callback = savepoint_callback
         self._attempt_token = uuid4().hex
+        self.validation_history: list[dict[str, float]] = []
         self._current_savepoint: RfdetrPlatformTrainingSavePoint | None = None
         self._handled_control_identity: tuple[bool, bool, bool] | None = None
+
+    def state_dict(self) -> dict[str, Any]:
+        """将验证历史随完整 checkpoint 保存。"""
+        return {"validation_history": self.validation_history}
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        """兼容未保存验证历史的旧版 RF-DETR checkpoint。"""
+        self.validation_history = list(state_dict.get("validation_history") or [])
 
     @property
     def current_savepoint(self) -> RfdetrPlatformTrainingSavePoint:
@@ -195,10 +205,24 @@ class _RfdetrPlatformTrainingCallbackMixin:
     def on_train_epoch_end(self, trainer: Any, pl_module: Any) -> None:
         """在真实 epoch 边界读取控制命令并安全保存、暂停或终止。"""
 
-        del pl_module
         epoch = max(0, int(getattr(trainer, "current_epoch", 0)))
         learning_rate = _resolve_learning_rate(trainer)
         train_metrics = _extract_train_metrics(trainer=trainer, outputs=None)
+        validation_metrics = {
+            key: value for key, value in _extract_validation_metrics(trainer).items()
+            if key.startswith("val/")
+        }
+        validation_interval = max(
+            1, int(getattr(getattr(pl_module, "train_config", None), "eval_interval", 1))
+        )
+        if (epoch + 1) % validation_interval and epoch + 1 < self.max_epochs:
+            # 当前轮仅计算损失，回调字典中的 AP 可能来自前一验证轮。
+            validation_metrics = {
+                key: value for key, value in validation_metrics.items()
+                if key == "val/loss"
+            }
+        if validation_metrics:
+            self.validation_history.append({"epoch": epoch + 1, **validation_metrics})
         command = (
             self.epoch_callback(
                 RfdetrPlatformEpochProgress(
@@ -206,6 +230,7 @@ class _RfdetrPlatformTrainingCallbackMixin:
                     max_epochs=self.max_epochs,
                     learning_rate=learning_rate,
                     train_metrics=train_metrics,
+                    validation_metrics=validation_metrics,
                 )
             )
             if self.epoch_callback is not None

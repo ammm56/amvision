@@ -356,6 +356,7 @@ def run_yolo11_classification_training_loop(
                 best_value=best_metric_value,
                 direction="maximize",
                 maximum=1.0,
+                prefer_latest_on_tie=True,
             )
         )
         if best_metric_improved:

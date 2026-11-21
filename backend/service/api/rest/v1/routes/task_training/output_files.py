@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from backend.service.application.errors import ResourceNotFoundError, ServiceConfigurationError
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.api.rest.v1.routes.task_training.output_epoch import read_training_checkpoint_role, read_training_output_epoch
 
 
 TrainingOutputFileName = Literal[
@@ -89,6 +90,8 @@ class TrainingOutputFileSummaryResponse(BaseModel):
     object_key: str | None = Field(default=None, description="训练输出文件 object key")
     size_bytes: int | None = Field(default=None, description="文件字节大小")
     updated_at: str | None = Field(default=None, description="最后更新时间")
+    epoch: int | None = Field(default=None, description="产物中可确认的轮次")
+    checkpoint_role: Literal["best", "latest"] | None = Field(default=None, description="产物记录的检查点来源")
 
 
 class TrainingOutputFileDetailResponse(TrainingOutputFileSummaryResponse):
@@ -200,6 +203,20 @@ def read_training_output_file_detail(
         text_content = file_path.read_text(encoding="utf-8")
         lines = text_content.splitlines()
 
+    epoch = read_training_output_epoch(payload)
+    checkpoint_role = read_training_checkpoint_role(payload)
+    if parsed_name == "best-checkpoint":
+        checkpoint_role = "best"
+        summary = (task.result or {}).get("summary")
+        if isinstance(summary, dict):
+            epoch = read_training_output_epoch({"epoch": summary.get("best_checkpoint_saved_epoch")})
+        if epoch is None:
+            summary_key = _resolve_training_output_file_object_key(task=task, file_name="summary")
+            if summary_key is not None and dataset_storage.resolve(summary_key).is_file():
+                saved_summary = dataset_storage.read_json(summary_key)
+                if isinstance(saved_summary, dict):
+                    epoch = read_training_output_epoch({"epoch": saved_summary.get("best_checkpoint_saved_epoch")})
+
     return TrainingOutputFileDetailResponse(
         file_name=parsed_name,
         file_kind=file_kind,  # type: ignore[arg-type]
@@ -208,6 +225,8 @@ def read_training_output_file_detail(
         object_key=object_key,
         size_bytes=file_stat.st_size,
         updated_at=updated_at,
+        epoch=epoch,
+        checkpoint_role=checkpoint_role,
         payload=payload,
         text_content=text_content,
         lines=lines,
@@ -227,6 +246,8 @@ def _to_summary(
         object_key=detail.object_key,
         size_bytes=detail.size_bytes,
         updated_at=detail.updated_at,
+        epoch=detail.epoch,
+        checkpoint_role=detail.checkpoint_role,
     )
 
 

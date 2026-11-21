@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from backend.service.application.errors import ResourceNotFoundError, ServiceConfigurationError
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.api.rest.v1.routes.task_training.output_epoch import read_training_checkpoint_role, read_training_output_epoch
 
 
 DetectionTrainingOutputFileName = Literal[
@@ -97,6 +98,8 @@ class DetectionTrainingOutputFileSummaryResponse(BaseModel):
     object_key: str | None = Field(default=None, description="训练输出文件 object key")
     size_bytes: int | None = Field(default=None, description="文件字节大小")
     updated_at: str | None = Field(default=None, description="最后更新时间")
+    epoch: int | None = Field(default=None, description="产物中可确认的轮次")
+    checkpoint_role: Literal["best", "latest"] | None = Field(default=None, description="产物记录的检查点来源")
 
 
 class DetectionTrainingOutputFileDetailResponse(DetectionTrainingOutputFileSummaryResponse):
@@ -133,6 +136,8 @@ def _build_detection_training_output_file_summary_response(
         object_key=output_file.object_key,
         size_bytes=output_file.size_bytes,
         updated_at=output_file.updated_at,
+        epoch=output_file.epoch,
+        checkpoint_role=output_file.checkpoint_role,
     )
 
 
@@ -214,6 +219,16 @@ def _read_detection_training_output_file(
         text_content = file_path.read_text(encoding="utf-8")
         lines = text_content.splitlines()
 
+    epoch = read_training_output_epoch(payload)
+    checkpoint_role = read_training_checkpoint_role(payload)
+    if file_name == "best-checkpoint":
+        checkpoint_role = "best"
+        summary = (task.result or {}).get("summary")
+        if isinstance(summary, dict):
+            epoch = read_training_output_epoch(
+                {"epoch": summary.get("best_checkpoint_saved_epoch")}
+            )
+
     return DetectionTrainingOutputFileDetailResponse(
         file_name=file_name,
         file_kind=file_kind,  # type: ignore[arg-type]
@@ -222,6 +237,8 @@ def _read_detection_training_output_file(
         object_key=object_key,
         size_bytes=file_stat.st_size,
         updated_at=updated_at,
+        epoch=epoch,
+        checkpoint_role=checkpoint_role,
         payload=payload,
         text_content=text_content,
         lines=lines,

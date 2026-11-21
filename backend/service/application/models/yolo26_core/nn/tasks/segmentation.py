@@ -61,7 +61,9 @@ class Proto26(Proto):
             nn.Conv2d(c_, nc, 1),
         )
 
-    def forward(self, x) -> torch.Tensor:
+    def forward(
+        self, x, *, include_semantic: bool = False
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """对多尺度特征图进行融合后生成 proto mask。"""
 
         if isinstance(x, list | tuple):
@@ -75,7 +77,7 @@ class Proto26(Proto):
                 )
                 feat = feat + up_feat
             p = super().forward(self.feat_fuse(feat))
-            if self.training:
+            if self.training or include_semantic:
                 semseg = self.semseg(feat)
                 return (p, semseg)
             return p
@@ -140,6 +142,9 @@ class Segment26(Detect):
             "mask_head": self.one2one_cv4,
         }
 
+    # 训练期验证需要同次前向的原始输出，普通推理和导出继续使用默认输出。
+    return_validation_outputs: bool = False
+
     def forward(
         self,
         x: list[torch.Tensor] | tuple[torch.Tensor, ...],
@@ -151,7 +156,7 @@ class Segment26(Detect):
                 "YOLO26 Segment26 头收到的特征层数量不合法",
                 details={"expected_feature_count": self.nl},
             )
-        proto_output = self.proto(tuple(x))
+        proto_output = self.proto(tuple(x), include_semantic=self.return_validation_outputs)
         if isinstance(proto_output, tuple):
             proto, semseg = proto_output
         else:
@@ -167,7 +172,7 @@ class Segment26(Detect):
                     **self.one2one,
                 ),
             }
-        if self.training:
+        if self.training or self.return_validation_outputs:
             if self.end2end:
                 raw_outputs["one2many"]["proto"] = proto
                 raw_outputs["one2one"]["proto"] = proto.detach()
@@ -178,6 +183,7 @@ class Segment26(Detect):
                 raw_outputs["proto"] = proto
                 if semseg is not None:
                     raw_outputs["semseg"] = semseg
+        if self.training:
             return raw_outputs
 
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs

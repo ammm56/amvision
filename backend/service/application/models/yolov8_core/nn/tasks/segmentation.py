@@ -73,6 +73,9 @@ class Segment(Detect):
         if self.end2end:
             self.one2one_cv4 = copy.deepcopy(self.cv4)
 
+    # 训练期验证需要同次前向的原始输出，普通推理和导出继续使用默认输出。
+    return_validation_outputs: bool = False
+
     def forward(
         self,
         x: list[torch.Tensor] | tuple[torch.Tensor, ...],
@@ -107,12 +110,13 @@ class Segment(Detect):
                 "one2many": raw_outputs,
                 "one2one": one2one_outputs,
             }
-        if self.training:
+        if self.training or self.return_validation_outputs:
             if self.end2end:
                 raw_outputs["one2many"]["proto"] = proto
                 raw_outputs["one2one"]["proto"] = proto.detach()
             else:
                 raw_outputs["proto"] = proto
+        if self.training:
             return raw_outputs
 
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
@@ -124,4 +128,7 @@ class Segment(Detect):
         prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
         if self.export:
             return prediction, proto
-        return prediction.transpose(1, 2).contiguous(), proto
+        inference_result = (prediction.transpose(1, 2).contiguous(), proto)
+        if self.return_validation_outputs:
+            return inference_result, raw_outputs
+        return inference_result

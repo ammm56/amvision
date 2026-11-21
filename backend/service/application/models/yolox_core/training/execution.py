@@ -50,6 +50,7 @@ from backend.service.application.models.yolox_core.evaluators import (
 )
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
+    read_detection_checkpoint_epoch,
 )
 from backend.service.application.models.training.amp_policy import (
     resolve_training_amp_runtime,
@@ -228,6 +229,7 @@ class YoloXDetectionTrainingExecutionResult:
     validation_sample_count: int
     parameter_count: int
     test_metrics_payload: dict[str, object] | None = None
+    best_checkpoint_saved_epoch: int | None = None
     test_split_name: str | None = None
     test_sample_count: int = 0
 
@@ -891,12 +893,14 @@ def run_yolox_detection_training_execution(
         category_names=train_category_names,
         reason="dataset export 未提供独立 test split",
     )
-    if test_loader is not None and test_dataset is not None:
-        best_checkpoint_payload = imports.torch.load(
-            io.BytesIO(loop_result.checkpoint_bytes),
-            map_location="cpu",
-            weights_only=False,
-        )
+    has_independent_test = test_loader is not None and test_dataset is not None
+    best_checkpoint_payload = imports.torch.load(
+        io.BytesIO(loop_result.checkpoint_bytes),
+        map_location="cpu" if has_independent_test else "meta",
+        weights_only=False,
+    )
+    best_checkpoint_saved_epoch = read_detection_checkpoint_epoch(best_checkpoint_payload)
+    if has_independent_test:
         best_model_state = (
             best_checkpoint_payload.get("model")
             if isinstance(best_checkpoint_payload, dict)
@@ -969,11 +973,13 @@ def run_yolox_detection_training_execution(
             sample_count=test_sample_count,
             metrics=test_metrics,
             category_names=train_category_names,
+            checkpoint_epoch=best_checkpoint_saved_epoch,
         )
 
     execution_result = YoloXDetectionTrainingExecutionResult(
         checkpoint_bytes=loop_result.checkpoint_bytes,
         latest_checkpoint_bytes=loop_result.latest_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         metrics_payload=dict(loop_result.metrics_payload),
         validation_metrics_payload=dict(loop_result.validation_metrics_payload),
         test_metrics_payload=test_metrics_payload,

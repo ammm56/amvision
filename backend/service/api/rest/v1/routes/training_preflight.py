@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
@@ -29,6 +29,8 @@ from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.contracts import DEFAULT_WORKER_RUNTIME_ROOT
+from backend.workers.health import read_backend_worker_health_summary
 
 
 training_preflight_router = APIRouter(prefix="/models", tags=["models"])
@@ -39,6 +41,32 @@ _REQUESTS = {
     "pose": PoseTrainingTaskCreateRequestBody,
     "obb": ObbTrainingTaskCreateRequestBody,
 }
+
+
+class TrainingWorkerStatusResponse(BaseModel):
+    """训练 Worker 可用性，省略进程及部署配置。"""
+
+    status: Literal["ready", "starting", "unavailable"]
+
+
+@training_preflight_router.get("/training-worker/status", response_model=TrainingWorkerStatusResponse)
+def get_training_worker_status(
+    _principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
+) -> TrainingWorkerStatusResponse:
+    """读取训练 Profile 的实时心跳，供排队详情解释任务等待原因。"""
+    topology = read_backend_worker_health_summary(worker_runtime_root_dir=DEFAULT_WORKER_RUNTIME_ROOT)
+    if topology.get("topology_state") in ("starting", "running"):
+        profiles = topology.get("workers")
+        if isinstance(profiles, list):
+            training = next((profile for profile in profiles if profile["profile_id"] == "training"), None)
+            if training is not None:
+                if training["health"] == "running":
+                    return TrainingWorkerStatusResponse(status="ready")
+                if training["health"] == "starting" or (
+                    training["health"] == "offline" and topology["topology_state"] == "starting"
+                ):
+                    return TrainingWorkerStatusResponse(status="starting")
+    return TrainingWorkerStatusResponse(status="unavailable")
 
 
 @training_preflight_router.post("/{task_type}/training-tasks/preview")

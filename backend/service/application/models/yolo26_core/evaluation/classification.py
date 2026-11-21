@@ -25,7 +25,7 @@ from backend.service.application.models.yolo26_core.data import (
     build_yolo26_classification_training_batch,
 )
 from backend.service.application.models.yolo26_core.losses import (
-    normalize_yolo26_classification_training_outputs,
+    compute_yolo26_classification_loss,
 )
 
 
@@ -66,6 +66,7 @@ def evaluate_yolo26_classification_samples(
     correct_top1 = 0
     correct_top5 = 0
     total = 0
+    loss_sum = 0.0
     targets: list[int] = []
     predictions: list[int] = []
     autocast_context = build_training_autocast_context_for_precision(
@@ -91,9 +92,11 @@ def evaluate_yolo26_classification_samples(
             )
             with autocast_context():
                 outputs = model(batch.images)
-            _, probabilities = normalize_yolo26_classification_training_outputs(
-                outputs=outputs,
-            )
+                loss, probabilities = compute_yolo26_classification_loss(
+                    torch_module=imports.torch, outputs=outputs, targets=batch.targets
+                )
+            sample_count = int(batch.targets.size(0))
+            loss_sum += float(loss.item()) * sample_count
             _, top1_prediction = imports.torch.max(probabilities, 1)
             correct_top1 += int((top1_prediction == batch.targets).sum().item())
             targets.extend(
@@ -110,7 +113,7 @@ def evaluate_yolo26_classification_samples(
             for index, target in enumerate(batch.targets):
                 if target in topk_prediction[index]:
                     correct_top5 += 1
-            total += int(batch.targets.size(0))
+            total += sample_count
     if control_callback is not None:
         control_callback()
     top1_accuracy = round(correct_top1 / max(1, total), 6) if total > 0 else 0.0
@@ -123,6 +126,8 @@ def evaluate_yolo26_classification_samples(
         "metrics/accuracy_top5": top5_accuracy,
         "fitness": fitness,
     }
+    if total > 0:
+        metrics["loss"] = loss_sum / total
     if include_details:
         metrics.update(
             build_classification_evaluation_report(

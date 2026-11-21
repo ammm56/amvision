@@ -21,6 +21,9 @@ from backend.service.application.models.yolo11_core.nn.tasks.detection import De
 class Pose(Detect):
     """YOLO11 pose head 的项目内 full core 实现。"""
 
+    # 训练期验证同时读取预测与原始损失输入。
+    return_raw_for_validation = False
+
     def __init__(
         self,
         nc: int,
@@ -59,7 +62,7 @@ class Pose(Detect):
     def forward(
         self,
         x: list[torch.Tensor] | tuple[torch.Tensor, ...],
-    ) -> dict[str, torch.Tensor] | torch.Tensor:
+    ) -> dict[str, torch.Tensor] | torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """执行 YOLO11 pose head 前向。"""
 
         if not isinstance(x, list | tuple) or len(x) != self.nl:
@@ -107,4 +110,7 @@ class Pose(Detect):
         prediction = torch.cat((prediction, keypoints), dim=1)
         if self.export:
             return prediction
-        return prediction.transpose(1, 2).contiguous()
+        prediction = prediction.transpose(1, 2).contiguous()
+        if self.return_raw_for_validation:
+            return prediction, raw_outputs
+        return prediction

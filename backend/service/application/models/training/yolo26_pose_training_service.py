@@ -350,6 +350,8 @@ class SqlAlchemyYolo26PoseTrainingTaskService:
             return resolve_control_command(force=True)
 
         def on_savepoint(savepoint: Yolo26PoseTrainingSavePoint) -> None:
+            """记录实际保存的 pose 权重轮次，供训练中和恢复后查询。"""
+
             self.dataset_storage.write_bytes(
                 latest_checkpoint_object_key,
                 savepoint.latest_checkpoint_bytes,
@@ -364,6 +366,17 @@ class SqlAlchemyYolo26PoseTrainingTaskService:
                 periodic_checkpoint_retention.persist(
                     epoch=savepoint.epoch,
                     checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+                )
+            if savepoint.best_checkpoint_saved_epoch is not None:
+                self.dataset_storage.write_json(
+                    summary_object_key,
+                    {
+                        "task_id": task_record.task_id,
+                        "task_type": POSE_TASK_TYPE,
+                        "model_type": resolved_model_type,
+                        "latest_checkpoint_epoch": savepoint.epoch,
+                        "best_checkpoint_saved_epoch": savepoint.best_checkpoint_saved_epoch,
+                    },
                 )
 
         def poll_control() -> Yolo26PoseTrainingControlCommand | None:
@@ -530,6 +543,10 @@ class SqlAlchemyYolo26PoseTrainingTaskService:
         if isinstance(output_files, dict):
             output_files["test_metrics_object_key"] = test_metrics_object_key
         summary["test_metrics_object_key"] = test_metrics_object_key
+        if execution_result.best_checkpoint_saved_epoch is not None:
+            summary["best_checkpoint_saved_epoch"] = (
+                execution_result.best_checkpoint_saved_epoch
+            )
         model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,

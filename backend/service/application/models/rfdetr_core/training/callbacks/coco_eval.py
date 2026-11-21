@@ -287,7 +287,7 @@ class COCOEvalCallback(Callback):
         trainer.callback_metrics[f"{split}/mAP_75"] = metrics[f"{pfx}map_75"].detach().cpu()
         trainer.callback_metrics[f"{split}/mAR"] = recall_metrics[mar_key].detach().cpu()
 
-        if self.map_metric_ema is not None:
+        if self.map_metric_ema is not None and (split == "val" or not self._segmentation):
             ema_metrics = self.map_metric_ema.compute()
             ema_recall_metrics = (
                 self.map_metric_ema_max_dets.compute()

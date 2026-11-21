@@ -71,6 +71,7 @@ from backend.service.application.models.training.yolo_classification_training_pr
     append_yolo_classification_epoch_progress,
     build_yolo_classification_output_files_summary,
     build_yolo_classification_savepoint_summary,
+    read_yolo_classification_best_checkpoint_epoch,
 )
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
@@ -354,7 +355,17 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
             )
             return resolve_control_command(force=True)
 
+        best_checkpoint_saved_epoch = (
+            read_yolo_classification_best_checkpoint_epoch(
+                dataset_storage=self.dataset_storage, summary_object_key=summary_object_key
+            )
+            if resume_checkpoint_path is not None
+            else None
+        )
+
         def on_savepoint(savepoint: YoloV8ClassificationTrainingSavePoint) -> None:
+            """保存训练权重，并记录最佳权重文件实际来自的轮次。"""
+            nonlocal best_checkpoint_saved_epoch
             self.dataset_storage.write_bytes(
                 latest_checkpoint_object_key,
                 savepoint.latest_checkpoint_bytes,
@@ -364,6 +375,7 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
                     checkpoint_object_key,
                     savepoint.latest_checkpoint_bytes,
                 )
+                best_checkpoint_saved_epoch = savepoint.epoch
             # epoch 0 仅用于暂停/终止时恢复新训练，不属于周期 checkpoint。
             if savepoint.epoch >= 1:
                 periodic_checkpoint_retention.persist(
@@ -390,6 +402,7 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
                     train_metrics_object_key=train_metrics_object_key,
                     validation_metrics_object_key=validation_metrics_object_key,
                     summary_object_key=summary_object_key,
+                    best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
                 ),
             )
 
@@ -534,10 +547,14 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
             validation_metrics_object_key,
             execution_result.validation_metrics_payload,
         )
-        self.dataset_storage.write_json(
-            test_metrics_object_key,
-            dict(execution_result.test_metrics_payload or {}),
-        )
+        test_metrics_payload = dict(execution_result.test_metrics_payload or {})
+        if (
+            test_metrics_payload.get("available") is True
+            and test_metrics_payload.get("checkpoint_role") == "best"
+            and best_checkpoint_saved_epoch is not None
+        ):
+            test_metrics_payload["epoch"] = best_checkpoint_saved_epoch
+        self.dataset_storage.write_json(test_metrics_object_key, test_metrics_payload)
         self._write_labels_text(
             labels_object_key=labels_object_key,
             labels=execution_result.labels,
@@ -557,6 +574,8 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
             test_metrics_object_key=test_metrics_object_key,
             summary_object_key=summary_object_key,
         )
+        if best_checkpoint_saved_epoch is not None:
+            summary["best_checkpoint_saved_epoch"] = best_checkpoint_saved_epoch
         model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,

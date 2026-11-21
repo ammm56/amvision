@@ -7,6 +7,7 @@ import {
   buildMetricPointFromProgress,
   buildRuntimePoint,
   getTrainingMetricCapability,
+  readLegacyRfdetrMetricHistory,
   readOrderedMetricNames,
   readPersistedMetricHistory,
   readPersistedRuntimeHistory,
@@ -105,6 +106,28 @@ describe('training metric history', () => {
       { epoch: 5, metrics: { map50_95: 0.2 } },
       { epoch: 10, metrics: { map50_95: 0.4 } },
     ])
+  })
+
+  it('replays the completed epochs in legacy RF-DETR CSV history', () => {
+    expect(readLegacyRfdetrMetricHistory({
+      implementation_mode: 'rfdetr-full-core',
+      epoch_history: [
+        { epoch: '0', step: '10', 'train/loss_step': '5' },
+        { epoch: '0', step: '19', 'train/loss_epoch': '2.1' },
+        { epoch: '0', step: '19', 'val/loss': '1.4', 'val/segm_mAP_50_95': '0' },
+        { epoch: '1', step: '39', 'train/loss_epoch': '1.2', 'val/loss': '' },
+        { epoch: '2', step: '59', 'val/loss': '0.9', 'val/segm_mAP_50_95': '0.5' },
+      ],
+    })).toEqual({
+      train: [
+        { epoch: 1, metrics: { loss: 2.1 } },
+        { epoch: 2, metrics: { loss: 1.2 } },
+      ],
+      validation: [
+        { epoch: 1, metrics: { 'val/loss': 1.4, 'val/segm_mAP_50_95': 0 } },
+        { epoch: 3, metrics: { 'val/loss': 0.9, 'val/segm_mAP_50_95': 0.5 } },
+      ],
+    })
   })
 
   it('uses task capabilities for stable series ordering', () => {

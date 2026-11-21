@@ -9,6 +9,9 @@ from pathlib import Path
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.segmentation_checkpoint_epoch import (
+    write_segmentation_best_checkpoint_epoch,
+)
 from backend.service.application.models.training.checkpoint_recovery import (
     expose_recoverable_latest_checkpoint,
 )
@@ -364,6 +367,12 @@ class SqlAlchemyYolo26SegmentationTrainingTaskService:
                     checkpoint_object_key,
                     savepoint.latest_checkpoint_bytes,
                 )
+            if savepoint.best_checkpoint_saved_epoch is not None:
+                write_segmentation_best_checkpoint_epoch(
+                    dataset_storage=self.dataset_storage,
+                    summary_object_key=summary_object_key,
+                    epoch=savepoint.best_checkpoint_saved_epoch,
+                )
             # epoch 0 仅用于暂停/终止时恢复新训练，不属于周期 checkpoint。
             if savepoint.epoch >= 1:
                 periodic_checkpoint_retention.persist(
@@ -536,6 +545,9 @@ class SqlAlchemyYolo26SegmentationTrainingTaskService:
         if isinstance(output_files, dict):
             output_files["test_metrics_object_key"] = test_metrics_object_key
         summary["test_metrics_object_key"] = test_metrics_object_key
+        best_checkpoint_saved_epoch = getattr(execution_result, "best_checkpoint_saved_epoch", None)
+        if best_checkpoint_saved_epoch is not None:
+            summary["best_checkpoint_saved_epoch"] = best_checkpoint_saved_epoch
         model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,

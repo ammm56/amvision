@@ -71,6 +71,7 @@ def resolve_yolov8_detection_best_metric_update(
         direction="maximize" if has_validation else "minimize",
         minimum=0.0,
         maximum=1.0 if has_validation else None,
+        prefer_latest_on_tie=True,
     )
     return YoloV8DetectionBestMetricUpdate(
         improved=decision.improved,

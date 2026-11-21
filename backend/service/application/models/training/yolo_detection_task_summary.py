@@ -131,6 +131,9 @@ def build_yolo_detection_training_summary(
     summary["metrics_payload"] = execution_result.metrics_payload
     summary["validation_metrics_payload"] = validation_metrics_payload
     summary["test_metrics_payload"] = execution_result.test_metrics_payload
+    best_epoch = getattr(execution_result, "best_checkpoint_saved_epoch", None)
+    if best_epoch is not None:
+        summary["best_checkpoint_saved_epoch"] = best_epoch
     return summary
 
 

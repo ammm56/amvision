@@ -130,6 +130,8 @@ class Yolo11ObbTrainingExecutionResult:
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
     best_checkpoint_bytes: bytes | None = None
+    # 实际保存为 best checkpoint 的权重轮次。
+    best_checkpoint_saved_epoch: int | None = None
     test_metrics_payload: dict[str, object] | None = None
     test_split_name: str | None = None
     test_sample_count: int = 0
@@ -388,6 +390,8 @@ def run_yolo11_obb_training(
             category_names=labels,
             task_type="obb",
         )
+        if loop_result.best_checkpoint_saved_epoch is not None:
+            test_metrics_payload["epoch"] = loop_result.best_checkpoint_saved_epoch
     return Yolo11ObbTrainingExecutionResult(
         best_metric_value=loop_result.best_metric_value,
         best_metric_name=loop_result.best_metric_name,
@@ -414,6 +418,7 @@ def run_yolo11_obb_training(
         labels=labels,
         warm_start_summary=warm_start_summary,
         best_checkpoint_bytes=loop_result.best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=loop_result.best_checkpoint_saved_epoch,
         test_metrics_payload=test_metrics_payload,
         test_split_name="test" if manifest.test_annotations else None,
         test_sample_count=len(manifest.test_annotations),

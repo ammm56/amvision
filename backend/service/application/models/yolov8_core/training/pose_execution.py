@@ -16,6 +16,9 @@ from typing import Any
 from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
+from backend.service.application.models.yolo_core_common.training.pose_checkpoint import (
+    read_pose_checkpoint_epoch,
+)
 
 from backend.contracts.datasets.dataset_formats import (
     COCO_KEYPOINTS_DATASET_FORMAT,
@@ -140,6 +143,7 @@ class YoloV8PoseTrainingSavePoint:
     epoch: int
     learning_rate: float
     is_best: bool = False
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -204,6 +208,8 @@ class YoloV8PoseTrainingExecutionResult:
     test_metrics_payload: dict[str, object] | None = None
     test_split_name: str | None = None
     test_sample_count: int = 0
+    # 最佳权重文件记录的一基轮次。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @training_engine_entrypoint
@@ -367,6 +373,10 @@ def run_yolov8_pose_training(
         and request.previous_best_checkpoint_path.is_file()
         else b""
     )
+    best_checkpoint_saved_epoch = read_pose_checkpoint_epoch(
+        torch_module=torch,
+        checkpoint_bytes=best_checkpoint_bytes,
+    )
     validation_history: list[dict[str, object]] = list(
         resume_payload.get("validation_history", []) if resume_payload else []
     )
@@ -386,6 +396,29 @@ def run_yolov8_pose_training(
         grad_clip_norm=grad_clip,
         initial_iteration=global_iteration,
     )
+
+    def compute_batch_loss(
+        batch_model: Any,
+        raw_outputs: dict[str, Any],
+        batch_targets: list[Any],
+    ) -> dict[str, Any]:
+        """计算训练和验证共用的 pose 批次损失。"""
+
+        return compute_yolov8_pose_loss(
+            torch=torch,
+            model=batch_model,
+            raw_outputs=raw_outputs.get("one2many", raw_outputs),
+            batch_targets=batch_targets,
+            num_classes=num_classes,
+            kpt_shape=kpt_shape,
+            class_loss_weight=cls_w,
+            box_loss_weight=box_w,
+            dfl_loss_weight=dfl_w,
+            kpt_loss_weight=kpt_w,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+        )
 
     def build_completed_epoch_checkpoint(completed_epoch: int) -> bytes:
         """序列化最近完整 epoch；仅保存在当前 Attempt 内存中。"""
@@ -425,6 +458,7 @@ def run_yolov8_pose_training(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         learning_rate=resolve_yolo_optimizer_base_learning_rate(
             optimizer=optimizer,
             initial_learning_rate=training_schedule.initial_lr,
@@ -518,29 +552,11 @@ def run_yolov8_pose_training(
             )
             with autocast_ctx:
                 raw_outputs = model(images)
-                if isinstance(raw_outputs, dict) and "one2many" in raw_outputs:
-                    raw_for_loss = raw_outputs["one2many"]
-                else:
-                    raw_for_loss = raw_outputs
-
-                loss_dict = compute_yolov8_pose_loss(
-                    torch=torch,
-                    model=model,
-                    raw_outputs=raw_for_loss,
-                    batch_targets=targets,
-                    num_classes=num_classes,
-                    kpt_shape=kpt_shape,
-                    class_loss_weight=cls_w,
-                    box_loss_weight=box_w,
-                    dfl_loss_weight=dfl_w,
-                    kpt_loss_weight=kpt_w,
-                    assign_topk=assign_topk,
-                    assign_alpha=assign_alpha,
-                    assign_beta=assign_beta,
-                )
+                loss_dict = compute_batch_loss(model, raw_outputs, targets)
 
             total_loss = loss_dict["loss"]
             if not total_loss.requires_grad:
+                raw_for_loss = raw_outputs.get("one2many", raw_outputs)
                 total_loss = _build_pose_zero_grad_loss(raw_for_loss, torch)
             optimizer_step.backward_and_step(
                 loss=total_loss,
@@ -601,23 +617,28 @@ def run_yolov8_pose_training(
             has_validation_samples=bool(val_anns),
         )
         if should_evaluate:
-            val_metrics = evaluate_yolov8_pose_samples(
-                evaluation_options=extra,
-                model=ema.model,
-                samples=val_anns,
-                labels=labels,
-                input_size=input_size,
-                device=device,
-                precision=precision,
-                score_threshold=float(
-                    extra.get("evaluation_confidence_threshold", 0.001)
-                ),
-                nms_threshold=float(extra.get("evaluation_nms_threshold", 0.7)),
-                kpt_shape=kpt_shape,
-                imports=_build_yolo_training_imports(cv2, np, torch),
-                batch_size=bs,
-                control_callback=observe_control,
-            )
+            try:
+                val_metrics = evaluate_yolov8_pose_samples(
+                    evaluation_options=extra,
+                    model=ema.model,
+                    samples=val_anns,
+                    labels=labels,
+                    input_size=input_size,
+                    device=device,
+                    precision=precision,
+                    score_threshold=float(
+                        extra.get("evaluation_confidence_threshold", 0.001)
+                    ),
+                    nms_threshold=float(extra.get("evaluation_nms_threshold", 0.7)),
+                    kpt_shape=kpt_shape,
+                    imports=_build_yolo_training_imports(cv2, np, torch),
+                    batch_size=bs,
+                    control_callback=observe_control,
+                    compute_loss=compute_batch_loss,
+                )
+            except BaseException:
+                training_loader_lifecycle.close()
+                raise
             validation_history.append(
                 build_yolo_epoch_history_item(epoch_index=epoch, metrics=val_metrics)
             )
@@ -627,6 +648,7 @@ def run_yolov8_pose_training(
                 best_value=best_metric_value,
                 direction="maximize",
                 maximum=1.0,
+                prefer_latest_on_tie=True,
             )
             if best_metric_improved:
                 best_metric_value = current_metric
@@ -661,6 +683,7 @@ def run_yolov8_pose_training(
         ckpt_bytes = build_completed_epoch_checkpoint(epoch + 1)
         if best_metric_improved:
             best_checkpoint_bytes = ckpt_bytes
+            best_checkpoint_saved_epoch = epoch + 1
 
         last_completed_savepoint = YoloV8PoseTrainingSavePoint(
             latest_checkpoint_bytes=ckpt_bytes,
@@ -674,6 +697,7 @@ def run_yolov8_pose_training(
                 initial_learning_rate=training_schedule.initial_lr,
             ),
             is_best=best_metric_improved,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
         if checkpoint_decision.should_persist and request.savepoint_callback:
             request.savepoint_callback(last_completed_savepoint)
@@ -689,6 +713,7 @@ def run_yolov8_pose_training(
     )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = ckpt_bytes
+        best_checkpoint_saved_epoch = last_completed_savepoint.epoch
     test_metrics_payload = build_detection_test_metrics_report(
         available=False,
         sample_count=0,
@@ -731,6 +756,8 @@ def run_yolov8_pose_training(
             category_names=labels,
             task_type="pose",
         )
+        if best_checkpoint_saved_epoch is not None:
+            test_metrics_payload["epoch"] = best_checkpoint_saved_epoch
     test_policy = build_pose_evaluation_policy(
         input_size=input_size,
         score_threshold=float(extra.get("evaluation_confidence_threshold", 0.001)),
@@ -762,6 +789,7 @@ def run_yolov8_pose_training(
         labels=labels,
         warm_start_summary=warm_start_summary,
         best_checkpoint_bytes=best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         test_metrics_payload=test_metrics_payload,
         test_split_name="test" if test_anns else None,
         test_sample_count=len(test_anns),

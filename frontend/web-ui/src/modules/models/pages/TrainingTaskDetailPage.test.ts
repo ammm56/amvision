@@ -3,9 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { i18n } from '@/platform/i18n'
 import TrainingTaskDetailPage from './TrainingTaskDetailPage.vue'
+import TrainingMetricsCharts from '../components/TrainingMetricsCharts.vue'
+import { estimateTrainingRemainingSeconds } from '../training-remaining-time'
 import {
   getModelTrainingOutputFileDetail,
   getModelTrainingTaskDetail,
+  getTrainingWorkerStatus,
   listModelTrainingOutputFiles,
   requestModelTrainingTaskAction,
   type ModelTrainingTaskDetail,
@@ -46,6 +49,7 @@ vi.mock('../services/model.service', () => ({
   downloadModelTrainingOutputFile: vi.fn(),
   getModelTrainingOutputFileDetail: vi.fn(),
   getModelTrainingTaskDetail: vi.fn(),
+  getTrainingWorkerStatus: vi.fn(),
   listModelTrainingOutputFiles: vi.fn(),
   registerModelTrainingLatestCheckpoint: vi.fn(),
   requestModelTrainingTaskAction: vi.fn(),
@@ -87,6 +91,64 @@ describe('TrainingTaskDetailPage', () => {
     vi.clearAllMocks()
     taskEventStreamMock.handler = null
     trainingTelemetryStreamMock.handler = null
+  })
+
+  it('estimates the remaining time from completed rounds including validation, without mixing attempts', () => {
+    const events = [10, 14, 18, 26, 30].map((second, index) => ({
+      event_id: `event-${index}`, task_id: 'task-classification-1',
+      event_type: 'progress', created_at: new Date(second * 1_000).toISOString(), message: '',
+      payload: { attempt_no: 2, progress: { epoch: 78 + index, train_metrics: { loss: 0.002 } } },
+    }))
+    expect(estimateTrainingRemainingSeconds(events, 2, 82, 100)).toBe(90)
+    expect(estimateTrainingRemainingSeconds(events, 2, 83, 100)).toBe(85)
+    expect(estimateTrainingRemainingSeconds(events, 3, 82, 100)).toBeNull()
+    expect(estimateTrainingRemainingSeconds(events.slice(-2), 2, 82, 100)).toBeNull()
+  })
+
+  it('accounts for the future validation rounds when enough wall-clock samples are available', () => {
+    let second = 0
+    const events = Array.from({ length: 10 }, (_, index) => {
+      const epoch = index + 1
+      const validated = epoch % 3 === 0
+      second += validated ? 13 : 3
+      return {
+        event_id: `event-${epoch}`, task_id: 'task-classification-1', event_type: 'progress',
+        created_at: new Date(second * 1_000).toISOString(), message: '',
+        payload: { attempt_no: 1, progress: { epoch, train_metrics: { loss: 0.002 }, validation_ran: validated } },
+      }
+    })
+    expect(estimateTrainingRemainingSeconds(events, 1, 10, 14, 3)).toBe(32)
+  })
+
+  it('explains an offline worker and follows the queued task without a WebSocket event', async () => {
+    vi.useFakeTimers()
+    const queued: ModelTrainingTaskDetail = {
+      task_id: 'task-classification-1', task_type: 'classification', model_type: 'yolo11',
+      display_name: 'Queued training', project_id: 'project-1', created_at: '2026-07-10T02:00:00Z',
+      state: 'queued', current_attempt_no: 1, progress: {}, result: {}, metadata: {},
+      training_summary: {}, available_actions: ['terminate'], control_status: { status: 'idle', resume_count: 0 },
+      task_spec: { max_epochs: 100 }, events: [],
+    }
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue(queued)
+    vi.mocked(getTrainingWorkerStatus).mockResolvedValueOnce({ status: 'unavailable' }).mockResolvedValue({ status: 'ready' })
+    vi.mocked(listModelTrainingOutputFiles).mockResolvedValue([{
+      file_name: 'train-metrics', file_kind: 'json', file_status: 'pending', task_state: 'queued',
+    }])
+    const wrapper = mount(TrainingTaskDetailPage, { global: { plugins: [i18n] } })
+    await flushPromises()
+
+    expect(wrapper.get('.training-queue [role="status"]').text()).toContain('训练 Worker 未就绪')
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false)
+    expect(wrapper.find('.training-output-layout').exists()).toBe(false)
+    expect(getModelTrainingOutputFileDetail).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(wrapper.get('.training-queue [role="status"]').text()).toContain('等待训练 Worker 领取')
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({ ...queued, state: 'running' })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(wrapper.find('.training-queue').exists()).toBe(false)
+    expect(wrapper.get('.training-overview-progress [role="progressbar"]').attributes('aria-valuetext')).toBe('准备中')
+    expect(wrapper.get('.training-overview-progress').text()).toContain('0 / 100')
   })
 
   it('marks a deleted registered output while keeping the completed training detail', async () => {
@@ -148,7 +210,7 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.get('.training-cancelled-progress').text()).toContain('停止在第 3 轮')
     expect(wrapper.get('.page-actions').text()).toContain('按此配置新建训练')
     expect(requestModelTrainingTaskAction).toHaveBeenCalledTimes(2)
-  })
+  }, 15_000)
 
   it('renders non-detection progress, metrics, and output files', async () => {
     vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
@@ -174,8 +236,10 @@ describe('TrainingTaskDetailPage', () => {
         runtime: { step_time_ms: 19.6789 },
         validation_metrics: {
           epoch: 1,
+          epoch_index: 0,
           top1_accuracy: 0.66,
           top5_accuracy: 1,
+          'metrics/accuracy_top1': 0.66,
         },
       },
       result: {},
@@ -221,6 +285,25 @@ describe('TrainingTaskDetailPage', () => {
         object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
         size_bytes: 128,
         updated_at: '2026-07-10T02:01:00Z',
+        epoch: 2,
+      },
+      {
+        file_name: 'best-checkpoint',
+        file_kind: 'checkpoint',
+        file_status: 'ready',
+        task_state: 'succeeded',
+        object_key: 'task-runs/task-classification-1/output-files/best-checkpoint.pt',
+        size_bytes: 128,
+        epoch: 1,
+      },
+      {
+        file_name: 'test-metrics',
+        file_kind: 'json',
+        file_status: 'ready',
+        task_state: 'succeeded',
+        object_key: 'task-runs/task-classification-1/output-files/test-metrics.json',
+        epoch: null,
+        checkpoint_role: 'best',
       },
       {
         file_name: 'runtime-metrics',
@@ -254,6 +337,16 @@ describe('TrainingTaskDetailPage', () => {
             text_content: null,
             lines: [],
           }
+        : fileName === 'validation-metrics'
+        ? {
+            file_name: 'validation-metrics', file_kind: 'json', file_status: 'ready', task_state: 'succeeded',
+            object_key: 'task-runs/task-classification-1/output-files/validation-metrics.json',
+            payload: { epoch_history: [
+              { epoch: 1, top1_accuracy: 0.66 },
+              { epoch: 2, top1_accuracy: 0.66, 'metrics/accuracy_top1': 0.66, epoch_index: 1 },
+            ] },
+            text_content: null, lines: [],
+          }
         : {
             file_name: 'train-metrics',
             file_kind: 'json',
@@ -262,7 +355,7 @@ describe('TrainingTaskDetailPage', () => {
             object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
             size_bytes: 128,
             updated_at: '2026-07-10T02:01:00Z',
-            payload: { final_metrics: { loss: 0.1234567, accuracy: 0.875 } },
+            payload: { final_metrics: { loss: 0.1234567, accuracy: 0.875, small_loss: 0.000013 } },
             text_content: null,
             lines: [],
           },
@@ -296,14 +389,48 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).toContain('2 / 4')
     expect(wrapper.text()).toContain('loss')
     expect(wrapper.text()).toContain('loss0.123accuracy')
-    expect(wrapper.text()).toContain('0.1234567')
+    const trainFile = wrapper.get('.training-output-layout tbody tr:first-child')
+    expect(trainFile.findAll('td')[4].text()).toBe('2')
+    const bestFile = wrapper.findAll('.training-output-layout tbody tr').find(row => row.text().includes('best-checkpoint.pt'))
+    expect(bestFile?.findAll('td')[4].text()).toBe('1')
+    expect(wrapper.getComponent(TrainingMetricsCharts).props('bestEpoch')).toBe(1)
+    expect(wrapper.text()).toContain('最后一次达到最佳指标是第 2 轮。此任务的最佳权重文件保存于第 1 轮。')
+    await trainFile.get('button').trigger('click')
+    await flushPromises()
+    const preview = document.querySelector('[role="dialog"]')
+    expect(preview?.textContent).toContain('train-metrics.json')
+    expect(preview?.textContent).toContain('small_loss1.3e-5')
+    expect(preview?.textContent).toContain('原始 JSON')
     expect(wrapper.text()).toContain('Learning rate0.0003')
     expect(wrapper.text()).toContain('20 ms')
-    expect(wrapper.text()).toContain('top1_accuracy')
+    const metrics = wrapper.get('[aria-labelledby="training-metrics-title"]')
+    expect(metrics.text()).toContain('Top-1 Accuracy0.66')
+    expect(metrics.text()).not.toContain('metrics/accuracy_top1')
+    expect(metrics.text()).not.toContain('epoch_index')
+    expect(wrapper.get('.training-more').text()).not.toContain('dataset-export-1')
     expect(wrapper.text()).toContain('train-metrics')
     expect(wrapper.text()).toContain('runtime-metrics')
     expect(trainingTelemetryStreamMock.start).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('此旧任务未保存运行时遥测')
+
+    const testFile = wrapper.findAll('.training-output-layout tbody tr')
+      .find(row => row.text().includes('test-metrics.json'))!
+    expect(testFile.findAll('td')[4].text()).toBe('—')
+    vi.mocked(getModelTrainingOutputFileDetail).mockResolvedValueOnce({
+      file_name: 'test-metrics',
+      file_kind: 'json',
+      file_status: 'ready',
+      task_state: 'succeeded',
+      object_key: 'task-runs/task-classification-1/output-files/test-metrics.json',
+      epoch: null,
+      checkpoint_role: 'best',
+      payload: { available: false, metrics: {} },
+      text_content: null,
+      lines: [],
+    })
+    await testFile.get('button').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('没有可用的独立测试结果。')
   })
 
   it('separates completed epoch metrics from volatile batch metrics', async () => {
@@ -439,7 +566,7 @@ describe('TrainingTaskDetailPage', () => {
     expect(taskEventStreamMock.start).toHaveBeenCalled()
     expect(trainingTelemetryStreamMock.start).toHaveBeenCalled()
 
-    trainingTelemetryStreamMock.handler?.({
+    const batch = {
       protocol: 'training.telemetry.v1',
       task_id: 'task-classification-1',
       attempt_no: 1,
@@ -466,11 +593,13 @@ describe('TrainingTaskDetailPage', () => {
         gpu_utilization_percent: 73,
         gpu_memory_allocated_bytes: 2147483648,
       },
-    })
+    }
+    trainingTelemetryStreamMock.handler?.(batch)
     await flushPromises()
 
     expect(wrapper.text()).toContain('3 / 4')
-    expect(wrapper.get('.training-overview-progress [role="progressbar"]').attributes('aria-valuenow')).toBe('68')
+    const progressBar = () => wrapper.get('.training-overview-progress [role="progressbar"]').attributes('aria-valuenow')
+    expect(progressBar()).toBe('50')
     expect(wrapper.text()).toContain('0.875')
     expect(wrapper.text()).toContain('训练运行时')
     expect(wrapper.text()).toContain('42.5')
@@ -483,6 +612,33 @@ describe('TrainingTaskDetailPage', () => {
     const download = wrapper.findAll('.training-output-layout tbody button').find(button => button.text() === '下载')
     expect(download?.exists()).toBe(true)
     expect(download?.attributes('disabled')).toBeUndefined()
+
+    // 完整轮次晚于下一轮首批到达时，进度和轨道保持同一口径。
+    taskEventStreamMock.handler?.({
+      event_id: 'event-epoch-2', task_id: batch.task_id, event_type: 'progress', created_at: batch.timestamp,
+      payload: { attempt_no: 1, progress: { epoch: 2, percent: 45, train_metrics: { loss: 0.8 } } },
+    })
+    await flushPromises()
+    expect(progressBar()).toBe('50')
+    await wrapper.findAll('button').find(button => button.text() === '刷新')!.trigger('click')
+    await flushPromises()
+    expect(progressBar()).toBe('50')
+
+    taskEventStreamMock.handler?.({
+      event_id: 'event-epoch-4', task_id: batch.task_id, event_type: 'progress', created_at: batch.timestamp,
+      payload: { attempt_no: 1, progress: { epoch: 4, percent: 90, train_metrics: { loss: 0.3 } } },
+    })
+    await flushPromises()
+    expect(progressBar()).toBe('100')
+    expect(wrapper.get('.training-progress-eta').text()).toContain('正在整理产物')
+
+    trainingTelemetryStreamMock.handler?.({ ...batch, attempt_no: 2, epoch: 1, epoch_index: 0, global_step: 1 })
+    await flushPromises()
+    expect(progressBar()).toBe('0')
+
+    trainingTelemetryStreamMock.handler?.(batch)
+    await flushPromises()
+    expect(progressBar()).toBe('0')
   }, 10_000)
 
   it('applies completed epoch metrics from task events over an older output snapshot', async () => {

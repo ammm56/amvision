@@ -1,14 +1,27 @@
 <template>
   <div class="training-charts-grid" :class="{ 'training-charts-grid--compact': compact }">
-    <article class="training-chart-card">
-      <h3>{{ trainLossKey ? (validationLossKey ? (locale.startsWith('zh') ? '训练与验证损失' : 'Training and validation loss') : (locale.startsWith('zh') ? '训练损失' : 'Training loss')) : t('trainingDetail.charts.trainMetrics') }}</h3>
+    <article v-if="!diagnosticsOnly" class="training-chart-card">
+      <div class="training-chart-heading">
+        <h3>{{ lossTitle }}</h3>
+        <span v-if="latestTrainLoss !== undefined">{{ zh ? '最新训练损失' : 'Latest training loss' }} <strong>{{ formatTrainingMetric(latestTrainLoss) }}</strong></span>
+      </div>
       <div ref="trainChartElement" class="training-chart-canvas" />
-      <span v-if="trainHistory.length === 0" class="training-chart-empty">{{ t('common.noValue') }}</span>
+      <span v-if="trainHistory.length === 0 && !validationLossKey" class="training-chart-empty">{{ metricsEmptyText || t('common.noValue') }}</span>
+      <p v-if="compact && validationHistory.length && !validationLossKey" class="training-chart-note">
+        {{ zh ? '这次训练未记录验证损失' : 'Validation loss was not recorded for this run' }}
+      </p>
     </article>
-    <article class="training-chart-card">
-      <h3>{{ primaryMetricLabel ? `${locale.startsWith('zh') ? '验证集' : 'Validation'} ${primaryMetricLabel}` : t('trainingDetail.charts.validationMetrics') }}</h3>
+    <article v-if="!diagnosticsOnly" class="training-chart-card">
+      <div class="training-chart-heading">
+        <h3>{{ primaryMetricLabel ? `${zh ? '验证集' : 'Validation'} ${primaryMetricLabel}` : t('trainingDetail.charts.validationMetrics') }}</h3>
+        <div v-if="validationSummary.length" class="training-chart-scores">
+          <span v-for="score in validationSummary" :key="score.label" :title="checkpointLabel(score.epoch, false)">
+            {{ score.label }} <strong>{{ score.value }}</strong>
+          </span>
+        </div>
+      </div>
       <div ref="validationChartElement" class="training-chart-canvas" />
-      <span v-if="validationHistory.length === 0" class="training-chart-empty">{{ t('common.noValue') }}</span>
+      <span v-if="validationHistory.length === 0" class="training-chart-empty">{{ metricsEmptyText || t('common.noValue') }}</span>
     </article>
     <article v-if="!compact" class="training-chart-card training-chart-card--wide">
       <h3>{{ t('trainingDetail.charts.learningRate') }}</h3>
@@ -34,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { formatLearningRate, formatModelNumber, formatSmallModelNumber, modelChartValueFormatter } from '../model-number-format'
+import { formatLearningRate, formatModelNumber, formatSmallModelNumber, formatTrainingMetric, modelChartValueFormatter } from '../model-number-format'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { LineChart } from 'echarts/charts'
@@ -43,6 +56,7 @@ import {
   GridComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkPointComponent,
   TooltipComponent,
 } from 'echarts/components'
 import { init, use, type ECharts, type EChartsCoreOption } from 'echarts/core'
@@ -51,6 +65,7 @@ import { workbenchFontFamily } from '@/shared/ui/canvas-font'
 
 import type { ModelTaskType } from '../services/model.service'
 import {
+  formatTrainingMetricLabel,
   getTrainingMetricCapability,
   readOrderedMetricNames,
   type TrainingMetricPoint,
@@ -58,7 +73,7 @@ import {
   type TrainingScalarPoint,
 } from '../training-metric-history'
 
-use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, DataZoomComponent, CanvasRenderer])
+use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, MarkPointComponent, DataZoomComponent, CanvasRenderer])
 
 const props = defineProps<{
   taskType: ModelTaskType
@@ -67,12 +82,15 @@ const props = defineProps<{
   learningRateHistory: TrainingScalarPoint[]
   runtimeHistory: TrainingRuntimePoint[]
   runtimeEmptyText: string
+  metricsEmptyText?: string
   compact?: boolean
+  diagnosticsOnly?: boolean
   bestEpoch?: number
   primaryMetric?: string | null
 }>()
 
 const { t, locale } = useI18n()
+const zh = computed(() => locale.value.startsWith('zh'))
 const trainChartElement = ref<HTMLElement | null>(null)
 const validationChartElement = ref<HTMLElement | null>(null)
 const learningRateChartElement = ref<HTMLElement | null>(null)
@@ -80,17 +98,58 @@ const runtimeChartElement = ref<HTMLElement | null>(null)
 const gpuChartElement = ref<HTMLElement | null>(null)
 const stageChartElement = ref<HTMLElement | null>(null)
 const capability = computed(() => getTrainingMetricCapability(props.taskType))
-const lossKey = (history: TrainingMetricPoint[]) => props.compact
-  ? ['loss', 'total_loss'].find(name => history.some(point => Object.hasOwn(point.metrics, name)))
-  : undefined
-const trainLossKey = computed(() => lossKey(props.trainHistory))
-const validationLossKey = computed(() => lossKey(props.validationHistory))
-const primaryMetricKey = computed(() => {
-  if (!props.compact || !props.primaryMetric) return undefined
-  const names = [props.primaryMetric, props.primaryMetric.replace(/^val[_/]/, '')]
-  return names.find(name => props.validationHistory.some(point => Object.hasOwn(point.metrics, name)))
+const trainLossKey = computed(() => readCompactMetric(props.trainHistory, ['loss', 'total_loss', 'train/loss_epoch', 'train/loss']))
+const validationLossKey = computed(() => readCompactMetric(props.validationHistory, ['loss', 'total_loss', 'val_loss', 'val/loss']))
+const lossTitle = computed(() => {
+  if (trainLossKey.value && validationLossKey.value) return zh.value ? '训练与验证损失' : 'Training and validation loss'
+  if (trainLossKey.value) return zh.value ? '训练损失' : 'Training loss'
+  if (validationLossKey.value) return zh.value ? '验证损失' : 'Validation loss'
+  return t('trainingDetail.charts.trainMetrics')
 })
-const primaryMetricLabel = computed(() => primaryMetricKey.value === 'map50_95' ? 'mAP50–95' : primaryMetricKey.value)
+const latestTrainLoss = computed(() => {
+  const key = trainLossKey.value
+  return key ? latestMetricPoint(props.trainHistory, key)?.metrics[key] : undefined
+})
+const checkpointMetricKey = computed(() => {
+  const name = props.primaryMetric
+  if (name && !/^train[_/]/.test(name)) {
+    return readCompactMetric(props.validationHistory, [name, name.replace(/^val[_/]/, '')])
+  }
+  return undefined
+})
+const primaryMetricKey = computed(() => {
+  return checkpointMetricKey.value
+    ?? readCompactMetric(props.validationHistory, capability.value.validationMetrics.filter(name => name !== 'loss'))
+})
+const primaryMetricLabel = computed(() => {
+  const key = primaryMetricKey.value
+  return key ? formatTrainingMetricLabel(key, props.taskType, props.validationHistory) : undefined
+})
+const validationBestPoint = computed(() => {
+  const key = checkpointMetricKey.value
+  const epoch = props.bestEpoch
+  return key && epoch !== undefined
+    ? props.validationHistory.find(point => point.epoch === epoch && Number.isFinite(point.metrics[key]))
+    : undefined
+})
+const validationLatestPoint = computed(() => {
+  const key = primaryMetricKey.value
+  const point = key ? latestMetricPoint(props.validationHistory, key) : undefined
+  return point?.epoch === validationBestPoint.value?.epoch ? undefined : point
+})
+const validationSummary = computed(() => {
+  const key = primaryMetricKey.value
+  const best = validationBestPoint.value
+  const latest = validationLatestPoint.value
+  if (!key) return []
+  return [
+    ...(best ? [{ label: zh.value ? '最佳' : 'Best', value: formatTrainingMetric(best.metrics[key]), epoch: best.epoch }] : []),
+    ...(latest ? [{ label: zh.value ? '最新' : 'Latest', value: formatTrainingMetric(latest.metrics[key]), epoch: latest.epoch }] : []),
+  ]
+})
+const compactLastEpoch = computed(() => props.compact
+  ? Math.max(props.trainHistory.at(-1)?.epoch ?? 0, props.validationHistory.at(-1)?.epoch ?? 0)
+  : undefined)
 const hasGpuHistory = computed(() => props.runtimeHistory.some((point) => (
   'gpu_utilization_percent' in point.runtime
   || 'gpu_memory_allocated_bytes' in point.runtime
@@ -153,6 +212,7 @@ watch(
     props.runtimeHistory,
     props.bestEpoch,
     props.primaryMetric,
+    locale.value,
   ],
   renderCharts,
   { deep: true },
@@ -175,14 +235,40 @@ function initializeChart(element: HTMLElement | null): ECharts | null {
   return init(element, { textStyle: { fontFamily: workbenchFontFamily() } }, { renderer: 'canvas' })
 }
 
+function readCompactMetric(history: TrainingMetricPoint[], names: readonly string[]): string | undefined {
+  return props.compact ? names.find(name => history.some(point => Number.isFinite(point.metrics[name]))) : undefined
+}
+
+function latestMetricPoint(history: TrainingMetricPoint[], key: string): TrainingMetricPoint | undefined {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const point = history[index]
+    if (Number.isFinite(point.metrics[key])) return point
+  }
+  return undefined
+}
+
 function renderCharts(): void {
-  const best = props.bestEpoch
-  trainChart?.setOption(trainLossKey.value ? buildBaseOption([
-    metricLine('train loss', props.trainHistory, trainLossKey.value, best),
-    ...(validationLossKey.value ? [{ ...metricLine('val loss', props.validationHistory, validationLossKey.value), itemStyle: { color: chartVisual().text } }] : []),
-  ]) : buildMetricOption(props.trainHistory, capability.value.trainMetrics, true), true)
-  validationChart?.setOption(primaryMetricKey.value
-    ? buildBaseOption([metricLine(primaryMetricLabel.value ?? primaryMetricKey.value, props.validationHistory, primaryMetricKey.value, best)])
+  const lossSeries = []
+  if (trainLossKey.value) {
+    lossSeries.push(metricLine('train loss', props.trainHistory, trainLossKey.value, props.bestEpoch))
+  }
+  if (validationLossKey.value) {
+    const color = chartVisual().text
+    lossSeries.push({
+      ...metricLine('val loss', props.validationHistory, validationLossKey.value, trainLossKey.value ? undefined : props.bestEpoch),
+      lineStyle: { color },
+      itemStyle: { color },
+    })
+  }
+  trainChart?.setOption(lossSeries.length
+    ? buildBaseOption(lossSeries)
+    : buildMetricOption(props.trainHistory, capability.value.trainMetrics, true), true)
+  const validationKey = primaryMetricKey.value
+  validationChart?.setOption(validationKey
+    ? buildBaseOption([{
+      ...metricLine(`val ${primaryMetricLabel.value}`, props.validationHistory, validationKey, validationBestPoint.value?.epoch),
+      markPoint: validationMarkers(validationKey),
+    }])
     : buildMetricOption(props.validationHistory, capability.value.validationMetrics, false), true)
   learningRateChart?.setOption(buildLearningRateOption(props.learningRateHistory), true)
   runtimeChart?.setOption(buildRuntimePerformanceOption(props.runtimeHistory), true)
@@ -262,7 +348,7 @@ function buildDualAxisOption(input: {
     animation: false,
     color: visual.palette,
     textStyle: { color: visual.text, fontFamily: workbenchFontFamily() },
-    tooltip: { trigger: 'axis' },
+    tooltip: { trigger: 'axis', ...visual.tooltip },
     legend: { type: 'scroll', top: 0, left: 0, textStyle: { fontSize: 11, color: visual.text }, pageTextStyle: { color: visual.text } },
     grid: { left: 60, right: 60, top: 48, bottom: 42 },
     xAxis: {
@@ -303,21 +389,40 @@ function buildMetricOption(
   return buildBaseOption(metricNames.map(name => metricLine(name, history, name)))
 }
 
+function checkpointLabel(epoch: number, best: boolean): string {
+  if (best) return zh.value ? `最佳轮次 ${epoch}` : `Best epoch ${epoch}`
+  return zh.value ? `第 ${epoch} 轮` : `Epoch ${epoch}`
+}
+
+function validationMarkers(key: string): Record<string, unknown> {
+  const visual = chartVisual()
+  const points = [validationBestPoint.value, validationLatestPoint.value]
+  return {
+    silent: true,
+    symbol: 'circle',
+    symbolSize: 8,
+    label: { show: false },
+    itemStyle: { color: visual.palette[0], borderColor: visual.surface, borderWidth: 1.5 },
+    data: points.flatMap(point => point ? [{ coord: [point.epoch, point.metrics[key]] }] : []),
+  }
+}
+
 function metricLine(name: string, history: TrainingMetricPoint[], key: string, epoch?: number) {
   const metric = history.find(point => point.epoch === epoch)?.metrics[key]
-  const markLine = epoch != null && metric !== undefined ? {
+  const markLine = epoch != null && Number.isFinite(metric) ? {
     silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: chartVisual().text },
     label: { position: 'insideEndTop', rotate: 0, color: chartVisual().text, textBorderWidth: 0,
-      formatter: locale.value.startsWith('zh') ? `最佳轮次 ${epoch}` : `Best epoch ${epoch}` },
+      formatter: checkpointLabel(epoch, true) },
     data: [{ xAxis: epoch }],
   } : undefined
+  const plotHistory = props.compact ? history.filter(point => Number.isFinite(point.metrics[key])) : history
   return {
     name,
     type: 'line',
-    showSymbol: history.length <= 80,
+    showSymbol: plotHistory.length <= 80,
     symbolSize: 5,
     connectNulls: false,
-    data: history.map((point) => [point.epoch, point.metrics[key] ?? null]),
+    data: plotHistory.map((point) => [point.epoch, point.metrics[key] ?? null]),
     markLine,
   }
 }
@@ -332,17 +437,25 @@ function buildLearningRateOption(history: TrainingScalarPoint[]): EChartsCoreOpt
   }], formatLearningRate)
 }
 
-function buildBaseOption(series: unknown[], format: (value: number) => string = formatModelNumber): EChartsCoreOption {
+function buildBaseOption(series: unknown[], format: (value: number) => string = formatTrainingMetric): EChartsCoreOption {
   const visual = chartVisual()
+  const lastEpoch = compactLastEpoch.value
+  const axisMax = lastEpoch && lastEpoch > 1 ? lastEpoch : undefined
   return {
     animation: false,
     color: visual.palette,
     textStyle: { color: visual.text, fontFamily: workbenchFontFamily() },
-    tooltip: { trigger: 'axis', valueFormatter: modelChartValueFormatter(format) },
-    legend: { type: 'scroll', top: 0, left: 0, textStyle: { fontSize: 11, color: visual.text }, pageTextStyle: { color: visual.text } },
-    grid: { left: 54, right: 18, top: 48, bottom: 42 },
-    xAxis: { type: 'value', min: 1, minInterval: 1, name: 'epoch', nameLocation: 'middle', nameGap: 28, ...visual.axis,
-      axisLabel: { ...visual.axis.axisLabel, formatter: (value: number) => Number.isInteger(value) ? String(value) : '' } },
+    tooltip: { trigger: 'axis', ...visual.tooltip, valueFormatter: modelChartValueFormatter(format) },
+    legend: {
+      type: 'scroll', top: 0, left: props.compact ? 'auto' : 0, right: props.compact ? 0 : 'auto',
+      icon: props.compact ? 'circle' : undefined,
+      itemWidth: props.compact ? 8 : undefined,
+      itemHeight: props.compact ? 8 : undefined,
+      textStyle: { fontSize: 11, color: visual.text }, pageTextStyle: { color: visual.text },
+    },
+    grid: { left: 54, right: 23, top: 48, bottom: 42 },
+    xAxis: { type: 'value', min: 1, max: axisMax, minInterval: 1, name: 'epoch', nameLocation: 'middle', nameGap: 28, ...visual.axis,
+      axisLabel: { ...visual.axis.axisLabel, hideOverlap: true, formatter: (value: number) => Number.isInteger(value) ? String(value) : '' } },
     yAxis: { type: 'value', scale: true, ...visual.axis,
       axisLabel: { ...visual.axis.axisLabel, formatter: (value: number) => formatSmallModelNumber(value) } },
     dataZoom: series.length > 0 ? [{ type: 'inside', filterMode: 'none' }] : [],
@@ -355,8 +468,13 @@ function chartVisual() {
   const text = styles.getPropertyValue('--am-text-muted').trim() || '#64676a'
   const border = styles.getPropertyValue('--am-border').trim() || '#d9ddda'
   const dark = document.documentElement.dataset.theme === 'dark'
+  const foreground = styles.getPropertyValue('--am-text').trim() || (dark ? '#eeeeee' : '#242424')
+  const surface = styles.getPropertyValue('--am-surface-soft').trim() || (dark ? '#222222' : '#ffffff')
   return {
     text,
+    foreground,
+    surface,
+    tooltip: { backgroundColor: surface, borderColor: border, textStyle: { color: foreground }, confine: true },
     palette: dark ? ['#00d696', '#75b4ff', '#ffc35c', '#ff8181', '#bba1ff', '#4de1f1'] : ['#0f8a68', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
     axis: { axisLabel: { color: text }, nameTextStyle: { color: text }, axisLine: { lineStyle: { color: border } }, splitLine: { lineStyle: { color: border } } },
   }
@@ -364,6 +482,11 @@ function chartVisual() {
 </script>
 
 <style scoped>
+.training-chart-heading { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:4px 12px; }
+.training-chart-scores { display:flex; flex-wrap:wrap; gap:4px 12px; }
+.training-chart-note { margin:0; color:var(--am-text-muted); font-size:12px; }
+.training-chart-heading span { color:var(--am-text-muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.training-chart-heading strong { margin-inline-start:4px; color:var(--am-text); }
 .training-charts-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

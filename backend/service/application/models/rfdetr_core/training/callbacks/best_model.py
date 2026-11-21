@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,6 +47,7 @@ class BestModelCallback(ModelCheckpoint):
         monitor_ema: str | None = None,
         run_test: bool = True,
         skip_best_epochs: int = 0,
+        segmentation: bool = False,
     ) -> None:
         super().__init__(
             dirpath=output_dir,
@@ -68,6 +70,103 @@ class BestModelCallback(ModelCheckpoint):
             raise ValueError("skip_best_epochs must be greater than or equal to 0")
         self._skip_best_epochs = skip_best_epochs
         self._current_pl_module: LightningModule | None = None
+        self._uses_platform_best = segmentation
+        self._regular_metric = "val/segm_mAP_50_95" if segmentation else monitor_regular
+        self._ema_metric = (
+            "val/ema_segm_mAP_50_95" if segmentation and monitor_ema else monitor_ema
+        )
+        self.best_checkpoint_metric_name: str | None = None
+        self.best_checkpoint_score: float | None = None
+        self.best_checkpoint_epoch: int | None = None
+        self._platform_best_callback: Callable[[Path, int], None] | None = None
+
+    def configure_platform_best_checkpoint(
+        self,
+        *,
+        previous_checkpoint: Path | None,
+        on_save: Callable[[Path, int], None] | None,
+    ) -> None:
+        """接入平台保存回调，并恢复上一 Attempt 实际落盘的最佳权重。"""
+
+        self._uses_platform_best = True
+        self._platform_best_callback = on_save
+        if previous_checkpoint is None or not previous_checkpoint.is_file():
+            return
+        checkpoint = torch.load(previous_checkpoint, map_location="cpu", weights_only=False)
+        epoch = checkpoint.get("best_checkpoint_epoch", checkpoint.get("segmentation_best_epoch"))
+        if type(epoch) is not int or epoch < 1:
+            legacy_epoch = checkpoint.get("epoch")
+            epoch = legacy_epoch + 1 if type(legacy_epoch) is int and legacy_epoch >= 0 else None
+        score = checkpoint.get("best_checkpoint_score", checkpoint.get("segmentation_best_score"))
+        self.best_checkpoint_epoch = epoch
+        if epoch is not None and is_valid_training_metric(score, maximum=1.0):
+            self.best_checkpoint_score = float(score)
+            self.best_checkpoint_metric_name = checkpoint.get(
+                "best_checkpoint_metric_name", self._regular_metric
+            )
+        shutil.copy2(previous_checkpoint, self._output_dir / "checkpoint_best_total.pth")
+
+    def _save_platform_best(
+        self, trainer: Trainer, pl_module: LightningModule
+    ) -> None:
+        """根据任务主指标比较原始权重和 EMA 权重，同分时保留较晚轮次。"""
+
+        if trainer.sanity_checking or not trainer.is_global_zero:
+            return
+        epoch = trainer.current_epoch + 1
+        interval = max(1, int(pl_module.train_config.eval_interval))
+        if epoch % interval and epoch < trainer.max_epochs:
+            return
+
+        metrics = trainer.callback_metrics
+        regular = metrics.get(self._regular_metric)
+        ema = metrics.get(self._ema_metric) if self._ema_metric else None
+        regular_value = float(regular) if regular is not None else None
+        ema_value = float(ema) if ema is not None else None
+        use_ema = is_better_training_metric(
+            current_value=ema_value,
+            best_value=regular_value,
+            direction="maximize",
+            maximum=1.0,
+        )
+        score = ema_value if use_ema else regular_value
+        metric_name = self._ema_metric if use_ema else self._regular_metric
+        if not is_better_training_metric(
+            current_value=score,
+            best_value=self.best_checkpoint_score,
+            direction="maximize",
+            maximum=1.0,
+            prefer_latest_on_tie=epoch > (self.best_checkpoint_epoch or 0),
+        ):
+            return
+
+        model = getattr(pl_module.model, "_orig_mod", pl_module.model)
+        model_state = model.state_dict()
+        selected_state = (
+            self._get_ema_model_state_dict(trainer, pl_module) if use_ema else model_state
+        )
+        train_config = pl_module.train_config
+        class_names = getattr(trainer.datamodule, "class_names", None)
+        if class_names is not None and train_config.class_names is None:
+            train_config = train_config.model_copy(update={"class_names": class_names})
+        checkpoint = self._build_checkpoint_payload(
+            selected_state,
+            train_config.model_dump(),
+            trainer,
+            model_name=self._resolve_model_name(pl_module),
+            resume_model_state_dict=model_state,
+        )
+        checkpoint["best_checkpoint_epoch"] = epoch
+        checkpoint["best_checkpoint_score"] = score
+        checkpoint["best_checkpoint_metric_name"] = metric_name
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        path = self._output_dir / "checkpoint_best_total.pth"
+        torch.save(checkpoint, path)
+        self.best_checkpoint_score = score
+        self.best_checkpoint_epoch = epoch
+        self.best_checkpoint_metric_name = metric_name
+        if self._platform_best_callback is not None:
+            self._platform_best_callback(path, epoch)
 
     @staticmethod
     def _build_checkpoint_payload(
@@ -265,6 +364,9 @@ class BestModelCallback(ModelCheckpoint):
         self._current_pl_module = pl_module
         if trainer.current_epoch < self._skip_best_epochs:
             return
+        if self._uses_platform_best:
+            self._save_platform_best(trainer, pl_module)
+            return
         if self.monitor not in trainer.callback_metrics:
             return
         regular_metric = trainer.callback_metrics[self.monitor]
@@ -336,6 +438,11 @@ class BestModelCallback(ModelCheckpoint):
         """
         if not trainer.is_global_zero:
             return
+        if self._uses_platform_best:
+            self._test_best_checkpoint(
+                trainer, pl_module, self._output_dir / "checkpoint_best_total.pth"
+            )
+            return
 
         restored_best_regular = (
             self.best_model_score.item()
@@ -368,24 +475,43 @@ class BestModelCallback(ModelCheckpoint):
                 self._best_ema,
             )
 
-        if self._run_test:
-            cls_test_step = getattr(type(pl_module), "test_step", None)
-            has_test_step = cls_test_step is not None and cls_test_step is not LightningModule.test_step
-            if has_test_step:
-                if not total_path.exists():
-                    logger.warning(
-                        "Skipping trainer.test() because no best checkpoint was produced. "
-                        "Ensure the monitored metric is logged on evaluation epochs, that evaluation "
-                        "runs often enough, and that skip_best_epochs is smaller than the number of "
-                        "training epochs."
-                    )
-                    return
-                ckpt = torch.load(total_path, map_location="cpu", weights_only=False)
-                _orig = getattr(pl_module.model, "_orig_mod", None)
-                raw = _orig if isinstance(_orig, torch.nn.Module) else pl_module.model
-                raw.load_state_dict(ckpt["model"], strict=True)
-                logger.info("Loaded best weights from %s for test evaluation.", total_path)
-                trainer.test(pl_module, datamodule=trainer.datamodule, verbose=False)
+        self._test_best_checkpoint(trainer, pl_module, total_path)
+
+    def _test_best_checkpoint(
+        self, trainer: Trainer, pl_module: LightningModule, total_path: Path
+    ) -> None:
+        """在独立测试集上评估已写入权重文件的模型。"""
+
+        if not self._run_test:
+            return
+        test_step = getattr(type(pl_module), "test_step", None)
+        if test_step is None or test_step is LightningModule.test_step:
+            return
+        if not total_path.exists():
+            logger.warning("Skipping trainer.test() because no best checkpoint was produced.")
+            return
+
+        checkpoint = torch.load(total_path, map_location="cpu", weights_only=False)
+        model = getattr(pl_module.model, "_orig_mod", pl_module.model)
+        model.load_state_dict(checkpoint["model"], strict=True)
+        logger.info("Loaded best weights from %s for test evaluation.", total_path)
+        if not self._uses_platform_best:
+            trainer.test(pl_module, datamodule=trainer.datamodule, verbose=False)
+            return
+
+        from backend.service.application.models.rfdetr_core.training.callbacks.ema import (
+            RFDETREMACallback,
+        )
+
+        callbacks = trainer.callbacks
+        # 独立测试直接使用已选择的权重，避免被最终轮的 EMA 覆盖。
+        trainer.callbacks = [
+            callback for callback in callbacks if not isinstance(callback, RFDETREMACallback)
+        ]
+        try:
+            trainer.test(pl_module, datamodule=trainer.datamodule, verbose=False)
+        finally:
+            trainer.callbacks = callbacks
 
 
 class RFDETREarlyStopping(EarlyStopping):

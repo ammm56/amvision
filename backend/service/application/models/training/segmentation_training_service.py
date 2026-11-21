@@ -8,6 +8,9 @@ from pathlib import Path
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.segmentation_checkpoint_epoch import (
+    write_segmentation_best_checkpoint_epoch,
+)
 from backend.service.application.models.training.checkpoint_recovery import (
     expose_recoverable_latest_checkpoint,
 )
@@ -471,6 +474,14 @@ class SqlAlchemySegmentationTrainingService:
                     checkpoint_object_key,
                     savepoint.latest_checkpoint_bytes,
                 )
+            if isinstance(savepoint, YoloV8SegmentationTrainingSavePoint):
+                best_checkpoint_saved_epoch = savepoint.best_checkpoint_saved_epoch
+                if best_checkpoint_saved_epoch is not None:
+                    write_segmentation_best_checkpoint_epoch(
+                        dataset_storage=self.dataset_storage,
+                        summary_object_key=summary_object_key,
+                        epoch=best_checkpoint_saved_epoch,
+                    )
             completed_epoch = (
                 savepoint.epoch + 1
                 if isinstance(savepoint, RfdetrSegmentationTrainingSavePoint)
@@ -481,6 +492,19 @@ class SqlAlchemySegmentationTrainingService:
                     epoch=completed_epoch,
                     checkpoint_bytes=savepoint.latest_checkpoint_bytes,
                 )
+
+        def on_rfdetr_best_checkpoint(path: Path, epoch: int) -> None:
+            """将当前最佳 mask mAP 的权重和实际轮次从 Attempt 临时目录落盘。"""
+            if execution_fence is not None:
+                self.task_service.validate_task_execution_fence(
+                    task_id=task_record.task_id, fence=execution_fence
+                )
+            self.dataset_storage.copy_file(path, checkpoint_object_key)
+            write_segmentation_best_checkpoint_epoch(
+                dataset_storage=self.dataset_storage,
+                summary_object_key=summary_object_key,
+                epoch=epoch,
+            )
 
         def poll_yolo_control() -> YoloV8SegmentationTrainingControlCommand | None:
             """在 train/validation batch 安全点复用 Attempt 级探针。"""
@@ -499,6 +523,10 @@ class SqlAlchemySegmentationTrainingService:
                         input_size=input_size,
                         precision=str(payload.get("precision") or "fp32"),
                         resume_checkpoint_path=resume_checkpoint_path,
+                        previous_best_checkpoint_path=(
+                            best_checkpoint_path if resume_checkpoint_path is not None else None
+                        ),
+                        best_checkpoint_callback=on_rfdetr_best_checkpoint,
                         warm_start_checkpoint_path=(
                             warm_start_reference.checkpoint_path
                             if warm_start_reference is not None
@@ -631,8 +659,11 @@ class SqlAlchemySegmentationTrainingService:
                 execution_result.latest_checkpoint_bytes,
             )
         preserve_saved_best_checkpoint = (
-            not isinstance(execution_result, RfdetrSegmentationTrainingExecutionResult)
-            and best_checkpoint_path.is_file()
+            best_checkpoint_path.is_file()
+            and (
+                not isinstance(execution_result, RfdetrSegmentationTrainingExecutionResult)
+                or execution_result.best_checkpoint_saved_epoch is not None
+            )
         )
         if not preserve_saved_best_checkpoint:
             result_best_checkpoint_bytes = getattr(
@@ -682,6 +713,9 @@ class SqlAlchemySegmentationTrainingService:
         if isinstance(output_files, dict):
             output_files["test_metrics_object_key"] = test_metrics_object_key
         summary["test_metrics_object_key"] = test_metrics_object_key
+        best_checkpoint_saved_epoch = getattr(execution_result, "best_checkpoint_saved_epoch", None)
+        if best_checkpoint_saved_epoch is not None:
+            summary["best_checkpoint_saved_epoch"] = best_checkpoint_saved_epoch
         model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,

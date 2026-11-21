@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend.service.application.models.rfdetr_core.training.platform_runner import (
@@ -60,6 +60,7 @@ class RfdetrSegmentationTrainingEpochProgress:
     input_size: tuple[int, int]
     learning_rate: float
     train_metrics: dict[str, float]
+    validation_metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,8 @@ class RfdetrSegmentationTrainingExecutionRequest:
     precision: str = "fp32"
     resume_checkpoint_path: Path | None = None
     warm_start_checkpoint_path: Path | None = None
+    previous_best_checkpoint_path: Path | None = None
+    best_checkpoint_callback: Callable[[Path, int], None] | None = None
     warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[
@@ -151,6 +154,7 @@ class RfdetrSegmentationTrainingExecutionResult:
     warm_start_summary: dict[str, object]
     best_checkpoint_bytes: bytes | None = None
     test_metrics_payload: dict[str, object] | None = None
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @training_engine_entrypoint
@@ -180,6 +184,8 @@ def run_rfdetr_segmentation_training(
                 input_size=aligned_input_size,
                 precision=request.precision,
                 resume_checkpoint_path=request.resume_checkpoint_path,
+                previous_best_checkpoint_path=request.previous_best_checkpoint_path,
+                best_checkpoint_callback=request.best_checkpoint_callback,
                 warm_start_checkpoint_path=request.warm_start_checkpoint_path,
                 warm_start_source_summary=request.warm_start_source_summary,
                 extra_options=request.extra_options,
@@ -211,6 +217,7 @@ def run_rfdetr_segmentation_training(
         warm_start_summary=result.warm_start_summary,
         best_checkpoint_bytes=result.best_checkpoint_bytes,
         test_metrics_payload=result.test_metrics_payload,
+        best_checkpoint_saved_epoch=result.best_checkpoint_saved_epoch,
     )
 
 
@@ -286,6 +293,7 @@ def _build_platform_epoch_callback(
                 input_size=input_size,
                 learning_rate=progress.learning_rate,
                 train_metrics=dict(progress.train_metrics),
+                validation_metrics=dict(progress.validation_metrics),
             )
         )
         if command is None:

@@ -596,6 +596,93 @@ def test_rfdetr_best_checkpoint_preserves_full_lightning_resume_state() -> None:
     assert payload["pytorch-lightning_version"]
 
 
+def test_rfdetr_segmentation_selects_latest_tied_mask_map_after_resume(
+    tmp_path: Path,
+) -> None:
+    """RF-DETR 分割按 mask mAP 选择权重，并恢复上次保存的实际轮次。"""
+    first_dir = tmp_path / "first"
+    resumed_dir = tmp_path / "resumed"
+    resumed_dir.mkdir()
+    recorded_epochs = []
+    initial = BestModelCallback(output_dir=str(first_dir), segmentation=True)
+    initial.configure_platform_best_checkpoint(
+        previous_checkpoint=None,
+        on_save=lambda path, epoch: recorded_epochs.append(epoch),
+    )
+    model = torch.nn.Linear(1, 1, bias=False)
+    module = SimpleNamespace(
+        model=model,
+        train_config=SimpleNamespace(eval_interval=1, model_dump=lambda: {}),
+    )
+    trainer = SimpleNamespace(
+        current_epoch=0,
+        global_step=1,
+        max_epochs=3,
+        is_global_zero=True,
+        sanity_checking=False,
+        datamodule=None,
+        callback_metrics={"val/segm_mAP_50_95": 0.5, "val/mAP_50_95": 0.0},
+    )
+
+    initial.on_validation_end(trainer, module)
+    resumed = BestModelCallback(output_dir=str(resumed_dir), segmentation=True)
+    resumed.configure_platform_best_checkpoint(
+        previous_checkpoint=first_dir / "checkpoint_best_total.pth",
+        on_save=lambda path, epoch: recorded_epochs.append(epoch),
+    )
+    assert resumed.best_checkpoint_epoch == 1
+    trainer.current_epoch = 1
+    trainer.callback_metrics = {"val/segm_mAP_50_95": 0.4, "val/mAP_50_95": 1.0}
+    resumed.on_validation_end(trainer, module)
+    assert resumed.best_checkpoint_epoch == 1
+    trainer.current_epoch = 2
+    trainer.callback_metrics = {"val/segm_mAP_50_95": 0.5, "val/mAP_50_95": 0.0}
+    resumed.on_validation_end(trainer, module)
+    assert recorded_epochs == [1, 3]
+    assert resumed.best_checkpoint_epoch == 3
+    assert resumed.best_checkpoint_score == 0.5
+
+
+def test_rfdetr_detection_selects_latest_tie_across_regular_and_ema(
+    tmp_path: Path,
+) -> None:
+    """相同 mAP 跨原始权重和 EMA 时，保存更晚轮次实际产生该分数的权重。"""
+    output_dir = tmp_path / "detection"
+    checkpoint_path = output_dir / "checkpoint_best_total.pth"
+    saved_epochs = []
+    callback = BestModelCallback(
+        output_dir=str(output_dir), monitor_ema="val/ema_mAP_50_95"
+    )
+    callback.configure_platform_best_checkpoint(
+        previous_checkpoint=None, on_save=lambda path, epoch: saved_epochs.append(epoch)
+    )
+    model = torch.nn.Linear(1, 1, bias=False)
+    module = SimpleNamespace(
+        model=model, train_config=SimpleNamespace(eval_interval=2, model_dump=lambda: {}),
+    )
+    trainer = SimpleNamespace(
+        current_epoch=1, global_step=2, max_epochs=4, is_global_zero=True,
+        sanity_checking=False, datamodule=None,
+        callback_metrics={"val/mAP_50_95": 0.5, "val/ema_mAP_50_95": 0.4},
+        callbacks=[SimpleNamespace(
+            get_ema_model_state_dict=lambda: {"weight": torch.tensor([[9.0]])}
+        )],
+    )
+    callback.on_validation_end(trainer, module)
+    trainer.current_epoch = 2
+    callback.on_validation_end(trainer, module)
+    assert saved_epochs == [2]
+    trainer.current_epoch = 3
+    trainer.callback_metrics = {"val/mAP_50_95": 0.4, "val/ema_mAP_50_95": 0.5}
+    callback.on_validation_end(trainer, module)
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    assert saved_epochs == [2, 4]
+    assert checkpoint["best_checkpoint_epoch"] == 4
+    assert checkpoint["best_checkpoint_metric_name"] == "val/ema_mAP_50_95"
+    assert checkpoint["model"]["weight"].item() == 9.0
+    assert torch.equal(checkpoint["state_dict"]["model.weight"], model.weight)
+
+
 def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
     tmp_path: Path,
     monkeypatch,

@@ -13,7 +13,7 @@ MetricDirection = Literal["maximize", "minimize"]
 
 @dataclass(frozen=True)
 class BestMetricDecision:
-    """描述当前指标是否严格刷新历史最佳结果。"""
+    """描述当前指标是否应替换历史最佳结果。"""
 
     improved: bool
     candidate_value: float
@@ -63,8 +63,9 @@ def resolve_best_metric_decision(
     direction: MetricDirection,
     minimum: float = 0.0,
     maximum: float | None = None,
+    prefer_latest_on_tie: bool = False,
 ) -> BestMetricDecision:
-    """只允许有效且严格更优的指标替换历史 best checkpoint。"""
+    """选择有效的最佳指标，并按调用方策略处理并列。"""
 
     if direction not in {"maximize", "minimize"}:
         raise ValueError(f"不支持的训练指标方向: {direction}")
@@ -98,6 +99,8 @@ def resolve_best_metric_decision(
         improved = not best_is_valid or resolved_current > float(best_value)
     elif direction == "minimize":
         improved = not best_is_valid or resolved_current < float(best_value)
+    if best_is_valid and prefer_latest_on_tie and resolved_current == float(best_value):
+        improved = True
     return BestMetricDecision(
         improved=improved,
         candidate_value=resolved_current if improved else float(best_value),
@@ -111,8 +114,9 @@ def is_better_training_metric(
     direction: MetricDirection,
     minimum: float = 0.0,
     maximum: float | None = None,
+    prefer_latest_on_tie: bool = False,
 ) -> bool:
-    """判断当前指标是否是有效且严格更优的 best 候选。"""
+    """判断当前轮的指标是否应成为 best。"""
 
     return resolve_best_metric_decision(
         current_value=current_value,
@@ -120,6 +124,7 @@ def is_better_training_metric(
         direction=direction,
         minimum=minimum,
         maximum=maximum,
+        prefer_latest_on_tie=prefer_latest_on_tie,
     ).improved
 
 

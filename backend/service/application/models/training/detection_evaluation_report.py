@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+
+
+def read_detection_checkpoint_epoch(payload: object) -> int | None:
+    """读取 YOLO 系检测权重保存时写入的实际轮次。"""
+    epoch = payload.get("epoch") if isinstance(payload, Mapping) else None
+    return epoch if type(epoch) is int and epoch > 0 else None
 
 
 def build_detection_test_metrics_report(
@@ -13,6 +19,7 @@ def build_detection_test_metrics_report(
     category_names: Sequence[str] = (),
     reason: str | None = None,
     task_type: str = "detection",
+    checkpoint_epoch: int | None = None,
 ) -> dict[str, object]:
     """构建使用 best checkpoint 的 detection-like test 报告。"""
 
@@ -27,7 +34,9 @@ def build_detection_test_metrics_report(
     }
     if reason:
         payload["reason"] = str(reason)
+    if available and checkpoint_epoch is not None:
+        payload["epoch"] = checkpoint_epoch
     return payload
 
 
-__all__ = ["build_detection_test_metrics_report"]
+__all__ = ["build_detection_test_metrics_report", "read_detection_checkpoint_epoch"]

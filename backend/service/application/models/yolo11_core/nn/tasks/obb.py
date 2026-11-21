@@ -21,6 +21,9 @@ class OBB(Detect):
 
     angle_decode_mode = OBB_ANGLE_DECODE_MODE_SIGMOID_MINUS_QUARTER_PI
 
+    # 训练验证同时读取推理预测和计算损失所需的原始输出。
+    return_validation_outputs = False
+
     def __init__(
         self,
         nc: int,
@@ -58,7 +61,11 @@ class OBB(Detect):
     def forward(
         self,
         x: list[torch.Tensor] | tuple[torch.Tensor, ...],
-    ) -> dict[str, torch.Tensor] | torch.Tensor:
+    ) -> (
+        dict[str, torch.Tensor]
+        | torch.Tensor
+        | tuple[torch.Tensor, dict[str, torch.Tensor]]
+    ):
         """执行 YOLO11 OBB head 前向。"""
 
         if not isinstance(x, list | tuple) or len(x) != self.nl:
@@ -98,4 +105,7 @@ class OBB(Detect):
         )
         if self.export:
             return prediction
-        return prediction.transpose(1, 2).contiguous()
+        prediction = prediction.transpose(1, 2).contiguous()
+        if self.return_validation_outputs:
+            return prediction, raw_outputs
+        return prediction

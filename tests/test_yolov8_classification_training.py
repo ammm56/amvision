@@ -73,26 +73,37 @@ def _build_classification_smoke_data(
     return storage, manifest
 
 
-def test_classification_training_runs_one_epoch():
-    """验证分类训练可以执行一个 epoch 并返回有效的指标。"""
-    import shutil
+def test_classification_training_saves_latest_tied_best_with_validation_loss(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """执行真实训练和验证，固定验证分数以检查并列时保存的权重。"""
+    import io
 
-    root = Path(".tmp/classification-training-smoke").resolve()
-    if root.exists():
-        shutil.rmtree(root)
-    root.mkdir(parents=True, exist_ok=True)
-    storage, manifest = _build_classification_smoke_data(root)
+    import torch
+
+    from backend.service.application.models.yolov8_core.training import classification_execution
+
+    evaluate = classification_execution.evaluate_yolov8_classification_samples
+
+    def evaluate_with_tied_accuracy(**kwargs):
+        """保留真实验证损失并让两轮的 Top-1 分数相同。"""
+        return {**evaluate(**kwargs), "top1_accuracy": 0.5}
+
+    monkeypatch.setattr(classification_execution, "evaluate_yolov8_classification_samples", evaluate_with_tied_accuracy)
+    storage, manifest = _build_classification_smoke_data(tmp_path)
+    savepoints = []
     request = YoloV8ClassificationTrainingExecutionRequest(
         dataset_storage=storage,
         manifest_payload=manifest,
         model_type="yolov8",
         model_scale="nano",
         batch_size=2,
-        max_epochs=1,
+        max_epochs=2,
         evaluation_interval=1,
         input_size=(64, 64),
         precision="fp32",
         extra_options={"device": "cpu"},
+        savepoint_callback=savepoints.append,
     )
     result = run_yolov8_classification_training(request)
     assert result.best_metric_name == "val_top1_accuracy"
@@ -103,7 +114,13 @@ def test_classification_training_runs_one_epoch():
     final_metrics = result.metrics_payload.get("final_metrics", {})
     assert "loss" in final_metrics
     assert "accuracy" in final_metrics
-    shutil.rmtree(root)
+    history = result.validation_metrics_payload["epoch_history"]
+    assert [row["epoch"] for row in history] == [1, 2]
+    assert all(row["loss"] > 0 for row in history)
+    assert [savepoint.epoch for savepoint in savepoints if savepoint.is_best] == [1, 2]
+    assert result.best_checkpoint_bytes is not None
+    checkpoint = torch.load(io.BytesIO(result.best_checkpoint_bytes), weights_only=False, map_location="cpu")
+    assert checkpoint["epoch"] == 2
 
 
 def test_yolov8_classification_runner_rejects_other_model_type():

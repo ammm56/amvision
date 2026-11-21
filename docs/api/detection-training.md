@@ -41,6 +41,10 @@
 
 ## 接口清单
 
+### GET /api/v1/models/training-worker/status
+
+查询训练 Worker 的当前心跳，需要 `tasks:read` 权限，适用于全部训练任务类型。响应为 `{"status":"ready"}`、`{"status":"starting"}` 或 `{"status":"unavailable"}`。`ready` 表示训练 Worker 可以领取任务，实际开始时间取决于队列和可用资源。
+
 ### POST /api/v1/models/detection/training-tasks
 
 创建一个以 DatasetExport 为唯一输入边界的 detection 训练任务，并按 `model_type` 提交到对应模型训练队列。
@@ -533,6 +537,11 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 - task_state：当前训练任务状态。
 - object_key：对应训练输出文件的 object key。
 - size_bytes / updated_at：文件已经写出时返回的元数据。
+- epoch：产物中可确认的最后一轮。checkpoint_role 表示产物记录的最佳或最新权重来源。没有对应记录时字段为 null。分类、分割、姿态和旋转框的训练输出接口使用相同字段。
+- YOLOX、YOLOv8、YOLO11、YOLO26 和 RF-DETR 检测训练按验证集 mAP50–95 选择最佳权重，并列最高时保存最后一个达到最高分的轮次。RF-DETR 同时比较原始权重和 EMA 权重。新任务的 `best-checkpoint` 以及用该文件生成的独立 `test-metrics` 返回实际权重轮次。没有独立 test 划分时，报告的 `available` 为 false，轮次为空。历史任务的文件与已有报告保持原样。
+- YOLO 分类训练的 `validation-metrics` 按样本统计验证交叉熵 `loss`。多个轮次的 Top-1 Accuracy 并列最高时，最佳权重保存最后一个并列轮次。新任务的 `best-checkpoint` 及使用该权重生成的 `test-metrics` 提供实际保存的 `epoch`，历史文件保留原始轮次。
+- YOLO 实例分割、姿态估计和旋转框训练在验证轮同时记录任务损失和主指标。实例分割采用 Mask mAP50–95，姿态估计采用 OKS AP50–95，旋转框采用基于旋转框 IoU 的 mAP50–95。主指标并列最高时保存最后一个并列轮次，`best-checkpoint` 及使用该权重生成的 `test-metrics` 返回实际权重轮次。
+- RF-DETR 实例分割的 `validation-metrics.epoch_history` 记录实际验证轮次，保留 `val/loss` 和执行指标评估时的 `val/segm_mAP_50_95` 等原生字段。最佳权重按掩膜 AP 选择，并列时保存最后一轮。独立测试使用该文件并记录其轮次。
 
 ### GET /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name}
 

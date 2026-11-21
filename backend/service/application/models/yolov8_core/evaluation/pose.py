@@ -35,6 +35,13 @@ from backend.service.application.models.yolo_core_common.training.task_dataloade
     move_yolo_task_batch_to_device,
     resolve_yolo_task_evaluation_dataloader_plan,
 )
+from backend.service.application.models.yolo_core_common.training.pose_validation import (
+    PoseValidationLoss,
+    returning_pose_validation_outputs,
+)
+from backend.service.application.models.yolo_core_common.training.validation_loss import (
+    YoloValidationLossAccumulator,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_pose_training_batch,
 )
@@ -96,6 +103,7 @@ def evaluate_yolov8_pose_samples(
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
     control_callback: Callable[[], None] | None = None,
     evaluation_options: dict[str, object] | None = None,
+    compute_loss: PoseValidationLoss | None = None,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLOv8 pose 训练期评估。"""
 
@@ -110,6 +118,7 @@ def evaluate_yolov8_pose_samples(
     gt_items: list[dict[str, object]] = []
     pred_items: list[dict[str, object]] = []
     total_predictions = 0
+    losses = YoloValidationLossAccumulator()
     evaluation_loader = build_yolo_task_evaluation_dataloader(
         torch_module=imports.torch,
         samples=samples,
@@ -129,6 +138,7 @@ def evaluate_yolov8_pose_samples(
     with (
         managed_yolo_task_evaluation_dataloader(evaluation_loader),
         evaluating_model(model),
+        returning_pose_validation_outputs(model, enabled=compute_loss is not None),
         imports.torch.no_grad(),
     ):
         for batch in evaluation_loader:
@@ -144,6 +154,13 @@ def evaluate_yolov8_pose_samples(
             )
             with _yolov8_evaluation_autocast(imports, precision, device):
                 outputs = model(batch.images)
+                if compute_loss is not None:
+                    outputs, raw_outputs = outputs
+                    losses.add_batch(
+                        payload=compute_loss(model, raw_outputs, batch.targets),
+                        sample_count=len(batch.targets),
+                    )
+                    del raw_outputs
             prediction_array = _yolov8_tensor_to_np(outputs, imports)
             for image_index, target, output_slices in iter_yolo_task_evaluation_items(
                 targets=batch.targets,
@@ -194,6 +211,7 @@ def evaluate_yolov8_pose_samples(
         keypoint_oks_sigmas=policy.resolve_sigmas(int(kpt_shape[0])),
     )
     return {
+        **losses.metrics(),
         "map50": round(bbox_metrics.ap50, 6),
         "map50_95": round(bbox_metrics.ap50_95, 6),
         "bbox_map50": round(bbox_metrics.ap50, 6),

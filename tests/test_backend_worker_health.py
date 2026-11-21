@@ -9,6 +9,7 @@ import time
 import pytest
 
 import backend.workers.contracts as worker_contracts_module
+from backend.service.api.rest.v1.routes import training_preflight
 from backend.service.infrastructure.filesystem import atomic_files
 from backend.workers.contracts import (
     WORKER_HEARTBEAT_FORMAT_ID,
@@ -191,6 +192,24 @@ def test_worker_health_summary_reports_offline_without_active_topology(
 
     assert summary["health"] == "offline"
     assert summary["reason"] == "active_topology_missing"
+
+
+def test_training_worker_status_follows_training_profile_heartbeat(tmp_path, monkeypatch) -> None:
+    """训练状态接口只把当前拓扑中有效的训练心跳视为就绪。"""
+
+    monkeypatch.setattr(training_preflight, "DEFAULT_WORKER_RUNTIME_ROOT", tmp_path)
+    assert training_preflight.get_training_worker_status(None).status == "unavailable"
+
+    profile = _profile("training", "classification-training")
+    layout, topology = _activate_topology(tmp_path, profile, state="starting")
+    assert training_preflight.get_training_worker_status(None).status == "starting"
+
+    heartbeat = _start_heartbeat(layout=layout, topology=topology, profile=profile)
+    try:
+        assert training_preflight.get_training_worker_status(None).status == "ready"
+    finally:
+        heartbeat.stop()
+    assert training_preflight.get_training_worker_status(None).status == "unavailable"
 
 
 def test_worker_health_summary_reads_only_expected_current_epoch_profiles(

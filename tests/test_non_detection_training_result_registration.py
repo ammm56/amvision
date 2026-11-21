@@ -433,6 +433,8 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
             best_metric_value=0.29,
             best_metric_name="val_loss",
             latest_checkpoint_bytes=b"obb-checkpoint",
+            best_checkpoint_saved_epoch=1,
+            test_metrics_payload={"available": True, "checkpoint_role": "best", "epoch": 1},
             metrics_payload={"final_metrics": {"loss": 0.29, "angle_loss": 0.05}},
             validation_metrics_payload={"loss": 0.29},
             labels=("plate", "label"),
@@ -483,6 +485,11 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
     assert updated_task.state == "succeeded"
     assert updated_task.result["model_version_id"] == result["model_version_id"]
     assert updated_task.result["labels_object_key"].endswith("/labels.txt")
+    summary = dataset_storage.read_json(result["summary_object_key"])
+    assert summary["best_checkpoint_saved_epoch"] == 1
+    test_metrics = dataset_storage.read_json(result["test_metrics_object_key"])
+    assert test_metrics["checkpoint_role"] == "best"
+    assert test_metrics["epoch"] == summary["best_checkpoint_saved_epoch"]
 
     model_service = SqlAlchemyYolo26ModelService(session_factory=session_factory)
     model_files = model_service.list_model_files(

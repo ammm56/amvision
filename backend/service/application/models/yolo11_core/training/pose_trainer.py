@@ -27,6 +27,12 @@ from backend.service.application.models.yolo_core_common.training import (
     resolve_yolo_task_dataloader_plan,
     should_run_yolo_validation,
 )
+from backend.service.application.models.yolo_core_common.training.pose_validation import (
+    PoseValidationLoss,
+)
+from backend.service.application.models.yolo_core_common.training.pose_checkpoint import (
+    read_pose_checkpoint_epoch,
+)
 from backend.service.application.models.yolo11_core.data import (
     build_yolo11_pose_training_batch,
     resolve_yolo11_task_augmentation_for_epoch,
@@ -78,6 +84,7 @@ class Yolo11PoseTrainingSavePoint:
     epoch: int
     learning_rate: float
     is_best: bool = False
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,7 @@ class Yolo11PoseTrainingLoopResult:
     best_checkpoint_bytes: bytes
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
+    best_checkpoint_saved_epoch: int | None = None
 
 
 class Yolo11PoseTrainingPausedError(Exception):
@@ -157,6 +165,30 @@ def run_yolo11_pose_training_loop(
 ) -> Yolo11PoseTrainingLoopResult:
     """执行 YOLO11 pose 从 start epoch 到 max epoch 的完整训练循环。"""
 
+    def compute_batch_loss(
+        batch_model: Any,
+        raw_outputs: dict[str, Any],
+        batch_targets: list[Any],
+    ) -> dict[str, Any]:
+        """计算训练和验证共用的 pose 批次损失。"""
+
+        return compute_yolo11_pose_loss(
+            torch=imports.torch,
+            model=batch_model,
+            raw_outputs=raw_outputs.get("one2many", raw_outputs),
+            batch_targets=batch_targets,
+            num_classes=0,
+            kpt_shape=kpt_shape,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            kpt_loss_weight=kpt_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            assign_topk2=assign_topk2,
+        )
+
     checkpoint_bytes = build_yolo11_pose_checkpoint_bytes(
         epoch=start_epoch - 1,
         global_iteration=global_iteration,
@@ -189,6 +221,10 @@ def run_yolo11_pose_training_loop(
         torch_module=imports.torch,
     )
     best_checkpoint_bytes = previous_best_checkpoint_bytes
+    best_checkpoint_saved_epoch = read_pose_checkpoint_epoch(
+        torch_module=imports.torch,
+        checkpoint_bytes=best_checkpoint_bytes,
+    )
     last_completed_savepoint = Yolo11PoseTrainingSavePoint(
         latest_checkpoint_bytes=checkpoint_bytes,
         train_metrics=dict(metrics_history[-1]) if metrics_history else {},
@@ -196,6 +232,7 @@ def run_yolo11_pose_training_loop(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         learning_rate=resolve_yolo_optimizer_base_learning_rate(
             optimizer=optimizer,
             initial_learning_rate=training_schedule.initial_lr,
@@ -271,15 +308,7 @@ def run_yolo11_pose_training_loop(
             epoch=epoch,
             max_epochs=max_epochs,
             global_iteration=global_iteration,
-            kpt_shape=kpt_shape,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            kpt_loss_weight=kpt_loss_weight,
-            assign_topk=assign_topk,
-            assign_alpha=assign_alpha,
-            assign_beta=assign_beta,
-            assign_topk2=assign_topk2,
+            compute_loss=compute_batch_loss,
             autocast_context=autocast_context,
             control_callback=observe_control,
             input_size=input_size,
@@ -292,24 +321,29 @@ def run_yolo11_pose_training_loop(
         metrics_history.append(
             build_yolo_epoch_history_item(epoch_index=epoch, metrics=epoch_metrics)
         )
-        validation_metrics = _run_yolo11_pose_validation(
-            evaluation_options=evaluation_options,
-            imports=imports,
-            model=ema.model,
-            val_annotations=val_annotations,
-            labels=labels,
-            input_size=input_size,
-            device_name=device_name,
-            precision=precision,
-            evaluation_confidence_threshold=evaluation_confidence_threshold,
-            evaluation_nms_threshold=evaluation_nms_threshold,
-            kpt_shape=kpt_shape,
-            batch_size=batch_size,
-            epoch=epoch,
-            max_epochs=max_epochs,
-            evaluation_interval=evaluation_interval,
-            control_callback=observe_control,
-        )
+        try:
+            validation_metrics = _run_yolo11_pose_validation(
+                evaluation_options=evaluation_options,
+                imports=imports,
+                model=ema.model,
+                val_annotations=val_annotations,
+                labels=labels,
+                input_size=input_size,
+                device_name=device_name,
+                precision=precision,
+                evaluation_confidence_threshold=evaluation_confidence_threshold,
+                evaluation_nms_threshold=evaluation_nms_threshold,
+                kpt_shape=kpt_shape,
+                batch_size=batch_size,
+                epoch=epoch,
+                max_epochs=max_epochs,
+                evaluation_interval=evaluation_interval,
+                control_callback=observe_control,
+                compute_loss=compute_batch_loss,
+            )
+        except BaseException:
+            training_loader_lifecycle.close()
+            raise
         if validation_metrics:
             validation_history.append(
                 build_yolo_epoch_history_item(
@@ -323,6 +357,7 @@ def run_yolo11_pose_training_loop(
             best_value=best_metric_value,
             direction="maximize",
             maximum=1.0,
+            prefer_latest_on_tie=True,
         )
         if best_metric_improved:
             best_metric_value = current_metric
@@ -385,6 +420,7 @@ def run_yolo11_pose_training_loop(
         )
         if best_metric_improved:
             best_checkpoint_bytes = checkpoint_bytes
+            best_checkpoint_saved_epoch = epoch + 1
         last_completed_savepoint = Yolo11PoseTrainingSavePoint(
             latest_checkpoint_bytes=checkpoint_bytes,
             train_metrics=epoch_metrics,
@@ -397,6 +433,7 @@ def run_yolo11_pose_training_loop(
                 initial_learning_rate=training_schedule.initial_lr,
             ),
             is_best=best_metric_improved,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
         if checkpoint_decision.should_persist and savepoint_callback is not None:
             savepoint_callback(last_completed_savepoint)
@@ -408,11 +445,13 @@ def run_yolo11_pose_training_loop(
     training_loader_lifecycle.close()
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = checkpoint_bytes
+        best_checkpoint_saved_epoch = last_completed_savepoint.epoch
     return Yolo11PoseTrainingLoopResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         latest_checkpoint_bytes=checkpoint_bytes,
         best_checkpoint_bytes=best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         metrics_history=metrics_history,
         validation_history=validation_history,
     )
@@ -431,15 +470,7 @@ def _run_yolo11_pose_epoch(
     epoch: int,
     max_epochs: int,
     global_iteration: int,
-    kpt_shape: tuple[int, int],
-    class_loss_weight: float,
-    box_loss_weight: float,
-    dfl_loss_weight: float,
-    kpt_loss_weight: float,
-    assign_topk: int,
-    assign_alpha: float,
-    assign_beta: float,
-    assign_topk2: int | None,
+    compute_loss: PoseValidationLoss,
     autocast_context: Callable[[], Any],
     control_callback: Callable[[], None] | None,
     input_size: tuple[int, int],
@@ -472,29 +503,10 @@ def _run_yolo11_pose_epoch(
         )
         with autocast_context():
             raw_outputs = model(batch.images)
-            raw_for_loss = (
-                raw_outputs["one2many"]
-                if isinstance(raw_outputs, dict) and "one2many" in raw_outputs
-                else raw_outputs
-            )
-            loss_payload = compute_yolo11_pose_loss(
-                torch=imports.torch,
-                model=model,
-                raw_outputs=raw_for_loss,
-                batch_targets=batch.targets,
-                num_classes=0,
-                kpt_shape=kpt_shape,
-                class_loss_weight=class_loss_weight,
-                box_loss_weight=box_loss_weight,
-                dfl_loss_weight=dfl_loss_weight,
-                kpt_loss_weight=kpt_loss_weight,
-                assign_topk=assign_topk,
-                assign_alpha=assign_alpha,
-                assign_beta=assign_beta,
-                assign_topk2=assign_topk2,
-            )
+            loss_payload = compute_loss(model, raw_outputs, batch.targets)
         total_loss = loss_payload["loss"]
         if not total_loss.requires_grad:
+            raw_for_loss = raw_outputs.get("one2many", raw_outputs)
             total_loss = _build_zero_grad_loss(raw_for_loss, imports.torch)
         optimizer_step.backward_and_step(
             loss=total_loss,
@@ -557,6 +569,7 @@ def _run_yolo11_pose_validation(
     max_epochs: int,
     evaluation_interval: int,
     control_callback: Callable[[], None] | None,
+    compute_loss: PoseValidationLoss,
     evaluation_options: dict[str, object] | None = None,
 ) -> dict[str, float]:
     """执行 YOLO11 pose 训练期 validation。"""
@@ -583,6 +596,7 @@ def _run_yolo11_pose_validation(
         imports=imports,
         batch_size=batch_size,
         control_callback=control_callback,
+        compute_loss=compute_loss,
     )
 
 

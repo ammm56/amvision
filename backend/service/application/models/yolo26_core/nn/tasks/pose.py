@@ -94,6 +94,9 @@ class RealNVP(nn.Module):
 class Pose26(Detect):
     """YOLO26 pose head 的项目内 full core 实现。"""
 
+    # 训练期验证同时读取预测与原始损失输入。
+    return_raw_for_validation = False
+
     def __init__(
         self,
         nc: int,
@@ -133,7 +136,7 @@ class Pose26(Detect):
     def forward(
         self,
         x: list[torch.Tensor] | tuple[torch.Tensor, ...],
-    ) -> dict[str, torch.Tensor] | torch.Tensor:
+    ) -> dict[str, torch.Tensor] | torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """执行 YOLO26 pose head 前向。"""
 
         if not isinstance(x, list | tuple) or len(x) != self.nl:
@@ -243,7 +246,7 @@ class Pose26(Detect):
                 ],
                 dim=2,
             )
-            if self.training:
+            if self.training or self.return_raw_for_validation:
                 result["kpts_sigma"] = torch.cat(
                     [
                         kpts_sigma_head[i](features[i]).view(

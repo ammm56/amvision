@@ -6,6 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.training.yolo_obb_training_checkpoints import (
+    read_yolo_obb_checkpoint_epoch,
+)
 from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
@@ -78,6 +81,8 @@ class Yolo11ObbTrainingSavePoint:
     epoch: int
     learning_rate: float
     is_best: bool = False
+    # 当前已保存 best checkpoint 的轮次。首次验证之前为空。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +95,8 @@ class Yolo11ObbTrainingLoopResult:
     best_checkpoint_bytes: bytes
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
+    # 当前 best checkpoint 的轮次。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 class Yolo11ObbTrainingPausedError(Exception):
@@ -171,6 +178,10 @@ def run_yolo11_obb_training_loop(
         torch_module=imports.torch,
     )
     best_checkpoint_bytes = previous_best_checkpoint_bytes
+    best_checkpoint_saved_epoch = read_yolo_obb_checkpoint_epoch(
+        torch_module=imports.torch,
+        checkpoint_bytes=best_checkpoint_bytes,
+    )
     last_completed_savepoint = Yolo11ObbTrainingSavePoint(
         latest_checkpoint_bytes=checkpoint_bytes,
         train_metrics=dict(metrics_history[-1]) if metrics_history else {},
@@ -180,6 +191,7 @@ def run_yolo11_obb_training_loop(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         learning_rate=resolve_yolo_optimizer_base_learning_rate(
             optimizer=optimizer,
             initial_learning_rate=training_schedule.initial_lr,
@@ -281,6 +293,7 @@ def run_yolo11_obb_training_loop(
             epoch=epoch,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
+            assign_topk2=assign_topk2,
             control_callback=observe_control,
         )
         if validation_metrics:
@@ -296,6 +309,7 @@ def run_yolo11_obb_training_loop(
             best_value=best_metric_value,
             direction="maximize",
             maximum=1.0,
+            prefer_latest_on_tie=True,
         )
         if best_metric_improved:
             best_metric_value = current_metric
@@ -350,6 +364,7 @@ def run_yolo11_obb_training_loop(
         )
         if best_metric_improved:
             best_checkpoint_bytes = checkpoint_bytes
+            best_checkpoint_saved_epoch = epoch + 1
         last_completed_savepoint = Yolo11ObbTrainingSavePoint(
             latest_checkpoint_bytes=checkpoint_bytes,
             train_metrics=epoch_metrics,
@@ -362,6 +377,7 @@ def run_yolo11_obb_training_loop(
                 initial_learning_rate=training_schedule.initial_lr,
             ),
             is_best=best_metric_improved,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
         if checkpoint_decision.should_persist and savepoint_callback is not None:
             savepoint_callback(last_completed_savepoint)
@@ -373,11 +389,13 @@ def run_yolo11_obb_training_loop(
     training_loader_lifecycle.close()
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = checkpoint_bytes
+        best_checkpoint_saved_epoch = last_completed_savepoint.epoch
     return Yolo11ObbTrainingLoopResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         latest_checkpoint_bytes=checkpoint_bytes,
         best_checkpoint_bytes=best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         metrics_history=metrics_history,
         validation_history=validation_history,
     )
@@ -504,6 +522,7 @@ def _run_yolo11_obb_validation(
     epoch: int,
     max_epochs: int,
     evaluation_interval: int,
+    assign_topk2: int | None,
     control_callback: Callable[[], None] | None,
 ) -> dict[str, float]:
     """执行 YOLO11 OBB 训练期 validation。"""
@@ -528,6 +547,14 @@ def _run_yolo11_obb_validation(
         imports=imports,
         batch_size=batch_size,
         control_callback=control_callback,
+        compute_batch_loss=lambda outputs, targets: compute_yolo11_obb_loss(
+            torch=imports.torch,
+            model=model,
+            raw_outputs=outputs.get("one2many", outputs),
+            batch_targets=targets,
+            num_classes=0,
+            assign_topk2=assign_topk2,
+        ),
     )
 
 

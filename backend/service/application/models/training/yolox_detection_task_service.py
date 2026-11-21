@@ -1305,8 +1305,8 @@ class SqlAlchemyYoloXTrainingTaskService(
                     payload={
                         "attempt_no": attempt_no,
                         "progress": {
-                            "best_checkpoint_saved_epoch": savepoint.epoch,
-                            "best_checkpoint_saved_at": saved_at,
+                            "best_checkpoint_saved_epoch": savepoint.best_checkpoint_saved_epoch,
+                            "latest_checkpoint_epoch": savepoint.epoch,
                         },
                         "metadata": {
                             YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
@@ -1603,6 +1603,9 @@ class SqlAlchemyYoloXTrainingTaskService(
             validation_summary=validation_summary,
             warm_start_summary=dict(execution_result.warm_start_summary),
         )
+        best_epoch = getattr(execution_result, "best_checkpoint_saved_epoch", None)
+        if best_epoch is not None:
+            summary["best_checkpoint_saved_epoch"] = best_epoch
         summary["test"] = {
             "enabled": execution_result.test_split_name is not None,
             "split_name": execution_result.test_split_name,

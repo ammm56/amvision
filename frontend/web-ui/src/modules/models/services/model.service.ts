@@ -292,6 +292,8 @@ export interface ModelTrainingOutputFileSummary {
   object_key?: string | null
   size_bytes?: number | null
   updated_at?: string | null
+  epoch?: number | null
+  checkpoint_role?: 'best' | 'latest' | null
 }
 
 export interface ModelTrainingOutputFileDetail extends ModelTrainingOutputFileSummary {
@@ -764,6 +766,10 @@ export async function registerModelTrainingLatestCheckpoint(taskType: ModelTaskT
     buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/register-model-version`),
     { method: 'POST' },
   )
+}
+
+export function getTrainingWorkerStatus(signal?: AbortSignal): Promise<{ status: 'ready' | 'starting' | 'unavailable' }> {
+  return apiRequest('/models/training-worker/status', { signal })
 }
 
 export async function listModelTrainingOutputFiles(taskType: ModelTaskType, taskId: string, signal?: AbortSignal): Promise<ModelTrainingOutputFileSummary[]> {

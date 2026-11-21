@@ -12,6 +12,13 @@ export function formatSmallModelNumber(value: number): string {
 
 export const formatLearningRate = formatSmallModelNumber
 
+export function formatTrainingMetric(value: number): string {
+  const formatted = formatModelNumber(value)
+  if (value === 0 || formatted !== '0') return formatted
+  const precise = formatModelNumber(value, 4)
+  return precise === '0' ? formatSmallModelNumber(value) : precise
+}
+
 export function modelChartValueFormatter(format: (value: number) => string = formatModelNumber) {
   const formatValue = (value: unknown): string => typeof value === 'number' ? format(value) : '—'
   return (value: unknown): string | string[] => Array.isArray(value) ? value.map(formatValue) : formatValue(value)

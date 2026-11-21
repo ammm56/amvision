@@ -359,6 +359,16 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
                     checkpoint_object_key,
                     savepoint.latest_checkpoint_bytes,
                 )
+            self.dataset_storage.write_json(
+                summary_object_key,
+                {
+                    "task_id": task_record.task_id,
+                    "task_type": OBB_TASK_TYPE,
+                    "model_type": resolved_model_type,
+                    "latest_checkpoint_epoch": savepoint.epoch,
+                    "best_checkpoint_saved_epoch": savepoint.best_checkpoint_saved_epoch,
+                },
+            )
             # epoch 0 仅用于暂停/终止时恢复新训练，不属于周期 checkpoint。
             if savepoint.epoch >= 1:
                 periodic_checkpoint_retention.persist(
@@ -530,6 +540,8 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
         if isinstance(output_files, dict):
             output_files["test_metrics_object_key"] = test_metrics_object_key
         summary["test_metrics_object_key"] = test_metrics_object_key
+        if execution_result.best_checkpoint_saved_epoch is not None:
+            summary["best_checkpoint_saved_epoch"] = execution_result.best_checkpoint_saved_epoch
         model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,

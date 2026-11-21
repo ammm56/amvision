@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from backend.service.application.backends import TrainingBackendRunResult
 from backend.service.application.errors import (
@@ -644,6 +645,18 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 metrics=dict(progress.train_metrics),
             )
 
+        best_checkpoint_saved_epoch: int | None = None
+
+        def on_best_checkpoint(path: Path, epoch: int) -> None:
+            """在当前 Attempt 持久化已选中的检测权重。"""
+            nonlocal best_checkpoint_saved_epoch
+            if execution_fence is not None:
+                self.task_service.validate_task_execution_fence(
+                    task_id=task_id, fence=execution_fence
+                )
+            dataset_storage.copy_file(path, output_files.checkpoint_object_key)
+            best_checkpoint_saved_epoch = epoch
+
         def on_epoch(
             progress: RfdetrTrainingEpochProgress,
         ) -> RfdetrTrainingControlCommand | None:
@@ -672,6 +685,12 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         "max_epochs": progress.max_epochs,
                         "learning_rate": progress.learning_rate,
                         "train_metrics": dict(progress.train_metrics),
+                        "validation_metrics": dict(progress.validation_metrics),
+                        **(
+                            {"best_checkpoint_saved_epoch": best_checkpoint_saved_epoch}
+                            if best_checkpoint_saved_epoch is not None
+                            else {}
+                        ),
                     },
                 },
             )
@@ -834,6 +853,10 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     control_callback=on_control,
                     epoch_callback=on_epoch,
                     savepoint_callback=on_savepoint,
+                    previous_best_checkpoint_path=dataset_storage.resolve(
+                        output_files.checkpoint_object_key
+                    ),
+                    best_checkpoint_callback=on_best_checkpoint,
                 )
             )
         except RfdetrTrainingPausedError as paused_error:
@@ -955,6 +978,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             execution_result=execution_result,
             output_files=output_files,
         )
+        best_epoch = getattr(execution_result, "best_checkpoint_saved_epoch", None)
+        if best_epoch is not None:
+            summary["best_checkpoint_saved_epoch"] = best_epoch
         model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             payload=payload,

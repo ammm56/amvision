@@ -101,6 +101,8 @@ class RfdetrPlatformTrainingRequest:
         | None
     ) = None
     savepoint_callback: Callable[[RfdetrPlatformTrainingSavePoint], None] | None = None
+    previous_best_checkpoint_path: Path | None = None
+    best_checkpoint_callback: Callable[[Path, int], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +119,7 @@ class RfdetrPlatformTrainingResult:
     warm_start_summary: dict[str, object]
     best_checkpoint_bytes: bytes | None = None
     test_metrics_payload: dict[str, object] | None = None
+    best_checkpoint_saved_epoch: int | None = None
 
 
 def run_rfdetr_platform_training(
@@ -263,6 +266,11 @@ def run_rfdetr_platform_training(
                 ),
                 enable_model_summary=False,
             )
+            best_checkpoint = _configure_platform_best_checkpoint(
+                trainer=trainer,
+                request=request,
+                resume_checkpoint_used=resume_checkpoint_path is not None,
+            )
             with suppress_torch_leafspec_deprecation_warning():
                 trainer.fit(
                     module,
@@ -296,6 +304,12 @@ def run_rfdetr_platform_training(
                 }
             )
             validation_metrics_payload = build_validation_metrics_payload(trainer)
+            validation_history = list(getattr(control_callback, "validation_history", []))
+            if validation_history:
+                final_validation_metrics = validation_history[-1] if validation_history else {}
+                validation_metrics_payload.update(final_validation_metrics)
+                validation_metrics_payload["epoch_history"] = validation_history
+                validation_metrics_payload["final_metrics"] = final_validation_metrics
             test_metrics_payload = _build_rfdetr_test_metrics_payload(
                 validation_metrics_payload=validation_metrics_payload,
                 has_test_split=prepared_dataset.has_test_split,
@@ -304,6 +318,14 @@ def run_rfdetr_platform_training(
                 task_type=request.task_type,
                 validation_metrics=validation_metrics_payload,
             )
+            best_checkpoint_saved_epoch = None
+            if best_checkpoint is not None:
+                best_checkpoint_saved_epoch = best_checkpoint.best_checkpoint_epoch
+                if best_checkpoint.best_checkpoint_score is not None:
+                    best_metric_name = best_checkpoint.best_checkpoint_metric_name or best_metric_name
+                    best_metric_value = best_checkpoint.best_checkpoint_score
+                if test_metrics_payload["available"] and best_checkpoint_saved_epoch is not None:
+                    test_metrics_payload["epoch"] = best_checkpoint_saved_epoch
             return RfdetrPlatformTrainingResult(
                 best_metric_value=best_metric_value,
                 best_metric_name=best_metric_name,
@@ -315,6 +337,7 @@ def run_rfdetr_platform_training(
                 aligned_input_size=aligned_input_size,
                 warm_start_summary=warm_start_summary,
                 test_metrics_payload=test_metrics_payload,
+                best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
             )
     finally:
         _release_rfdetr_training_resources(
@@ -322,6 +345,35 @@ def run_rfdetr_platform_training(
             data_module=data_module,
             trainer=trainer,
         )
+
+
+def _configure_platform_best_checkpoint(
+    *,
+    trainer: Any,
+    request: RfdetrPlatformTrainingRequest,
+    resume_checkpoint_used: bool,
+) -> Any:
+    """绑定任务最佳权重保存，并恢复上次 Attempt 已导出的最佳文件。"""
+    from backend.service.application.models.rfdetr_core.training.callbacks.best_model import (
+        BestModelCallback,
+    )
+
+    callback = next(
+        (
+            item for item in getattr(trainer, "callbacks", ())
+            if isinstance(item, BestModelCallback)
+        ),
+        None,
+    )
+    if callback is not None:
+        callback.configure_platform_best_checkpoint(
+            previous_checkpoint=(
+                request.previous_best_checkpoint_path
+                if resume_checkpoint_used else None
+            ),
+            on_save=request.best_checkpoint_callback,
+        )
+    return callback
 
 
 def _build_rfdetr_platform_control_callback(

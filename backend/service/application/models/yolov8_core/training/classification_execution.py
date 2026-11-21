@@ -604,6 +604,7 @@ def run_yolov8_classification_training(
                 best_value=best_metric_value,
                 direction="maximize",
                 maximum=1.0,
+                prefer_latest_on_tie=True,
             )
         )
         if is_best:

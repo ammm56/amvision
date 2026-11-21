@@ -259,6 +259,7 @@ def build_yolo_classification_savepoint_summary(
     train_metrics_object_key: str,
     validation_metrics_object_key: str,
     summary_object_key: str,
+    best_checkpoint_saved_epoch: int | None = None,
 ) -> dict[str, object]:
     """构建分类训练 savepoint 阶段的 summary。"""
 
@@ -276,6 +277,7 @@ def build_yolo_classification_savepoint_summary(
         "output_prefix": output_prefix,
         "output_object_prefix": output_prefix,
         "latest_checkpoint_epoch": savepoint.epoch,
+        "best_checkpoint_saved_epoch": best_checkpoint_saved_epoch,
         "best_metric_name": savepoint.best_metric_name,
         "best_metric_value": serialize_training_metric(
             savepoint.best_metric_value,
@@ -295,8 +297,20 @@ def build_yolo_classification_savepoint_summary(
     }
 
 
+def read_yolo_classification_best_checkpoint_epoch(
+    *, dataset_storage: LocalDatasetStorage, summary_object_key: str,
+) -> int | None:
+    """从上一尝试的摘要恢复已保存的最佳权重轮次。"""
+    if not dataset_storage.resolve(summary_object_key).is_file():
+        return None
+    summary = dataset_storage.read_json(summary_object_key)
+    epoch = summary.get("best_checkpoint_saved_epoch") if isinstance(summary, dict) else None
+    return epoch if type(epoch) is int and epoch > 0 else None
+
+
 __all__ = [
     "append_yolo_classification_epoch_progress",
     "build_yolo_classification_output_files_summary",
     "build_yolo_classification_savepoint_summary",
+    "read_yolo_classification_best_checkpoint_epoch",
 ]

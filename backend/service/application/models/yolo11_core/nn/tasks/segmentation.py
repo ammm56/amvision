@@ -86,6 +86,9 @@ class Segment(Detect):
             "mask_head": self.one2one_cv4,
         }
 
+    # 训练期验证需要同次前向的原始输出，普通推理和导出继续使用默认输出。
+    return_validation_outputs: bool = False
+
     def forward(
         self,
         x: list[torch.Tensor] | tuple[torch.Tensor, ...],
@@ -101,13 +104,16 @@ class Segment(Detect):
         raw_outputs = outputs[1] if isinstance(outputs, tuple) else outputs
         processed_outputs = outputs[0] if isinstance(outputs, tuple) else outputs
         proto = self.proto(x[0])
-        if self.training:
+        if self.training or self.return_validation_outputs:
             if self.end2end:
                 raw_outputs["one2many"]["proto"] = proto
                 raw_outputs["one2one"]["proto"] = proto.detach()
             else:
                 raw_outputs["proto"] = proto
+        if self.training:
             return raw_outputs
+        if self.return_validation_outputs:
+            return (processed_outputs, proto), raw_outputs
         return processed_outputs, proto
 
     def _inference(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:

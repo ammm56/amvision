@@ -134,6 +134,18 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
     assert (
         dataset_storage.resolve(training_result["labels_object_key"]).is_file() is True
     )
+    validation_report = dataset_storage.read_json(
+        training_result["validation_metrics_object_key"]
+    )
+    assert validation_report["epoch_history"][0]["epoch"] == 1
+    assert validation_report["epoch_history"][0]["val/loss"] > 0.0
+    assert "val/segm_mAP_50_95" in validation_report["epoch_history"][0]
+    best_metric_name = training_result["best_metric_name"]
+    assert best_metric_name in {"val/segm_mAP_50_95", "val/ema_segm_mAP_50_95"}
+    assert training_result["best_metric_value"] == validation_report["epoch_history"][0][best_metric_name]
+    test_report = dataset_storage.read_json(training_result["test_metrics_object_key"])
+    assert test_report["available"] is True
+    assert test_report["epoch"] == training_result["summary"]["best_checkpoint_saved_epoch"] == 1
 
     conversion_service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
@@ -566,8 +578,10 @@ def _seed_rfdetr_segmentation_dataset_export(
     export_root = f"exports/{dataset_export_id}"
     train_image_root = f"{export_root}/images/train"
     val_image_root = f"{export_root}/images/val"
+    test_image_root = f"{export_root}/images/test"
     train_annotation_path = f"{export_root}/annotations/train.json"
     val_annotation_path = f"{export_root}/annotations/val.json"
+    test_annotation_path = f"{export_root}/annotations/test.json"
     manifest_path = f"{export_root}/manifest.json"
 
     _write_dataset_image(
@@ -580,11 +594,20 @@ def _seed_rfdetr_segmentation_dataset_export(
         relative_path=f"{val_image_root}/val-sample-1.jpg",
         color=(200, 200, 200),
     )
+    _write_dataset_image(
+        dataset_storage=dataset_storage,
+        relative_path=f"{test_image_root}/test-sample-1.jpg",
+        color=(180, 180, 180),
+    )
 
     train_payload = _build_coco_segmentation_payload(file_name="train-sample-1.jpg")
     val_payload = _build_coco_segmentation_payload(file_name="val-sample-1.jpg")
     dataset_storage.write_json(train_annotation_path, train_payload)
     dataset_storage.write_json(val_annotation_path, val_payload)
+    dataset_storage.write_json(
+        test_annotation_path,
+        _build_coco_segmentation_payload(file_name="test-sample-1.jpg"),
+    )
     dataset_storage.write_json(
         manifest_path,
         {
@@ -598,6 +621,11 @@ def _seed_rfdetr_segmentation_dataset_export(
                     "name": "val",
                     "image_root": val_image_root,
                     "annotation_file": val_annotation_path,
+                },
+                {
+                    "name": "test",
+                    "image_root": test_image_root,
+                    "annotation_file": test_annotation_path,
                 },
             ]
         },
@@ -614,8 +642,8 @@ def _seed_rfdetr_segmentation_dataset_export(
         created_at="2026-05-30T00:00:00+00:00",
         export_path=export_root,
         manifest_object_key=manifest_path,
-        split_names=("train", "val"),
-        sample_count=2,
+        split_names=("train", "val", "test"),
+        sample_count=3,
         category_names=("segment-a", "segment-b"),
     )
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())

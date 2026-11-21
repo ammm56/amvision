@@ -48,9 +48,9 @@
           <Play :size="16" />
           {{ failedTraining ? (zh ? '调整参数重新训练' : 'Adjust parameters and retrain') : (zh ? '按此配置新建训练' : 'Create training with this configuration') }}
         </ButtonLink>
-        <Button v-if="visibleControlActions.includes('terminate')" class="training-terminate" size="sm" variant="danger"
+        <Button v-if="visibleControlActions.includes('terminate')" class="training-terminate" variant="secondary"
           :disabled="loading || actionRunning !== null || cancellingTraining" :loading="actionRunning === 'terminate'" @click="runAction('terminate')">
-          <Square :size="14" />{{ zh ? '取消训练' : 'Cancel training' }}
+          <CircleStop :size="16" aria-hidden="true" />{{ zh ? '取消训练' : 'Cancel training' }}
         </Button>
       </template>
     </PageHeader>
@@ -112,22 +112,37 @@
           <p v-if="savedCheckpointFile">{{ zh ? '最新检查点' : 'Latest checkpoint' }} · {{ resumeCheckpointName }}<template v-if="latestCheckpointEpoch"> · {{ zh ? `第 ${latestCheckpointEpoch} 轮` : `Epoch ${latestCheckpointEpoch}` }}</template></p>
         </div>
       </div>
-      <section class="resource-section training-overview-progress" :aria-label="t('trainingDetail.progressTitle')">
+      <section v-if="queuedTraining" class="resource-section training-queue" :aria-label="t('trainingDetail.progressTitle')">
+        <Clock3 :size="20" aria-hidden="true" />
+        <div role="status">
+          <strong>{{ queueTitle }}</strong>
+          <p>{{ queueDescription }}</p>
+        </div>
+        <time v-if="task.created_at" :datetime="task.created_at">{{ zh ? '提交于' : 'Submitted' }} {{ formatSystemDateTime(task.created_at, 'minutes') }}</time>
+      </section>
+      <section v-else class="resource-section training-overview-progress"
+        :class="{ 'training-overview-progress--running': task.state === 'running' }"
+        :aria-label="t('trainingDetail.progressTitle')">
         <dl class="training-progress-facts">
-          <div><dt>{{ zh ? '已完成' : 'Completed' }}</dt><dd><strong>{{ completedTrainingEpoch ?? '—' }}</strong><template v-if="totalTrainingEpochs"> / {{ totalTrainingEpochs }}</template> {{ zh ? '轮' : 'epochs' }}</dd></div>
+          <div><dt>{{ zh ? '已完成' : 'Completed' }}</dt><dd><strong>{{ completedTrainingEpoch ?? (task.state === 'running' ? 0 : '—') }}</strong><template v-if="totalTrainingEpochs"> / {{ totalTrainingEpochs }}</template> {{ zh ? '轮' : 'epochs' }}</dd></div>
           <div v-if="activeEpoch"><dt>{{ epochLabel }}</dt><dd>{{ activeEpoch }}</dd></div>
           <div v-if="batchText"><dt>{{ zh ? '当前批次' : 'Current batch' }}</dt><dd>{{ batchText }}</dd></div>
-          <div v-if="estimatedDuration"><dt>{{ zh ? '预计剩余' : 'Estimated remaining' }}</dt><dd>{{ estimatedDuration }}</dd></div>
           <div v-if="failedTraining && task.started_at"><dt>{{ zh ? '开始时间' : 'Started at' }}</dt><dd>{{ formatSystemDateTime(task.started_at) }}</dd></div>
+          <div v-if="cancelledDuration"><dt>{{ zh ? (task.state === 'succeeded' ? '总用时' : '运行时长') : (task.state === 'succeeded' ? 'Total duration' : 'Duration') }}</dt><dd>{{ cancelledDuration }}</dd></div>
           <div v-if="task.finished_at"><dt>{{ task.state === 'succeeded' ? (zh ? '完成时间' : 'Completed at') : (zh ? '结束时间' : 'Finished at') }}</dt><dd>{{ formatSystemDateTime(task.finished_at) }}</dd></div>
-          <div v-if="cancelledDuration"><dt>{{ zh ? '运行时长' : 'Duration' }}</dt><dd>{{ cancelledDuration }}</dd></div>
         </dl>
-        <TaskProgress :percent="progressPercent" compact :class="{ 'training-progress--failed': failedTraining }"
-          :indeterminate="isActiveTrainingState(task.state)" :aria-label="t('trainingDetail.progressTitle')" />
+        <TaskProgress :percent="progressPercent" compact :failed="failedTraining"
+          :indeterminate="task.state === 'running'" :aria-label="t('trainingDetail.progressTitle')"
+          :value-text="task.state === 'running' && progressPercent === null ? (zh ? '准备中' : 'Preparing') : undefined" />
+        <dl v-if="task.state === 'running'" class="training-progress-eta">
+          <dt>{{ trainingRoundsFinished ? (zh ? '阶段' : 'Stage') : (zh ? '预计剩余' : 'Estimated remaining') }}</dt>
+          <dd>{{ estimatedDuration }}</dd>
+        </dl>
       </section>
-      <TrainingMetricsCharts v-if="taskType" compact :task-type="taskType" :train-history="completedTrainHistory"
+      <TrainingMetricsCharts v-if="taskType && !queuedTraining" compact :task-type="taskType" :train-history="completedTrainHistory"
         :validation-history="completedValidationHistory" :learning-rate-history="learningRateHistory" :runtime-history="runtimeHistory"
-        :runtime-empty-text="runtimeHistoryEmptyText" :best-epoch="bestCheckpointEpoch" :primary-metric="task.best_metric_name" />
+        :metrics-empty-text="task.state === 'running' ? (zh ? '等待本轮指标' : 'Waiting for epoch metrics') : undefined"
+        :runtime-empty-text="runtimeHistoryEmptyText" :best-epoch="bestMetricEpoch" :primary-metric="task.best_metric_name" />
     </template>
 
     <section v-if="task" class="resource-section training-output-section">
@@ -145,16 +160,18 @@
       <div v-else-if="cancelledOutputTab === 'parameters'" role="tabpanel" :aria-label="zh ? '参数' : 'Parameters'">
         <pre class="json-view training-saved-parameters">{{ JSON.stringify(task.task_spec, null, 2) }}</pre>
       </div>
-      <EmptyState v-else-if="outputFiles.length === 0" :title="t('trainingDetail.emptyOutputsTitle')" :description="t('trainingDetail.emptyOutputsDescription')" />
+      <EmptyState v-else-if="outputFiles.length === 0" :title="t('trainingDetail.emptyOutputsTitle')"
+        :description="queuedTraining ? (zh ? '训练开始后，生成的文件会显示在这里。' : 'Generated files will appear here after training starts.') : t('trainingDetail.emptyOutputsDescription')" />
       <div v-else class="training-output-layout">
         <div class="resource-table">
           <table>
-            <colgroup><col style="width:25%"><col style="width:14%"><col style="width:10%"><col style="width:8%"><col style="width:19%"><col style="width:24%"></colgroup>
+            <colgroup><col style="width:24%"><col style="width:10%"><col style="width:10%"><col style="width:12%"><col style="width:8%"><col style="width:19%"><col style="width:17%"></colgroup>
             <thead>
               <tr>
                 <th>{{ t('trainingDetail.columns.file') }}</th>
                 <th>{{ zh ? '类型' : 'Type' }}</th>
                 <th>{{ t('trainingDetail.columns.size') }}</th>
+                <th>{{ zh ? '说明' : 'Description' }}</th>
                 <th>{{ zh ? '轮次' : 'Epoch' }}</th>
                 <th>{{ t('trainingDetail.columns.updatedAt') }}</th>
                 <th>{{ t('trainingDetail.outputActions') }}</th>
@@ -165,200 +182,203 @@
                 v-for="file in outputFiles"
                 :key="file.file_name"
                 :class="{ 'is-selected': file.file_name === selectedOutputFileName }"
-                @click="!loading && file.file_status === 'ready' && file.file_kind !== 'checkpoint' && (selectOutputFile(file.file_name), outputPreviewOpen = true)"
               >
                 <td>
-                  <strong>{{ file.object_key?.split('/').pop() || file.file_name }}</strong>
-                  <span v-if="file.file_status !== 'ready'"><StatusBadge :tone="statusTone(file.file_status)">{{ file.file_status }}</StatusBadge></span>
+                  <span class="training-output-file">
+                    <Box v-if="file.file_kind === 'checkpoint'" :size="15" aria-hidden="true" />
+                    <FileText v-else :size="15" aria-hidden="true" />
+                    <strong>{{ file.object_key?.split('/').pop() || file.file_name }}</strong>
+                  </span>
                 </td>
                 <td>{{ file.file_kind === 'checkpoint' ? (zh ? '权重' : 'Weights') : file.file_kind === 'text' ? (zh ? '文本' : 'Text') : 'JSON' }}</td>
                 <td>{{ formatOutputSize(file.size_bytes) }}</td>
-                <td>{{ outputFileEpoch(file.file_name) ?? '—' }}</td>
-                <td>{{ formatSystemDateTime(file.updated_at) }}</td>
-                <td><Button size="sm" variant="ghost" :disabled="loading || file.file_status !== 'ready' || file.file_kind === 'checkpoint'" @click.stop="selectOutputFile(file.file_name); outputPreviewOpen = true">{{ t('trainingDetail.outputPreviewTitle') }}</Button><Button size="sm" variant="ghost" :disabled="loading || file.file_status !== 'ready' || !!outputDownloading" :loading="outputDownloading === file.file_name" @click.stop="downloadOutput(file)">{{ t('trainingDetail.actions.download') }}</Button></td>
+                <td>{{ outputFileDescriptions[file.file_name] || '—' }}</td>
+                <td>{{ outputFileEpoch(file) ?? '—' }}</td>
+                <td>{{ file.updated_at ? formatSystemDateTime(file.updated_at) : '—' }}</td>
+                <td><div class="training-output-actions">
+                  <Button v-if="file.file_kind !== 'checkpoint'" size="sm" variant="ghost" :disabled="loading" @click="selectOutputFile(file.file_name)">{{ zh ? '查看' : 'View' }}</Button>
+                  <Button size="sm" variant="ghost" :disabled="loading || !!outputDownloading" :loading="outputDownloading === file.file_name" @click.stop="downloadOutput(file)">{{ t('trainingDetail.actions.download') }}</Button>
+                </div></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <details class="training-output-preview" :open="outputPreviewOpen" @toggle="outputPreviewOpen = ($event.target as HTMLDetailsElement).open">
-          <summary>{{ selectedOutputFile?.file_name || t('trainingDetail.outputPreviewTitle') }}</summary>
-          <pre class="json-view">{{ selectedOutputContent || t('trainingDetail.messages.noOutputContent') }}</pre>
-        </details>
+        <p v-if="historicalCheckpointNote" class="training-metric-hint">{{ historicalCheckpointNote }}</p>
       </div>
     </section>
 
     <details v-if="task && !cancelledTraining" class="resource-section training-more" @toggle="detailedChartsOpen = ($event.target as HTMLDetailsElement).open">
-      <summary>{{ zh ? '任务状态与详细指标' : 'Status and detailed metrics' }}</summary>
-      <section>
-      <div class="section-heading">
-        <div>
-          <h2>{{ t('trainingDetail.summaryTitle') }}</h2>
-        </div>
-      </div>
-      <div class="summary-grid">
-        <div>
-          <span>{{ t('trainingDetail.fields.datasetExportId') }}</span>
-          <strong>{{ task.dataset_export_id || '-' }}</strong>
-        </div>
-        <div>
-          <span>{{ zh ? '模型版本' : 'Model version' }}</span>
-          <strong>{{ outputVersionName || (outputVersionDeleted ? (zh ? '已删除' : 'Deleted') : outputVersionRegistered ? (zh ? '已登记' : 'Registered') : '—') }}</strong>
-        </div>
-        <div>
-          <span>{{ t('trainingDetail.fields.bestMetric') }}</span>
-          <strong>{{ task.best_metric_name ? `${task.best_metric_name}: ${formatMetricValue(task.best_metric_value)}` : '-' }}</strong>
-        </div>
-        <div>
-          <span>{{ t('trainingDetail.fields.controlStatus') }}</span>
-          <strong>{{ task.control_status.status }}</strong>
-        </div>
-      </div>
-      <div class="table-actions table-actions--wrap">
-        <Button
-          v-for="action in detailControlActions"
-          :key="action"
-          size="sm"
-          variant="secondary"
-          :disabled="loading || actionRunning !== null || cancellingTraining"
-          :loading="actionRunning === action"
-          @click="runAction(action)"
+      <summary>
+        <ChevronRight :size="16" aria-hidden="true" />
+        {{ zh ? '任务状态与详细指标' : 'Status and detailed metrics' }}
+      </summary>
+      <div class="training-more__body">
+        <section class="training-detail-group" aria-labelledby="training-diagnostics-title">
+          <h2 id="training-diagnostics-title">{{ zh ? '训练状态' : 'Training status' }}</h2>
+          <dl class="training-detail-facts">
+            <div>
+              <dt>{{ zh ? '状态' : 'Status' }}</dt>
+              <dd><TaskStateBadge :state="progressStage !== '-' ? progressStage : task.state" /></dd>
+            </div>
+            <div v-if="progressEpochText !== '-'">
+              <dt>{{ zh ? '轮次' : 'Epoch' }}</dt>
+              <dd>{{ progressEpochText }}</dd>
+            </div>
+            <div v-if="outputVersionName || outputVersionDeleted || outputVersionRegistered">
+              <dt>{{ zh ? '模型版本' : 'Model version' }}</dt>
+              <dd>{{ outputVersionName || (outputVersionDeleted ? (zh ? '已删除' : 'Deleted') : (zh ? '已登记' : 'Registered')) }}</dd>
+            </div>
+            <div v-if="task.control_status.pending_action">
+              <dt>{{ t('trainingDetail.fields.controlStatus') }}</dt>
+              <dd>{{ t(`trainingDetail.actions.${task.control_status.pending_action}`) }} · {{ zh ? '待执行' : 'Pending' }}</dd>
+            </div>
+            <div v-if="currentMetricText !== '-'">
+              <dt>{{ t('trainingDetail.fields.currentMetric') }}</dt>
+              <dd>{{ currentMetricText }}</dd>
+            </div>
+            <div v-if="bestMetricText !== '-'">
+              <dt>{{ t('trainingDetail.fields.bestMetric') }}</dt>
+              <dd>{{ bestMetricText }}</dd>
+            </div>
+          </dl>
+          <div v-if="detailControlActions.length || taskType === 'detection'" class="table-actions table-actions--wrap">
+            <Button
+              v-for="action in detailControlActions"
+              :key="action"
+              size="sm"
+              variant="secondary"
+              :disabled="loading || actionRunning !== null || cancellingTraining"
+              :loading="actionRunning === action"
+              @click="runAction(action)"
+            >
+              <component :is="actionIcon(action)" :size="14" />
+              {{ t(`trainingDetail.actions.${action}`) }}
+            </Button>
+            <Button
+              v-if="taskType === 'detection'"
+              size="sm"
+              variant="secondary"
+              :disabled="loading || !canRegisterCheckpoint || actionRunning !== null"
+              :loading="actionRunning === 'register-model-version'"
+              @click="registerCheckpoint"
+            >
+              <UploadCloud :size="14" />
+              {{ t('trainingDetail.actions.registerModelVersion') }}
+            </Button>
+          </div>
+        </section>
+        <section
+          v-if="[actualOptimizerText, learningRateText, initialLearningRateText, finalLearningRateText].some(value => value !== '-')"
+          class="training-detail-group" aria-labelledby="training-optimizer-title"
         >
-          <component :is="actionIcon(action)" :size="14" />
-          {{ t(`trainingDetail.actions.${action}`) }}
-        </Button>
-        <Button
-          v-if="taskType === 'detection'"
-          size="sm"
-          variant="secondary"
-          :disabled="loading || !canRegisterCheckpoint || actionRunning !== null"
-          :loading="actionRunning === 'register-model-version'"
-          @click="registerCheckpoint"
-        >
-          <UploadCloud :size="14" />
-          {{ t('trainingDetail.actions.registerModelVersion') }}
-        </Button>
-      </div>
-      </section>
-
-    <section class="training-progress-section">
-      <div class="summary-grid training-progress-grid">
-        <div>
-          <span>{{ t('trainingDetail.fields.stage') }}</span>
-          <TaskStateBadge v-if="progressStage !== '-'" :state="progressStage" />
-          <strong v-else>-</strong>
-        </div>
-        <div>
-          <span>{{ t('trainingDetail.fields.epoch') }}</span>
-          <strong>{{ progressEpochText }}</strong>
-        </div>
-        <div>
-          <span>{{ t('trainingDetail.fields.learningRate') }}</span>
-          <strong>{{ learningRateText }}</strong>
-        </div>
-        <div>
-          <span>{{ t('trainingDetail.fields.currentMetric') }}</span>
-          <strong>{{ currentMetricText }}</strong>
-        </div>
-        <div v-if="bestMetricText !== '-'">
-          <span>{{ t('trainingDetail.fields.bestMetric') }}</span><strong>{{ bestMetricText }}</strong>
-        </div>
-        <div v-if="actualOptimizerText !== '-'">
-          <span>{{ t('trainingDetail.fields.optimizer') }}</span>
-          <strong>{{ actualOptimizerText }}</strong>
-        </div>
-        <div v-if="initialLearningRateText !== '-'">
-          <span>{{ t('trainingDetail.fields.initialLearningRate') }}</span>
-          <strong>{{ initialLearningRateText }}</strong>
-        </div>
-        <div v-if="finalLearningRateText !== '-'">
-          <span>{{ t('trainingDetail.fields.finalLearningRate') }}</span>
-          <strong>{{ finalLearningRateText }}</strong>
-        </div>
-      </div>
-      <details class="training-metrics-details">
-      <summary>{{ t('trainingDetail.completedEpochMetricsTitle') }}</summary>
-      <div class="training-metric-panels">
-        <article class="training-metric-panel">
-          <div>
-            <h3>{{ t('trainingDetail.completedEpochMetricsTitle') }}</h3>
-            <p class="training-metric-hint">{{ t('trainingDetail.completedEpochMetricsHint') }}</p>
-            <p v-if="showsYoloSpatialLossHint" class="training-metric-hint">
-              {{ t('trainingDetail.yoloLossComponentsHint') }}
-            </p>
+          <h2 id="training-optimizer-title">{{ zh ? '优化器与学习率' : 'Optimizer and learning rate' }}</h2>
+          <dl class="training-detail-facts">
+            <div v-if="actualOptimizerText !== '-'">
+              <dt>{{ t('trainingDetail.fields.optimizer') }}</dt>
+              <dd>{{ actualOptimizerText }}</dd>
+            </div>
+            <div v-if="initialLearningRateText !== '-'">
+              <dt>{{ t('trainingDetail.fields.initialLearningRate') }}</dt>
+              <dd>{{ initialLearningRateText }}</dd>
+            </div>
+            <div v-if="finalLearningRateText !== '-'">
+              <dt>{{ t('trainingDetail.fields.finalLearningRate') }}</dt>
+              <dd>{{ finalLearningRateText }}</dd>
+            </div>
+            <div v-else-if="learningRateText !== '-'">
+              <dt>{{ t('trainingDetail.fields.learningRate') }}</dt>
+              <dd>{{ learningRateText }}</dd>
+            </div>
+          </dl>
+        </section>
+        <section class="training-detail-group" aria-labelledby="training-metrics-title">
+          <h2 id="training-metrics-title">{{ zh ? '轮次指标' : 'Epoch metrics' }}</h2>
+          <div class="training-metric-panels">
+            <article class="training-metric-panel">
+              <div>
+                <h3>{{ t('trainingDetail.completedEpochMetricsTitle') }}</h3>
+                <p class="training-metric-hint">{{ t('trainingDetail.completedEpochMetricsHint') }}</p>
+                <p v-if="showsYoloSpatialLossHint" class="training-metric-hint">
+                  {{ t('trainingDetail.yoloLossComponentsHint') }}
+                </p>
+              </div>
+              <dl v-if="trainMetricEntries.length > 0" class="training-metric-list">
+                <template v-for="metric in trainMetricEntries" :key="metric.name">
+                  <dt>{{ metric.name }}</dt>
+                  <dd>{{ metric.value }}</dd>
+                </template>
+              </dl>
+              <span v-else class="training-muted-value">{{ zh ? '暂无轮次指标' : 'No epoch metrics yet' }}</span>
+            </article>
+            <article class="training-metric-panel">
+              <h3>{{ t('trainingDetail.validationMetricsTitle') }}</h3>
+              <dl v-if="validationMetricEntries.length > 0" class="training-metric-list">
+                <template v-for="metric in validationMetricEntries" :key="metric.name">
+                  <dt>{{ trainingMetricLabel(metric.name) }}</dt>
+                  <dd>{{ metric.value }}</dd>
+                </template>
+              </dl>
+              <span v-else class="training-muted-value">{{ zh ? '暂无验证指标' : 'No validation metrics yet' }}</span>
+            </article>
+            <article v-if="batchMetricEntries.length > 0" class="training-metric-panel">
+              <div>
+                <h3>{{ t('trainingDetail.currentBatchMetricsTitle') }}</h3>
+                <p class="training-metric-hint">{{ t('trainingDetail.currentBatchMetricsHint') }}</p>
+              </div>
+              <dl class="training-metric-list">
+                <template v-for="metric in batchMetricEntries" :key="metric.name">
+                  <dt>{{ metric.name }}</dt>
+                  <dd>{{ metric.value }}</dd>
+                </template>
+              </dl>
+            </article>
           </div>
-          <dl v-if="trainMetricEntries.length > 0" class="training-metric-list">
-            <template v-for="metric in trainMetricEntries" :key="metric.name">
-              <dt>{{ metric.name }}</dt>
-              <dd>{{ metric.value }}</dd>
-            </template>
-          </dl>
-          <span v-else class="training-muted-value">-</span>
-        </article>
-        <article v-if="batchMetricEntries.length > 0" class="training-metric-panel">
-          <div>
-            <h3>{{ t('trainingDetail.currentBatchMetricsTitle') }}</h3>
-            <p class="training-metric-hint">{{ t('trainingDetail.currentBatchMetricsHint') }}</p>
+        </section>
+        <section class="training-detail-group" aria-labelledby="training-runtime-title">
+          <div class="training-chart-heading">
+            <h2 id="training-runtime-title">{{ zh ? '学习率与运行监控' : 'Learning rate and runtime monitoring' }}</h2>
+            <StatusBadge :tone="trainingStreamConnected ? 'success' : 'neutral'">
+              {{ trainingStreamConnected ? t('trainingDetail.charts.live') : (zh ? '已记录' : 'Recorded') }}
+            </StatusBadge>
           </div>
-          <dl class="training-metric-list">
-            <template v-for="metric in batchMetricEntries" :key="metric.name">
-              <dt>{{ metric.name }}</dt>
-              <dd>{{ metric.value }}</dd>
-            </template>
-          </dl>
-        </article>
-        <article class="training-metric-panel">
-          <h3>{{ t('trainingDetail.validationMetricsTitle') }}</h3>
-          <dl v-if="validationMetricEntries.length > 0" class="training-metric-list">
-            <template v-for="metric in validationMetricEntries" :key="metric.name">
-              <dt>{{ metric.name }}</dt>
-              <dd>{{ metric.value }}</dd>
-            </template>
-          </dl>
-          <span v-else class="training-muted-value">-</span>
-        </article>
-        <article v-if="runtimeMetricEntries.length > 0" class="training-metric-panel">
-          <div>
-            <h3>{{ t('trainingDetail.runtimeMetricsTitle') }}</h3>
-            <p class="training-metric-hint">{{ t('trainingDetail.runtimeMetricsHint') }}</p>
-          </div>
-          <dl class="training-metric-list">
-            <template v-for="metric in runtimeMetricEntries" :key="metric.name">
-              <dt>{{ metric.name }}</dt>
-              <dd>{{ metric.value }}</dd>
-            </template>
-          </dl>
-        </article>
+          <article v-if="runtimeMetricEntries.length > 0" class="training-metric-panel">
+            <div>
+              <h3>{{ t('trainingDetail.runtimeMetricsTitle') }}</h3>
+              <p class="training-metric-hint">{{ t('trainingDetail.runtimeMetricsHint') }}</p>
+            </div>
+            <dl class="training-metric-list">
+              <template v-for="metric in runtimeMetricEntries" :key="metric.name">
+                <dt>{{ metric.name }}</dt>
+                <dd>{{ metric.value }}</dd>
+              </template>
+            </dl>
+          </article>
+          <p v-if="runtimeHistory.length === 0" class="training-metric-hint">{{ runtimeHistoryEmptyText }}</p>
+          <TrainingMetricsCharts
+            v-if="taskType && detailedChartsOpen && (runtimeHistory.length || learningRateHistory.length)"
+            diagnostics-only
+            :task-type="taskType"
+            :train-history="trainMetricHistory"
+            :validation-history="validationMetricHistory"
+            :learning-rate-history="learningRateHistory"
+            :runtime-history="runtimeHistory"
+            :runtime-empty-text="runtimeHistoryEmptyText"
+          />
+        </section>
       </div>
-      </details>
-      <div class="training-chart-heading">
-        <div>
-          <h3>{{ t('trainingDetail.charts.title') }}</h3>
-          <p>{{ t('trainingDetail.charts.description') }}</p>
-        </div>
-        <StatusBadge :tone="trainingStreamConnected ? 'success' : 'neutral'">
-          {{ trainingStreamConnected ? t('trainingDetail.charts.live') : t('trainingDetail.charts.snapshot') }}
-        </StatusBadge>
-      </div>
-      <p
-        v-if="runtimeHistory.length === 0"
-        class="training-metric-hint training-runtime-history-status"
-      >
-        {{ runtimeHistoryEmptyText }}
-      </p>
-      <TrainingMetricsCharts
-        v-if="taskType && detailedChartsOpen"
-        :task-type="taskType"
-        :train-history="trainMetricHistory"
-        :validation-history="validationMetricHistory"
-        :learning-rate-history="learningRateHistory"
-        :runtime-history="runtimeHistory"
-        :runtime-empty-text="runtimeHistoryEmptyText"
-      />
-    </section>
     </details>
 
     <TrainingRunLog v-if="task && !cancelledTraining" :open="runLogOpen" :task-id="task.task_id" :task-name="task.display_name"
       :events="task.events" :live="taskEvents.streamState.value?.connected === true" :zh="zh" @close="runLogOpen = false" />
+
+    <TrainingOutputPreview
+      :file="previewOutputFile" :detail="selectedOutputFile"
+      :size-label="formatOutputSize(previewOutputFile?.size_bytes)"
+      :epoch="previewOutputFile ? outputFileEpoch(previewOutputFile) : null"
+      :loading="outputPreviewLoading" :error="outputPreviewError"
+      :downloading="!!outputDownloading" :download-error="outputDownloadError"
+      @close="closeOutputPreview" @retry="previewOutputFile && selectOutputFile(previewOutputFile.file_name)" @download="downloadOutput"
+    />
 
     <SideDrawer
       :open="resumeDialogOpen"
@@ -437,9 +457,10 @@
 
 <script setup lang="ts">
 import { useCatalogVersionLabel } from '../composables/useCatalogVersionLabel'
-import { formatLearningRate, formatModelNumber } from '../model-number-format'
+import { formatLearningRate, formatModelNumber, formatTrainingMetric } from '../model-number-format'
+import { estimateTrainingRemainingSeconds, readCompletedTrainingEpoch } from '../training-remaining-time'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
-import { Activity, ArrowLeft, Box, CircleAlert, FileCheck, Pause, Play, RefreshCw, Save, Square, Trash2, UploadCloud } from '@lucide/vue'
+import { Activity, ArrowLeft, Box, ChevronRight, CircleAlert, CircleStop, Clock3, FileCheck, FileText, Pause, Play, RefreshCw, Save, Square, Trash2, UploadCloud } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { modelTaskListLocation } from '../model-task-navigation'
 import { isDeletedTrainingVersion } from '../model-version-action'
@@ -451,6 +472,7 @@ import {
   downloadModelTrainingOutputFile,
   getModelTrainingOutputFileDetail,
   getModelTrainingTaskDetail,
+  getTrainingWorkerStatus,
   listModelTrainingOutputFiles,
   listDeploymentSourceModels,
   registerModelTrainingLatestCheckpoint,
@@ -474,6 +496,7 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import TabList from '@/shared/ui/navigation/TabList.vue'
 import TrainingRunLog from '../components/TrainingRunLog.vue'
+import TrainingOutputPreview from '../components/TrainingOutputPreview.vue'
 import { getDatasetExportDetail } from '@/modules/datasets/services/dataset.service'
 import { getDatasetWorkspace } from '@/modules/datasets/services/dataset-workspace.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -493,6 +516,8 @@ import {
   buildLearningRatePointFromProgress,
   buildMetricPointFromProgress,
   buildRuntimePoint,
+  formatTrainingMetricLabel,
+  readLegacyRfdetrMetricHistory,
   readPersistedLearningRateHistory,
   readPersistedMetricHistory,
   readPersistedRuntimeHistory,
@@ -517,7 +542,9 @@ const outputVersionRegistered = computed(() => !!(task.value?.model_version_id |
 const outputFiles = ref<ModelTrainingOutputFileSummary[]>([])
 const selectedOutputFile = ref<ModelTrainingOutputFileDetail | null>(null)
 const selectedOutputFileName = ref<string | null>(null)
-const outputPreviewOpen = ref(false)
+const previewOutputFile = computed(() => outputFiles.value.find(file => file.file_name === selectedOutputFileName.value) ?? null)
+const outputPreviewLoading = ref(false)
+const outputPreviewError = ref<string | null>(null)
 const outputDownloading = ref('')
 const outputDownloadError = ref<string | null>(null)
 function formatOutputSize(size: number | null | undefined): string {
@@ -549,7 +576,7 @@ const runtimeHistory = ref<TrainingRuntimePoint[]>([])
 const latestTaskEventCursor = ref<string | null>(null)
 let snapshotRefreshTimer: ReturnType<typeof window.setTimeout> | null = null
 let outputFilesRefreshTimer: ReturnType<typeof window.setTimeout> | null = null
-let cancellationRefreshTimer: ReturnType<typeof window.setTimeout> | null = null
+let taskStateRefreshTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const taskId = computed(() => String(route.params.taskId ?? ''))
 const taskType = computed<ModelTaskType | null>(() => {
@@ -569,6 +596,18 @@ const trainingCopyLocation = computed(() => {
   return { path: '/models', query: { tab: 'training', task: taskType.value, trainingFrom: source.task_id } }
 })
 const cancelledTraining = computed(() => task.value?.state === 'cancelled')
+const queuedTraining = computed(() => task.value?.state === 'queued')
+const workerStatus = ref<Awaited<ReturnType<typeof getTrainingWorkerStatus>>['status']>()
+const queueTitle = computed(() => {
+  if (cancellingTraining.value) return zh.value ? '正在取消排队' : 'Cancelling queued training'
+  if (workerStatus.value === 'unavailable') return zh.value ? '训练 Worker 未就绪' : 'Training worker unavailable'
+  if (workerStatus.value === 'starting') return zh.value ? '训练 Worker 正在启动' : 'Training worker starting'
+  return zh.value ? '等待训练 Worker 领取' : 'Waiting for a training worker'
+})
+const queueDescription = computed(() => cancellingTraining.value
+  ? (zh.value ? '正在确认任务是否已取消。' : 'Checking whether the task has been cancelled.')
+  : (zh.value ? '任务已进入队列，训练 Worker 就绪并空闲时会自动领取。'
+    : 'The task is queued and will start when a training worker is ready and available.'))
 const failedTraining = computed(() => ['failed', 'timed_out'].includes(task.value?.state ?? ''))
 const epochLabel = computed(() => {
   if (task.value?.state === 'timed_out') return zh.value ? '超时轮次' : 'Timed-out epoch'
@@ -586,6 +625,25 @@ const cancelledOutputTabs = computed(() => [
   { id: 'events', label: zh.value ? '运行日志' : 'Run log' },
   { id: 'parameters', label: zh.value ? '参数' : 'Parameters' },
 ])
+const outputFileDescriptions = computed<Record<string, string>>(() => zh.value ? {
+  'train-metrics': '训练指标',
+  'validation-metrics': '验证指标',
+  'runtime-metrics': '运行指标',
+  'test-metrics': '测试指标',
+  summary: '训练摘要',
+  labels: '类别名单',
+  'best-checkpoint': '最佳权重',
+  'latest-checkpoint': '最新权重',
+} : {
+  'train-metrics': 'Training metrics',
+  'validation-metrics': 'Validation metrics',
+  'runtime-metrics': 'Runtime metrics',
+  'test-metrics': 'Test metrics',
+  summary: 'Training summary',
+  labels: 'Class labels',
+  'best-checkpoint': 'Best weights',
+  'latest-checkpoint': 'Latest weights',
+})
 const cancelledContext = computed(() => {
   const spec = task.value?.task_spec ?? {}
   const input = readRecord(spec.input_size)
@@ -677,14 +735,38 @@ async function openLinkedModel(): Promise<void> {
 const cancellingTraining = computed(() => Boolean(task.value
   && (isActiveTrainingState(task.value.state) || task.value.state === 'paused')
   && (terminateRequested.value || task.value.control_status.pending_action === 'terminate')))
-const completedTrainingEpoch = computed(() => (
-  readNumber(progressSnapshot.value.completed_epoch)
-    ?? readNumber(completedEpochMetrics.value.epoch)
-    ?? trainMetricHistory.value.at(-1)?.epoch
-    ?? (task.value?.state === 'succeeded' ? readNumber(progressSnapshot.value.epoch) : null)
-    ?? null
-))
-const totalTrainingEpochs = computed(() => readNumber(progressSnapshot.value.max_epochs) ?? readNumber(task.value?.task_spec.max_epochs))
+const trainingRounds = computed<{ taskId: string; attempt: number; completed: number | null; total: number | null } | null>((previous) => {
+  const current = task.value
+  if (!current) return null
+  const attempt = current.current_attempt_no
+  const sameAttempt = previous?.taskId === current.task_id && previous.attempt === attempt ? previous : null
+  const progress = progressSnapshot.value
+  const epoch = readNumber(progress.epoch)
+  const total = readNumber(current.task_spec.max_epochs) ?? readNumber(progress.max_epochs) ?? sameAttempt?.total ?? null
+  const eventEpoch = latestCompletedEventEpoch.value
+  const fileEpoch = (attempt <= 1 || current.state === 'succeeded')
+    ? readNumber(completedEpochMetrics.value.epoch) ?? trainMetricHistory.value.at(-1)?.epoch ?? null
+    : null
+  // A newer training batch also confirms that the preceding epoch finished.
+  const batchEpoch = progress.granularity === 'batch' && epoch !== null ? Math.max(0, epoch - 1) : null
+  const resultEpoch = current.state === 'succeeded' && progress.granularity !== 'batch' ? epoch : null
+  const completed = Math.max(sameAttempt?.completed ?? -1, eventEpoch ?? -1,
+    readCompletedTrainingEpoch(progress) ?? -1, fileEpoch ?? -1, batchEpoch ?? -1, resultEpoch ?? -1)
+  return { taskId: current.task_id, attempt, completed: completed >= 0 ? Math.min(completed, total ?? completed) : null, total }
+})
+const latestCompletedEventEpoch = computed(() => {
+  const current = task.value
+  if (!current) return null
+  let latest: number | null = null
+  for (const event of current.events) {
+    if (event.event_type !== 'progress' || (event.payload.attempt_no ?? 1) !== current.current_attempt_no) continue
+    const epoch = readCompletedTrainingEpoch(event.payload.progress)
+    if (epoch !== null && (latest === null || epoch > latest)) latest = epoch
+  }
+  return latest
+})
+const completedTrainingEpoch = computed(() => trainingRounds.value?.completed ?? null)
+const totalTrainingEpochs = computed(() => trainingRounds.value?.total ?? null)
 const terminationProgress = computed(() => {
   const completed = completedTrainingEpoch.value
   const total = totalTrainingEpochs.value
@@ -742,8 +824,8 @@ const progressSnapshot = computed(() => task.value?.progress ?? {})
 const progressPercent = computed(() => {
   const completed = completedTrainingEpoch.value
   const total = totalTrainingEpochs.value
-  if (completed !== null && total && total > 0) return completed / total * 100
-  return readNumber(progressSnapshot.value.percent)
+  if (completed === null || total === null || total <= 0) return null
+  return completed / total * 100
 })
 const activeEpoch = computed(() => {
   if (task.value?.state === 'succeeded') return null
@@ -751,35 +833,69 @@ const activeEpoch = computed(() => {
   return epoch !== null && (completedTrainingEpoch.value === null || epoch > completedTrainingEpoch.value) ? epoch : null
 })
 const batchText = computed(() => {
-  const batch = readNumber(progressSnapshot.value.batch)
-  const total = readNumber(progressSnapshot.value.total_batches)
+  const batch = readNumber(progressSnapshot.value.iteration ?? progressSnapshot.value.batch)
+  const total = readNumber(progressSnapshot.value.max_iterations ?? progressSnapshot.value.total_batches)
   return activeEpoch.value !== null && batch !== null && total ? `${batch} / ${total}` : ''
 })
+const trainingRoundsFinished = computed(() => {
+  const completed = completedTrainingEpoch.value
+  const total = totalTrainingEpochs.value
+  return completed !== null && total !== null && completed >= total
+})
 const estimatedDuration = computed(() => {
-  if (task.value?.state !== 'running') return ''
-  const seconds = readNumber(progressSnapshot.value.estimated_remaining_seconds)
-    ?? readNumber(readRecord(progressSnapshot.value.runtime).estimated_remaining_seconds)
-  return seconds !== null && seconds > 0 ? formatDuration(Math.round(seconds)) : ''
+  const current = task.value
+  const completed = completedTrainingEpoch.value
+  const total = totalTrainingEpochs.value
+  if (!current || current.state !== 'running') return ''
+  if (trainingRoundsFinished.value) return zh.value ? '正在整理产物' : 'Saving outputs'
+  const seconds = completed !== null && total !== null
+    ? estimateTrainingRemainingSeconds(current.events, current.current_attempt_no, completed, total,
+      current.evaluation_interval ?? readNumber(progressSnapshot.value.evaluation_interval))
+    : null
+  if (seconds === null) return zh.value ? '估算中' : 'Estimating'
+  const resolution = seconds < 120 ? 5 : seconds < 600 ? 15 : 60
+  const duration = formatDuration(Math.max(resolution, Math.round(seconds / resolution) * resolution))
+  return zh.value ? `约 ${duration}` : `About ${duration}`
 })
 const completedTrainHistory = computed(() => trainMetricHistory.value.filter(point => completedTrainingEpoch.value === null || point.epoch <= completedTrainingEpoch.value))
 const completedValidationHistory = computed(() => validationMetricHistory.value.filter(point => completedTrainingEpoch.value === null || point.epoch <= completedTrainingEpoch.value))
-const bestCheckpointEpoch = computed(() => {
-  const recorded = readNumber(progressSnapshot.value.best_checkpoint_saved_epoch) ?? task.value?.events
-    .map(event => readNumber(readRecord(event.payload.progress).best_checkpoint_saved_epoch))
-    .filter(value => value !== null).at(-1)
-  if (recorded != null) return recorded
+const bestMetricEpochs = computed(() => {
   const name = task.value?.best_metric_name
   const value = task.value?.best_metric_value
-  if (!name || value == null) return undefined
-  const matches = completedValidationHistory.value.filter(point => (point.metrics[name] ?? point.metrics[name.replace(/^val[_/]/, '')]) === value)
-  return matches.length === 1 ? matches[0].epoch : undefined
+  if (!name || value == null) return []
+  return completedValidationHistory.value
+    .filter(point => (point.metrics[name] ?? point.metrics[name.replace(/^val[_/]/, '')]) === value)
+    .map(point => point.epoch)
+})
+const bestCheckpointEpoch = computed(() => {
+  const recorded = outputFiles.value.find(file => file.file_name === 'best-checkpoint')?.epoch
+    ?? readNumber(task.value?.training_summary.best_checkpoint_saved_epoch)
+    ?? readNumber(progressSnapshot.value.best_checkpoint_saved_epoch)
+    ?? task.value?.events.map(event => readNumber(readRecord(event.payload.progress).best_checkpoint_saved_epoch))
+      .filter(value => value !== null).at(-1)
+  if (recorded != null) return recorded
+  // 兼容未登记权重轮次、且按首次最高分保存的旧分类任务。
+  const savesFirstBest = taskType.value === 'classification' && ['yolov8', 'yolo11', 'yolo26'].includes(task.value?.model_type ?? '')
+  return bestMetricEpochs.value.length === 1 || savesFirstBest ? bestMetricEpochs.value[0] : undefined
+})
+const bestMetricEpoch = computed(() => bestCheckpointEpoch.value ?? bestMetricEpochs.value.at(-1))
+const historicalCheckpointNote = computed(() => {
+  const saved = bestCheckpointEpoch.value
+  const best = bestMetricEpochs.value.at(-1)
+  if (saved == null || best == null || saved === best || task.value?.state !== 'succeeded') return ''
+  return zh.value
+    ? `最后一次达到最佳指标是第 ${best} 轮。此任务的最佳权重文件保存于第 ${saved} 轮。`
+    : `Epoch ${best} was the last to reach the best score. This task saved its best weights at epoch ${saved}.`
 })
 const latestCheckpointEpoch = computed(() => readNumber(task.value?.training_summary.latest_checkpoint_epoch)
-  ?? readNumber(task.value?.result.latest_checkpoint_epoch) ?? readNumber(task.value?.control_status.last_save_epoch))
+  ?? readNumber(task.value?.result.latest_checkpoint_epoch) ?? readNumber(task.value?.control_status.last_save_epoch)
+  ?? (task.value?.state === 'succeeded' ? completedTrainingEpoch.value : null))
 const savedCheckpointFile = computed(() => outputFiles.value.find(file => file.file_name === 'latest-checkpoint' && file.file_status === 'ready'))
-function outputFileEpoch(name: string): number | null | undefined {
-  if (name === 'best-checkpoint') return bestCheckpointEpoch.value
-  if (name === 'latest-checkpoint') return latestCheckpointEpoch.value
+function outputFileEpoch(file: ModelTrainingOutputFileSummary): number | null | undefined {
+  if (file.epoch != null) return file.epoch
+  if (file.file_name === 'test-metrics') return null
+  if (file.file_name === 'best-checkpoint' || file.checkpoint_role === 'best') return bestCheckpointEpoch.value
+  if (file.file_name === 'latest-checkpoint' || file.checkpoint_role === 'latest') return latestCheckpointEpoch.value
   return null
 }
 const progressStage = computed(() => formatPlainValue(progressSnapshot.value.stage))
@@ -804,15 +920,15 @@ const finalLearningRateText = computed(() => formatMetricValue(
 ))
 const currentMetricText = computed(() => {
   const name = formatPlainValue(progressSnapshot.value.current_metric_name)
-  const value = formatMetricValue(progressSnapshot.value.current_metric_value)
+  const value = formatMetricValue(progressSnapshot.value.current_metric_value, name)
   if (name === '-' && value === '-') return '-'
-  return `${name}: ${value}`
+  return `${trainingMetricLabel(name)} · ${value}`
 })
 const bestMetricText = computed(() => {
   const name = task.value?.best_metric_name || formatPlainValue(progressSnapshot.value.best_metric_name)
   const value = task.value?.best_metric_value ?? progressSnapshot.value.best_metric_value
   if (!name || name === '-') return '-'
-  return `${name}: ${formatMetricValue(value)}`
+  return `${trainingMetricLabel(name)} · ${formatMetricValue(value, name)}`
 })
 const completedEpochMetrics = computed(() => {
   const persistedMetrics = readRecord(trainingMetricsPayload.value.final_metrics)
@@ -824,15 +940,10 @@ const batchMetricEntries = computed(() => {
   const explicitBatchMetrics = readRecord(progressSnapshot.value.batch_metrics)
   return buildMetricEntries(explicitBatchMetrics)
 })
-const validationMetricEntries = computed(() => buildMetricEntries(progressSnapshot.value.validation_metrics))
+const validationMetricEntries = computed(() => buildMetricEntries(
+  validationMetricHistory.value.at(-1)?.metrics ?? progressSnapshot.value.validation_metrics,
+))
 const runtimeMetricEntries = computed(() => buildRuntimeMetricEntries(progressSnapshot.value.runtime))
-const selectedOutputContent = computed(() => {
-  const outputFile = selectedOutputFile.value
-  if (!outputFile) return ''
-  if (outputFile.file_kind === 'text') return outputFile.text_content || outputFile.lines.join('\n')
-  if (Object.keys(outputFile.payload).length > 0) return JSON.stringify(outputFile.payload, null, 2)
-  return outputFile.object_key || ''
-})
 const taskEvents = useTaskEvents(
   () => taskId.value,
   handleTaskEvent,
@@ -865,15 +976,18 @@ function clearRefreshTimers(): void {
   }
 }
 
-function clearCancellationRefresh(): void {
-  if (cancellationRefreshTimer !== null) window.clearTimeout(cancellationRefreshTimer)
-  cancellationRefreshTimer = null
-  taskScope.cancelRead('cancellation')
+function clearTaskStateRefresh(): void {
+  if (taskStateRefreshTimer !== null) window.clearTimeout(taskStateRefreshTimer)
+  taskStateRefreshTimer = null
+  taskScope.cancelRead('state')
+  taskScope.cancelRead('worker-status')
 }
 
-watch(cancellingTraining, (pending) => {
-  if (pending) scheduleCancellationRefresh()
-  else clearCancellationRefresh()
+watch([queuedTraining, cancellingTraining], ([queued, cancelling]) => {
+  clearTaskStateRefresh()
+  workerStatus.value = undefined
+  if (queued && !cancelling) void refreshTrainingWorkerStatus()
+  if (queued || cancelling) scheduleTaskStateRefresh()
 })
 
 watch([() => route.params.taskType, () => route.params.taskId], () => {
@@ -881,17 +995,16 @@ watch([() => route.params.taskType, () => route.params.taskId], () => {
   taskEvents.stop()
   trainingTelemetry.stop()
   clearRefreshTimers()
-  clearCancellationRefresh()
+  clearTaskStateRefresh()
   task.value = null
+  workerStatus.value = undefined
   outputFiles.value = []
   cancelledOutputTab.value = 'files'
   runLogOpen.value = false
   detailedChartsOpen.value = false
   linkedModelLoading.value = false
   linkedModelError.value = ''
-  selectedOutputFile.value = null
-  selectedOutputFileName.value = null
-  outputPreviewOpen.value = false
+  closeOutputPreview()
   outputDownloading.value = ''
   outputDownloadError.value = null
   trainingMetricsPayload.value = {}
@@ -913,16 +1026,7 @@ watch([() => route.params.taskType, () => route.params.taskId], () => {
   void refreshPage()
 }, { immediate: true, flush: 'sync' })
 
-onBeforeUnmount(() => { clearRefreshTimers(); clearCancellationRefresh(); closeResumeDialog() })
-
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('success') || normalized.includes('succeed') || normalized.includes('ready')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error') || normalized.includes('terminate')) return 'danger'
-  if (normalized.includes('queue') || normalized.includes('pending') || normalized.includes('pause')) return 'warning'
-  if (normalized.includes('run') || normalized.includes('process') || normalized.includes('save')) return 'info'
-  return 'neutral'
-}
+onBeforeUnmount(() => { clearRefreshTimers(); clearTaskStateRefresh(); closeResumeDialog() })
 
 function actionIcon(action: ModelTrainingTaskActionName) {
   if (action === 'save') return Save
@@ -940,23 +1044,34 @@ async function refreshPage(): Promise<void> {
     return
   }
   taskScope.cancelRead('files')
-  taskScope.cancelRead('preview')
   clearRefreshTimers()
   loading.value = true
   errorMessage.value = null
   try {
-    const [taskDetail, files] = await Promise.all([
+    const [taskDetail, fileRecords] = await Promise.all([
       getModelTrainingTaskDetail(request.taskType, request.taskId, request.signal, !task.value || runLogOpen.value),
       listModelTrainingOutputFiles(request.taskType, request.taskId, request.signal),
     ])
     if (!request.isCurrent()) return
-    if (task.value?.task_id === taskDetail.task_id) {
+    const current = task.value
+    if (current?.task_id === taskDetail.task_id) {
+      if (taskDetail.current_attempt_no < current.current_attempt_no
+        || (taskDetail.current_attempt_no === current.current_attempt_no
+          && isActiveTrainingState(taskDetail.state)
+          && (current.state === 'succeeded' || current.state === 'cancelled'))) return
       const received = new Set(taskDetail.events.map(event => event.event_id))
-      taskDetail.events = [...taskDetail.events, ...task.value.events.filter(event => !received.has(event.event_id))]
+      taskDetail.events = [...taskDetail.events, ...current.events.filter(event => !received.has(event.event_id))]
+      if (taskDetail.current_attempt_no === current.current_attempt_no && taskDetail.state === 'running'
+        && current.state === 'running' && (!shouldApplyTaskEventSnapshot({}, taskDetail.progress)
+          || (taskDetail.progress.epoch == null && current.progress.epoch != null))) {
+        taskDetail.progress = current.progress
+      }
     }
     task.value = taskDetail
     latestTaskEventCursor.value = buildLatestTaskEventCursor(taskDetail.events)
+    const files = fileRecords.filter(file => file.file_status === 'ready')
     outputFiles.value = files
+    if (selectedOutputFileName.value && !previewOutputFile.value) closeOutputPreview()
     const metricsFile = files.find((file) => file.file_name === 'train-metrics')
     const validationMetricsFile = files.find((file) => file.file_name === 'validation-metrics')
     const runtimeMetricsFile = files.find((file) => file.file_name === 'runtime-metrics')
@@ -967,7 +1082,7 @@ async function refreshPage(): Promise<void> {
       validationMetricsFile
         ? getModelTrainingOutputFileDetail(request.taskType, request.taskId, validationMetricsFile.file_name, request.signal)
         : Promise.resolve(null),
-      runtimeMetricsFile?.file_status === 'ready'
+      runtimeMetricsFile
         ? getModelTrainingOutputFileDetail(request.taskType, request.taskId, runtimeMetricsFile.file_name, request.signal)
         : Promise.resolve(null),
     ])
@@ -980,15 +1095,6 @@ async function refreshPage(): Promise<void> {
     taskDetail.events.forEach((event) => {
       appendProgressHistory(readRecord(event.payload).progress)
     })
-    const selectedFileName = selectedOutputFileName.value
-    const nextFileName = files.some((file) => file.file_name === selectedFileName)
-      ? selectedFileName
-      : files[0]?.file_name
-    selectedOutputFile.value = null
-    selectedOutputFileName.value = nextFileName ?? null
-    if (nextFileName) {
-      void selectOutputFile(nextFileName)
-    }
   } catch (error) {
     if (request.isCurrent()) {
       errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.loadFailed')
@@ -1112,6 +1218,8 @@ function handleTaskEvent(event: TaskEvent): void {
   const target = taskScope.capture()
   if (!target || task.value?.task_id !== target.taskId || event.task_id !== target.taskId) return
   const data = readRecord(event.payload)
+  const attempt = readNumber(data.attempt_no) ?? task.value.current_attempt_no
+  if (attempt < task.value.current_attempt_no) return
   const timestamp = event.created_at ?? event.occurred_at
   if (event.event_id && timestamp && !task.value.events.some(item => item.event_id === event.event_id)) {
     task.value.events.push({ event_id: event.event_id, task_id: target.taskId, event_type: event.event_type ?? 'status',
@@ -1123,6 +1231,9 @@ function handleTaskEvent(event: TaskEvent): void {
     || shouldApplyRecentCompletedEpochMetrics(progress)
   if (task.value && Object.keys(data).length > 0 && shouldApplySnapshot) {
     const nextState = typeof data.state === 'string' ? data.state : task.value.state
+    const previousProgress = attempt === task.value.current_attempt_no ? task.value.progress : {}
+    const mergedProgress = { ...previousProgress, ...progress }
+    if (readCompletedTrainingEpoch(progress) !== null && progress.granularity == null) mergedProgress.granularity = 'epoch'
     const nextBestMetricName = typeof progress.best_metric_name === 'string'
       ? progress.best_metric_name
       : task.value.best_metric_name
@@ -1130,7 +1241,8 @@ function handleTaskEvent(event: TaskEvent): void {
     task.value = {
       ...task.value,
       state: nextState,
-      progress: { ...task.value.progress, ...progress },
+      current_attempt_no: attempt,
+      progress: mergedProgress,
       result: { ...task.value.result, ...readRecord(data.result) },
       metadata: { ...task.value.metadata, ...readRecord(data.metadata) },
       best_metric_name: nextBestMetricName,
@@ -1208,12 +1320,14 @@ function handleTrainingTelemetry(payload: TrainingTelemetryPayload): void {
   const currentTask = task.value
   if (currentTask === null || payload.task_id !== currentTask.task_id) return
   if (payload.attempt_no < currentTask.current_attempt_no) return
-  const currentEpoch = readNumber(currentTask.progress.epoch)
-  if (currentEpoch !== null && payload.epoch !== null && payload.epoch !== undefined) {
-    if (payload.epoch < currentEpoch) return
-  }
+  const currentProgress = payload.attempt_no === currentTask.current_attempt_no ? currentTask.progress : {}
+  const currentEpoch = readNumber(currentProgress.epoch)
+  const currentStep = readNumber(currentProgress.global_step ?? currentProgress.global_iteration)
+  if (currentEpoch !== null && payload.epoch != null && payload.epoch < currentEpoch) return
+  if (currentStep !== null && payload.global_step != null && payload.global_step < currentStep) return
+  if (!isActiveTrainingState(currentTask.state) && payload.attempt_no === currentTask.current_attempt_no) return
   const nextProgress: Record<string, unknown> = {
-    ...currentTask.progress,
+    ...currentProgress,
     stage: payload.stage,
     granularity: payload.granularity,
   }
@@ -1240,7 +1354,7 @@ function handleTrainingTelemetry(payload: TrainingTelemetryPayload): void {
   )
   task.value = {
     ...currentTask,
-    current_attempt_no: Math.max(currentTask.current_attempt_no, payload.attempt_no),
+    current_attempt_no: payload.attempt_no,
     progress: nextProgress,
   }
   if (
@@ -1267,13 +1381,12 @@ function shouldApplyTaskEventSnapshot(
   const currentTask = task.value
   if (currentTask === null) return true
   const incomingAttempt = readNumber(data.attempt_no)
-  if (incomingAttempt !== null && incomingAttempt < currentTask.current_attempt_no) {
-    return false
-  }
+  if (incomingAttempt !== null && incomingAttempt !== currentTask.current_attempt_no) return incomingAttempt > currentTask.current_attempt_no
   const incomingState = typeof data.state === 'string' ? data.state : null
   if (!isActiveTrainingState(currentTask.state) && isActiveTrainingState(incomingState)) {
     return false
   }
+  if (incomingState !== null && !isActiveTrainingState(incomingState)) return true
   const currentProgress = currentTask.progress
   const currentGlobalStep = readNumber(
     currentProgress.global_step ?? currentProgress.global_iteration,
@@ -1320,7 +1433,7 @@ function syncTaskEventSubscription(): void {
 
 function appendProgressHistory(value: unknown): void {
   const progress = readRecord(value)
-  if (Object.keys(progress).length === 0) return
+  if (Object.keys(progress).length === 0 || progress.granularity === 'batch') return
   trainMetricHistory.value = appendTrainingMetricPoint(
     trainMetricHistory.value,
     buildMetricPointFromProgress(progress, 'train_metrics'),
@@ -1336,10 +1449,13 @@ function appendProgressHistory(value: unknown): void {
 }
 
 function mergePersistedHistories(): void {
-  readPersistedMetricHistory(trainingMetricsPayload.value).forEach((point) => {
+  const legacyRfdetr = readLegacyRfdetrMetricHistory(trainingMetricsPayload.value)
+  const trainHistory = [...legacyRfdetr.train, ...readPersistedMetricHistory(trainingMetricsPayload.value)]
+  const validationHistory = [...legacyRfdetr.validation, ...readPersistedMetricHistory(validationMetricsPayload.value)]
+  trainHistory.forEach((point) => {
     trainMetricHistory.value = appendTrainingMetricPoint(trainMetricHistory.value, point)
   })
-  readPersistedMetricHistory(validationMetricsPayload.value).forEach((point) => {
+  validationHistory.forEach((point) => {
     validationMetricHistory.value = appendTrainingMetricPoint(validationMetricHistory.value, point)
   })
   readPersistedLearningRateHistory(trainingMetricsPayload.value).forEach((point) => {
@@ -1350,26 +1466,41 @@ function mergePersistedHistories(): void {
   })
 }
 
-function scheduleCancellationRefresh(): void {
+async function refreshTrainingWorkerStatus(): Promise<void> {
+  const request = taskScope.startRead('worker-status')
+  if (!request) return
+  try {
+    const result = await getTrainingWorkerStatus(request.signal)
+    if (request.isCurrent() && queuedTraining.value) workerStatus.value = result.status
+  } catch {
+    if (request.isCurrent()) workerStatus.value = undefined
+  }
+}
+
+function scheduleTaskStateRefresh(): void {
   const target = taskScope.capture()
-  if (!target || cancellationRefreshTimer !== null || !cancellingTraining.value) return
-  cancellationRefreshTimer = window.setTimeout(async () => {
-    cancellationRefreshTimer = null
-    if (!target.isCurrent() || !cancellingTraining.value) return
+  if (!target || taskStateRefreshTimer !== null || (!queuedTraining.value && !cancellingTraining.value)) return
+  taskStateRefreshTimer = window.setTimeout(async () => {
+    taskStateRefreshTimer = null
+    if (!target.isCurrent()) return
     try {
-      const request = taskScope.startRead('cancellation')
-      if (!request || loading.value) return
-      const detail = await getModelTrainingTaskDetail(request.taskType, request.taskId, request.signal)
-      if (request.isCurrent() && !loading.value && cancellingTraining.value
-        && !isActiveTrainingState(detail.state) && detail.state !== 'paused') {
+      if (loading.value) return
+      if (queuedTraining.value && !cancellingTraining.value) void refreshTrainingWorkerStatus()
+      const request = taskScope.startRead('state')
+      if (!request) return
+      const detail = await getModelTrainingTaskDetail(request.taskType, request.taskId, request.signal, false)
+      if (!request.isCurrent() || loading.value) return
+      if (cancellingTraining.value
+        ? !isActiveTrainingState(detail.state) && detail.state !== 'paused'
+        : queuedTraining.value && detail.state !== 'queued') {
         await refreshPage()
       }
     } catch {
-      // 状态读取失败时保留“正在取消”，继续查询，不重复发送取消请求。
+      // 状态查询失败时保留页面数据，在下一轮继续读取。
     } finally {
-      if (target.isCurrent()) scheduleCancellationRefresh()
+      if (target.isCurrent()) scheduleTaskStateRefresh()
     }
-  }, 3000)
+  }, cancellingTraining.value ? 3000 : 5000)
 }
 
 function scheduleSnapshotRefresh(): void {
@@ -1395,18 +1526,11 @@ async function refreshOutputFiles(): Promise<void> {
   const request = taskScope.startRead('files')
   if (!request) return
   try {
-    const files = await listModelTrainingOutputFiles(request.taskType, request.taskId, request.signal)
+    const files = (await listModelTrainingOutputFiles(request.taskType, request.taskId, request.signal))
+      .filter(file => file.file_status === 'ready')
     if (!request.isCurrent()) return
     outputFiles.value = files
-    const selectedFileName = selectedOutputFileName.value
-    if (selectedFileName && files.some((file) => file.file_name === selectedFileName)) {
-      void selectOutputFile(selectedFileName)
-    } else {
-      taskScope.cancelRead('preview')
-      selectedOutputFileName.value = null
-      selectedOutputFile.value = null
-      outputPreviewOpen.value = false
-    }
+    if (selectedOutputFileName.value && !previewOutputFile.value) closeOutputPreview()
   } catch {
     // 后台状态同步失败不覆盖页面已有数据，后续 epoch 或手动刷新会再次获取。
   }
@@ -1483,19 +1607,45 @@ async function selectOutputFile(fileName: string): Promise<void> {
   if (!request) return
   selectedOutputFileName.value = fileName
   selectedOutputFile.value = null
-  errorMessage.value = null
+  outputPreviewLoading.value = true
+  outputPreviewError.value = null
+  outputDownloadError.value = null
   try {
     const detail = await getModelTrainingOutputFileDetail(request.taskType, request.taskId, fileName, request.signal)
-    if (request.isCurrent()) selectedOutputFile.value = detail
+    if (!request.isCurrent()) return
+    if (detail.file_status !== 'ready') {
+      outputPreviewError.value = t('trainingDetail.messages.outputFailed')
+      return
+    }
+    selectedOutputFile.value = detail
   } catch (error) {
-    if (request.isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
+    if (request.isCurrent()) outputPreviewError.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
+  } finally {
+    if (request.isCurrent()) outputPreviewLoading.value = false
   }
+}
+
+function closeOutputPreview(): void {
+  taskScope.cancelRead('preview')
+  selectedOutputFileName.value = null
+  selectedOutputFile.value = null
+  outputPreviewLoading.value = false
+  outputPreviewError.value = null
+}
+
+function trainingMetricLabel(name: string): string {
+  return formatTrainingMetricLabel(name, taskType.value, completedValidationHistory.value)
 }
 
 function buildMetricEntries(value: unknown): Array<{ name: string; value: string }> {
   const metrics = readRecord(value)
+  const aliases: Record<string, string> = {
+    'metrics/accuracy_top1': 'top1_accuracy',
+    'metrics/accuracy_top5': 'top5_accuracy',
+  }
   return Object.entries(metrics)
     .filter(([, metricValue]) => metricValue !== null && metricValue !== undefined)
+    .filter(([name]) => name !== 'epoch' && name !== 'epoch_index' && metrics[aliases[name]] == null)
     .map(([name, metricValue]) => ({ name, value: formatMetricValue(metricValue, name) }))
 }
 
@@ -1514,7 +1664,6 @@ function buildRuntimeMetricEntries(value: unknown): Array<{ name: string; value:
     'batch_compute_host_time_ms',
     'epoch_elapsed_seconds',
     'elapsed_seconds',
-    'estimated_remaining_seconds',
     'gpu_utilization_percent',
     'gpu_memory_used_percent',
     'gpu_memory_allocated_bytes',
@@ -1552,7 +1701,7 @@ function readNumber(value: unknown): number | null {
 function formatMetricValue(value: unknown, name = ''): string {
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (name.endsWith('learning_rate')) return formatLearningRate(value)
-    return formatModelNumber(value, name.endsWith('_ms') ? 0 : 3)
+    return name.endsWith('_ms') ? formatModelNumber(value, 0) : formatTrainingMetric(value)
   }
   return formatPlainValue(value)
 }
@@ -1580,24 +1729,68 @@ function formatPlainValue(value: unknown): string {
 .training-detail-title h1 { overflow-wrap:anywhere; }
 .training-detail-back { justify-self:start; align-self:flex-start; margin-inline-start:-8px; margin-bottom:3px; }
 .training-detail :deep(.page-header) { align-items:flex-end; }
-.training-detail :deep(.page-actions) { max-width:56%; }
+.training-detail :deep(.page-actions) { max-width:60%; justify-content:flex-end; }
 .training-detail :deep(.page-header__heading) { flex:1; }
-.training-progress--failed { --am-progress-text:var(--am-danger-text); }
-.training-overview-progress { display:flex; flex-wrap:wrap; align-items:center; gap:14px 20px; }
-.training-overview-progress .task-progress { flex:1 1 180px; }
-.training-progress-facts { flex:0 1 auto; display:flex; flex-wrap:wrap; align-items:center; gap:8px 15px; margin:0; }
+.training-terminate.ui-button--secondary { color:var(--am-danger-text); border-color:var(--am-danger-border); }
+.training-terminate.ui-button--secondary:hover:not(:disabled) { color:var(--am-danger-text); border-color:var(--am-danger-icon); background:var(--am-danger-surface); }
+.training-queue { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; }
+.training-queue > svg { color:var(--am-warning-icon); flex:none; }
+.training-queue > div { flex:1 1 240px; min-width:0; }
+.training-queue p { margin:4px 0 0; color:var(--am-text-muted); }
+.training-queue time { margin-inline-start:auto; color:var(--am-text-muted); white-space:nowrap; }
+.training-overview-progress { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(132px,1fr); align-items:center; gap:12px 20px; padding:16px 20px; }
+.training-overview-progress--running { grid-template-columns:minmax(0,1.35fr) minmax(132px,1fr) minmax(0,14rem); }
+.training-overview-progress .task-progress { width:100%; grid-template-columns:minmax(0,1fr) 7ch; }
+.training-overview-progress :deep(.task-progress__track) { height:10px; }
+.training-overview-progress :deep(.task-progress__compact-value) { font-size:14px; overflow-wrap:anywhere; }
+.training-progress-facts { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:0; }
 .training-progress-facts div { display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; }
-.training-progress-facts div:not(:last-child) { padding-inline-end:15px; border-inline-end:1px solid var(--am-border); }
-.training-progress-facts dt { color:var(--am-text-muted); }
-.training-progress-facts dd { margin:0; }
-.training-progress-facts dd strong { font-size:19px; }
+.training-progress-facts div:not(:last-child) { padding-inline-end:16px; border-inline-end:1px solid var(--am-border); }
+.training-progress-eta { display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; margin:0; padding-inline-start:16px; border-inline-start:1px solid var(--am-border); }
+.training-progress-facts dt,.training-progress-eta dt { color:var(--am-text-muted); }
+.training-progress-facts dd,.training-progress-eta dd { margin:0; font-variant-numeric:tabular-nums; }
+.training-progress-facts dd strong { color:var(--am-success-text); font-size:19px; }
 .training-failed-note { display:flex; gap:10px; padding:13px 16px; border:1px solid var(--am-danger-border); background:var(--am-danger-surface); border-radius:var(--am-radius-md); color:var(--am-danger-text); overflow-wrap:anywhere; }
 .training-failed-note svg { flex:none; }
 .training-failed-note p { margin:6px 0 0; color:var(--am-text); }
-.training-more summary { cursor:pointer; font-weight:600; }
-.training-more[open] > section { margin-block:14px; }
-.training-cancelled-context { display:flex; flex-wrap:wrap; gap:9px 16px; margin:0; padding:12px 16px; border:1px solid var(--am-border); border-radius:var(--am-radius-md); background:var(--am-surface); }
-.training-cancelled-context > div { display:grid; min-width:0; gap:3px; padding-inline-end:16px; }
+.training-more { padding:0; }
+.training-more > summary {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:14px 18px;
+  cursor:pointer;
+  font-weight:600;
+  list-style:none;
+}
+.training-more > summary::-webkit-details-marker { display:none; }
+.training-more > summary svg { flex:none; color:var(--am-text-muted); }
+.training-more[open] > summary { border-block-end:1px solid var(--am-border); }
+.training-more[open] > summary svg { rotate:90deg; }
+.training-more__body { display:grid; min-width:0; padding:0 18px; }
+.training-detail-group { display:grid; gap:12px; min-width:0; padding-block:16px; }
+.training-detail-group + .training-detail-group { border-block-start:1px solid var(--am-border); }
+.training-detail-group h2 { margin:0; font-size:14px; }
+.training-detail-facts {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));
+  gap:8px;
+  margin:0;
+}
+.training-detail-facts > div {
+  display:grid;
+  justify-items:start;
+  align-content:start;
+  gap:4px;
+  min-width:0;
+  padding:8px 10px;
+  border-radius:var(--am-radius-md);
+  background:var(--am-surface-soft);
+}
+.training-detail-facts dt { color:var(--am-text-muted); }
+.training-detail-facts dd { margin:0; font-weight:600; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.training-cancelled-context { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1.65fr) repeat(2,minmax(0,1fr)); gap:12px 22px; margin:0; padding:14px 20px; border:1px solid var(--am-border); border-radius:var(--am-radius-md); background:var(--am-surface); }
+.training-cancelled-context > div { display:grid; min-width:0; gap:4px; padding-inline-end:18px; }
 .training-cancelled-context > div:not(:last-child) { border-inline-end:1px solid var(--am-border); }
 .training-cancelled-context dt { font-size:12px; color:var(--am-text-muted); }
 .training-cancelled-context dd { margin:0; overflow-wrap:anywhere; }
@@ -1619,12 +1812,14 @@ function formatPlainValue(value: unknown): string {
 .training-resume__actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; width:100%; }
 .training-detail :deep(.page-header h1) { display: block; }
 .training-detail > .resource-section:first-of-type .summary-grid strong { font-size:14px; overflow-wrap:anywhere; }
-.training-metrics-details { margin:16px 0; border:1px solid var(--am-border); border-radius:8px; }
-.training-metrics-details > summary { padding:12px; cursor:pointer; font-weight:600; }
-.training-metrics-details .training-metric-panels { padding:0 12px 12px; }
 .training-output-layout { display:grid; gap:16px; min-width:0; }
 .training-output-layout table { table-layout:fixed; width:100%; }
 .training-output-layout :is(td,th) { white-space:normal; overflow-wrap:anywhere; padding-inline:8px; }
+.training-output-file { display:flex; align-items:center; gap:8px; min-width:0; }
+.training-output-file svg { flex:none; color:var(--am-text-muted); }
+.training-output-file strong { min-width:0; }
+.training-output-actions { display:flex; align-items:center; flex-wrap:wrap; gap:2px; }
+.training-output-actions .ui-button { color:var(--am-success-text); padding-inline:6px; }
 .training-output-section :deep(.local-tabs) { margin-block-start:-4px; }
 .training-output-section :deep(.local-tabs__tab) { border-radius:0; border-bottom:2px solid transparent; }
 .training-output-section :deep(.local-tabs__tab.is-active) { background:transparent; border-bottom-color:var(--am-brand-primary); color:var(--am-success-text); }
@@ -1632,17 +1827,6 @@ function formatPlainValue(value: unknown): string {
 .training-run-log li { display:flex; flex-wrap:wrap; gap:4px 14px; padding-block:6px; overflow-wrap:anywhere; }
 .training-run-log time { color:var(--am-text-muted); font-variant-numeric:tabular-nums; }
 .training-saved-parameters { max-height:420px; margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
-.training-output-preview { border:1px solid var(--am-border); border-radius:8px; padding:12px; }
-.training-output-preview summary { cursor:pointer; font-weight:600; }
-.training-output-preview .json-view { max-height:420px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
-.training-progress-section {
-  gap: 14px;
-}
-
-.training-progress-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .training-metric-panels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1651,6 +1835,7 @@ function formatPlainValue(value: unknown): string {
 
 .training-metric-panel {
   display: grid;
+  align-content: start;
   gap: 10px;
   min-width: 0;
   padding: 12px;
@@ -1667,26 +1852,9 @@ function formatPlainValue(value: unknown): string {
 
 .training-chart-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 4px;
-}
-
-.training-chart-heading h3,
-.training-chart-heading p {
-  margin: 0;
-}
-
-.training-chart-heading h3 {
-  color: var(--am-text);
-  font-size: 14px;
-}
-
-.training-chart-heading p {
-  margin-top: 4px;
-  color: var(--am-text-muted);
-  font-size: 12px;
+  gap: 12px;
 }
 
 .training-metric-hint {
@@ -1698,7 +1866,7 @@ function formatPlainValue(value: unknown): string {
 
 .training-metric-list {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
   gap: 7px 12px;
   margin: 0;
 }
@@ -1726,14 +1894,20 @@ function formatPlainValue(value: unknown): string {
   font-weight: 700;
 }
 
-@media (max-width: 960px) {
-  .training-progress-grid,
+@media (max-width: 720px) {
   .training-metric-panels {
     grid-template-columns: 1fr;
   }
 }
 @media (max-width: 1160px) {
   .training-detail :deep(.page-header) { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
-  .training-detail :deep(.page-actions) { max-width:100%; justify-content:flex-start; }
+  .training-detail :deep(.page-actions) { width:100%; max-width:100%; justify-content:flex-end; }
+}
+@media (max-width: 720px) {
+  .training-cancelled-context { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .training-cancelled-context > div:nth-child(even) { border-inline-end:0; }
+  .training-overview-progress,
+  .training-overview-progress--running { grid-template-columns:minmax(0,1fr); }
+  .training-progress-eta { padding-inline-start:0; border-inline-start:0; }
 }
 </style>

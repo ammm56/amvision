@@ -43,6 +43,7 @@ from backend.service.application.models.training.batch_policy import (
 )
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
+    read_detection_checkpoint_epoch,
 )
 from backend.service.application.models.evaluation.pycocotools_metrics import (
     YOLO_DETECTION_COCO_MAX_DETECTIONS,
@@ -551,12 +552,14 @@ def run_yolo26_detection_training(
         category_names=category_names,
         reason="dataset export 未提供独立 test split",
     )
-    if test_split is not None and test_samples:
-        checkpoint_payload = imports.torch.load(
-            io.BytesIO(best_checkpoint_bytes),
-            map_location="cpu",
-            weights_only=False,
-        )
+    has_independent_test = test_split is not None and test_samples
+    checkpoint_payload = imports.torch.load(
+        io.BytesIO(best_checkpoint_bytes),
+        map_location="cpu" if has_independent_test else "meta",
+        weights_only=False,
+    )
+    best_checkpoint_saved_epoch = read_detection_checkpoint_epoch(checkpoint_payload)
+    if has_independent_test:
         checkpoint_ema_state = (
             checkpoint_payload.get("ema_state_dict")
             if isinstance(checkpoint_payload, dict)
@@ -593,6 +596,7 @@ def run_yolo26_detection_training(
             sample_count=len(test_samples),
             metrics=test_metrics,
             category_names=category_names,
+            checkpoint_epoch=best_checkpoint_saved_epoch,
         )
     metrics_payload = _build_yolo26_metrics_payload(
         request=request,
@@ -626,6 +630,7 @@ def run_yolo26_detection_training(
     return Yolo26DetectionTrainingExecutionResult(
         checkpoint_bytes=best_checkpoint_bytes,
         latest_checkpoint_bytes=latest_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         metrics_payload=metrics_payload,
         validation_metrics_payload=validation_metrics_payload,
         test_metrics_payload=test_metrics_payload,

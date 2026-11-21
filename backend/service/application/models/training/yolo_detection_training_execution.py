@@ -81,6 +81,7 @@ class YoloDetectionTrainingExecutionResult:
     test_metrics_payload: dict[str, object] | None = None
     test_split_name: str | None = None
     test_sample_count: int = 0
+    best_checkpoint_saved_epoch: int | None = None
 
 
 __all__ = [

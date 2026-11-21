@@ -33,6 +33,11 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     resolve_segmentation_primary_metrics,
     serialize_segmentation_sample_masks,
 )
+from backend.service.application.models.yolo_core_common.training.segmentation_validation import (
+    SegmentationBatchLoss,
+    SegmentationValidationLoss,
+    segmentation_validation_outputs,
+)
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     YoloTaskDataLoaderPlan,
     build_yolo_task_evaluation_dataloader,
@@ -541,6 +546,7 @@ def evaluate_yolo26_segmentation_samples(
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
     control_callback: Callable[[], None] | None = None,
     scaleup: bool = False,
+    batch_loss: SegmentationBatchLoss | None = None,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO26 segmentation 训练期评估。"""
 
@@ -549,6 +555,7 @@ def evaluate_yolo26_segmentation_samples(
     gt_mask_items: list[dict[str, object]] = []
     pred_mask_items: list[dict[str, object]] = []
     total_predictions = 0
+    validation_loss = SegmentationValidationLoss(batch_loss)
     evaluation_loader = build_yolo_task_evaluation_dataloader(
         torch_module=imports.torch,
         samples=samples,
@@ -571,6 +578,7 @@ def evaluate_yolo26_segmentation_samples(
     with (
         managed_yolo_task_evaluation_dataloader(evaluation_loader),
         evaluating_model(model),
+        segmentation_validation_outputs(model, enabled=batch_loss is not None),
         imports.torch.no_grad(),
     ):
         for batch in evaluation_loader:
@@ -586,6 +594,7 @@ def evaluate_yolo26_segmentation_samples(
             )
             with _yolo26_segmentation_autocast(imports, precision, device):
                 outputs = model(batch.images)
+            outputs = validation_loss.consume(outputs, batch.targets)
             normalized_outputs = unwrap_yolo26_segmentation_runtime_outputs(outputs)
             prediction_array, proto_array = normalize_yolo26_segmentation_outputs(
                 outputs=normalized_outputs,
@@ -645,6 +654,7 @@ def evaluate_yolo26_segmentation_samples(
         "mask_map50": round(mask_metrics.ap50, 6),
         "mask_map50_95": round(mask_metrics.ap50_95, 6),
         "prediction_count": float(total_predictions),
+        **validation_loss.metrics(),
     }
 
 

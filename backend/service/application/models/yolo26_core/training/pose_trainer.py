@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 import time
 from typing import Any
 
@@ -28,6 +29,12 @@ from backend.service.application.models.yolo_core_common.training import (
     resolve_yolo_optimizer_base_learning_rate,
     resolve_yolo_task_dataloader_plan,
     should_run_yolo_validation,
+)
+from backend.service.application.models.yolo_core_common.training.pose_validation import (
+    PoseValidationLoss,
+)
+from backend.service.application.models.yolo_core_common.training.pose_checkpoint import (
+    read_pose_checkpoint_epoch,
 )
 from backend.service.application.models.yolo26_core.data import (
     build_yolo26_pose_training_batch,
@@ -85,6 +92,7 @@ class Yolo26PoseTrainingSavePoint:
     epoch: int
     learning_rate: float
     is_best: bool = False
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +105,7 @@ class Yolo26PoseTrainingLoopResult:
     best_checkpoint_bytes: bytes
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
+    best_checkpoint_saved_epoch: int | None = None
 
 
 class Yolo26PoseTrainingPausedError(Exception):
@@ -163,6 +172,24 @@ def run_yolo26_pose_training_loop(
 ) -> Yolo26PoseTrainingLoopResult:
     """执行 YOLO26 pose 从 start epoch 到 max epoch 的完整训练循环。"""
 
+    batch_loss = partial(
+        _compute_pose_batch_loss,
+        compute_branch_loss=partial(
+            compute_yolo26_pose_loss,
+            torch=imports.torch,
+            num_classes=0,
+            kpt_shape=kpt_shape,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            kpt_loss_weight=kpt_loss_weight,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+        ),
+        assign_topk=assign_topk,
+        assign_topk2=assign_topk2,
+        max_epochs=max_epochs,
+    )
     checkpoint_bytes = build_yolo26_pose_checkpoint_bytes(
         epoch=start_epoch - 1,
         global_iteration=global_iteration,
@@ -194,6 +221,10 @@ def run_yolo26_pose_training_loop(
         torch_module=imports.torch,
     )
     best_checkpoint_bytes = previous_best_checkpoint_bytes
+    best_checkpoint_saved_epoch = read_pose_checkpoint_epoch(
+        torch_module=imports.torch,
+        checkpoint_bytes=best_checkpoint_bytes,
+    )
     last_completed_savepoint = Yolo26PoseTrainingSavePoint(
         latest_checkpoint_bytes=checkpoint_bytes,
         train_metrics=dict(metrics_history[-1]) if metrics_history else {},
@@ -201,6 +232,7 @@ def run_yolo26_pose_training_loop(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         learning_rate=resolve_yolo_optimizer_base_learning_rate(
             optimizer=optimizer,
             initial_learning_rate=training_schedule.initial_lr,
@@ -264,6 +296,7 @@ def run_yolo26_pose_training_loop(
                 resolve_batch_input_size=resolve_yolo26_task_batch_input_size,
             ),
         )
+        compute_loss = partial(batch_loss, completed_epoch=epoch + 1)
         try:
             epoch_metrics, global_iteration = _run_yolo26_pose_epoch(
                 imports=imports,
@@ -277,15 +310,7 @@ def run_yolo26_pose_training_loop(
                 epoch=epoch,
                 max_epochs=max_epochs,
                 global_iteration=global_iteration,
-                kpt_shape=kpt_shape,
-                class_loss_weight=class_loss_weight,
-                box_loss_weight=box_loss_weight,
-                dfl_loss_weight=dfl_loss_weight,
-                kpt_loss_weight=kpt_loss_weight,
-                assign_topk=assign_topk,
-                assign_alpha=assign_alpha,
-                assign_beta=assign_beta,
-                assign_topk2=assign_topk2,
+                compute_loss=compute_loss,
                 autocast_context=autocast_context,
                 control_callback=observe_control,
                 input_size=input_size,
@@ -302,23 +327,28 @@ def run_yolo26_pose_training_loop(
         metrics_history.append(
             build_yolo_epoch_history_item(epoch_index=epoch, metrics=epoch_metrics)
         )
-        validation_metrics = _run_yolo26_pose_validation(
-            evaluation_options=evaluation_options,
-            imports=imports,
-            model=ema.model,
-            val_annotations=val_annotations,
-            labels=labels,
-            input_size=input_size,
-            device_name=device_name,
-            precision=precision,
-            evaluation_confidence_threshold=evaluation_confidence_threshold,
-            kpt_shape=kpt_shape,
-            batch_size=batch_size,
-            epoch=epoch,
-            max_epochs=max_epochs,
-            evaluation_interval=evaluation_interval,
-            control_callback=observe_control,
-        )
+        try:
+            validation_metrics = _run_yolo26_pose_validation(
+                evaluation_options=evaluation_options,
+                imports=imports,
+                model=ema.model,
+                val_annotations=val_annotations,
+                labels=labels,
+                input_size=input_size,
+                device_name=device_name,
+                precision=precision,
+                evaluation_confidence_threshold=evaluation_confidence_threshold,
+                kpt_shape=kpt_shape,
+                batch_size=batch_size,
+                epoch=epoch,
+                max_epochs=max_epochs,
+                evaluation_interval=evaluation_interval,
+                control_callback=observe_control,
+                compute_loss=compute_loss,
+            )
+        except BaseException:
+            training_loader_lifecycle.close()
+            raise
         if validation_metrics:
             validation_history.append(
                 build_yolo_epoch_history_item(
@@ -332,6 +362,7 @@ def run_yolo26_pose_training_loop(
             best_value=best_metric_value,
             direction="maximize",
             maximum=1.0,
+            prefer_latest_on_tie=True,
         )
         if best_metric_improved:
             best_metric_value = current_metric
@@ -393,6 +424,7 @@ def run_yolo26_pose_training_loop(
         )
         if best_metric_improved:
             best_checkpoint_bytes = checkpoint_bytes
+            best_checkpoint_saved_epoch = epoch + 1
         last_completed_savepoint = Yolo26PoseTrainingSavePoint(
             latest_checkpoint_bytes=checkpoint_bytes,
             train_metrics=epoch_metrics,
@@ -405,6 +437,7 @@ def run_yolo26_pose_training_loop(
                 initial_learning_rate=training_schedule.initial_lr,
             ),
             is_best=best_metric_improved,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
         if checkpoint_decision.should_persist and savepoint_callback is not None:
             savepoint_callback(last_completed_savepoint)
@@ -418,13 +451,86 @@ def run_yolo26_pose_training_loop(
     training_loader_lifecycle.close()
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = checkpoint_bytes
+        best_checkpoint_saved_epoch = last_completed_savepoint.epoch
     return Yolo26PoseTrainingLoopResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         latest_checkpoint_bytes=checkpoint_bytes,
         best_checkpoint_bytes=best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         metrics_history=metrics_history,
         validation_history=validation_history,
+    )
+
+
+def _compute_pose_batch_loss(
+    model: Any,
+    raw_outputs: dict[str, Any],
+    batch_targets: list[Any],
+    *,
+    compute_branch_loss: Callable[..., dict[str, Any]],
+    assign_topk: int,
+    assign_topk2: int | None,
+    completed_epoch: int,
+    max_epochs: int,
+    runtime_metrics: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """计算训练和验证共用的 pose 损失，可同时收集训练耗时。"""
+
+    def compute_branch(
+        outputs: dict[str, Any],
+        *,
+        topk: int,
+        topk2: int | None,
+        name: str,
+    ) -> dict[str, Any]:
+        """计算单个分支的损失并采集耗时。"""
+
+        branch_metrics: dict[str, float] | None = (
+            {} if runtime_metrics is not None else None
+        )
+        started_at = time.perf_counter()
+        loss_payload = compute_branch_loss(
+            model=model,
+            raw_outputs=outputs,
+            batch_targets=batch_targets,
+            assign_topk=topk,
+            assign_topk2=topk2,
+            runtime_metrics=branch_metrics,
+        )
+        if runtime_metrics is not None and branch_metrics is not None:
+            runtime_metrics[f"{name or 'pose'}_loss_host_time_ms"] = (
+                time.perf_counter() - started_at
+            ) * 1000.0
+            prefix = f"{name}_" if name else ""
+            runtime_metrics.update(
+                {f"{prefix}{key}": value for key, value in branch_metrics.items()}
+            )
+        return loss_payload
+
+    if "one2many" not in raw_outputs or "one2one" not in raw_outputs:
+        return compute_branch(
+            raw_outputs,
+            topk=assign_topk,
+            topk2=assign_topk2,
+            name="",
+        )
+
+    one2many = compute_branch(
+        raw_outputs["one2many"], topk=assign_topk, topk2=None, name="one2many"
+    )
+    one2one = compute_branch(
+        raw_outputs["one2one"], topk=7, topk2=1, name="one2one"
+    )
+    one2many_weight, one2one_weight = resolve_yolo26_end2end_loss_weights(
+        epoch=completed_epoch,
+        max_epochs=max_epochs,
+    )
+    return combine_yolo26_end2end_loss_payloads(
+        one2many_payload=one2many,
+        one2one_payload=one2one,
+        one2many_weight=one2many_weight,
+        one2one_weight=one2one_weight,
     )
 
 
@@ -441,15 +547,7 @@ def _run_yolo26_pose_epoch(
     epoch: int,
     max_epochs: int,
     global_iteration: int,
-    kpt_shape: tuple[int, int],
-    class_loss_weight: float,
-    box_loss_weight: float,
-    dfl_loss_weight: float,
-    kpt_loss_weight: float,
-    assign_topk: int,
-    assign_alpha: float,
-    assign_beta: float,
-    assign_topk2: int | None,
+    compute_loss: Callable[..., dict[str, Any]],
     autocast_context: Callable[[], Any],
     control_callback: Callable[[], None] | None,
     input_size: tuple[int, int],
@@ -480,130 +578,24 @@ def _run_yolo26_pose_epoch(
             epoch=epoch + 1,
             batch_size=len(batch.targets),
         )
-        batch_height = int(batch.images.shape[-2])
-        batch_width = int(batch.images.shape[-1])
         model_forward_started_at = time.perf_counter()
         with autocast_context():
             raw_outputs = model(batch.images)
             model_forward_completed_at = time.perf_counter()
-            if (
-                isinstance(raw_outputs, dict)
-                and "one2many" in raw_outputs
-                and "one2one" in raw_outputs
-            ):
-                raw_for_loss = raw_outputs["one2many"]
-                one2many_runtime: dict[str, float] = {}
-                one2many_loss_started_at = time.perf_counter()
-                one2many_payload = compute_yolo26_pose_loss(
-                    torch=imports.torch,
-                    model=model,
-                    raw_outputs=raw_outputs["one2many"],
-                    batch_targets=batch.targets,
-                    num_classes=0,
-                    kpt_shape=kpt_shape,
-                    class_loss_weight=class_loss_weight,
-                    box_loss_weight=box_loss_weight,
-                    dfl_loss_weight=dfl_loss_weight,
-                    kpt_loss_weight=kpt_loss_weight,
-                    assign_topk=assign_topk,
-                    assign_alpha=assign_alpha,
-                    assign_beta=assign_beta,
-                    assign_topk2=None,
-                    runtime_metrics=one2many_runtime,
-                )
-                one2many_loss_completed_at = time.perf_counter()
-                one2one_runtime: dict[str, float] = {}
-                one2one_payload = compute_yolo26_pose_loss(
-                    torch=imports.torch,
-                    model=model,
-                    raw_outputs=raw_outputs["one2one"],
-                    batch_targets=batch.targets,
-                    num_classes=0,
-                    kpt_shape=kpt_shape,
-                    class_loss_weight=class_loss_weight,
-                    box_loss_weight=box_loss_weight,
-                    dfl_loss_weight=dfl_loss_weight,
-                    kpt_loss_weight=kpt_loss_weight,
-                    assign_topk=7,
-                    assign_alpha=assign_alpha,
-                    assign_beta=assign_beta,
-                    assign_topk2=1,
-                    runtime_metrics=one2one_runtime,
-                )
-                one2one_loss_completed_at = time.perf_counter()
-                one2many_weight, one2one_weight = resolve_yolo26_end2end_loss_weights(
-                    epoch=epoch + 1,
-                    max_epochs=max_epochs,
-                )
-                loss_payload = combine_yolo26_end2end_loss_payloads(
-                    one2many_payload=one2many_payload,
-                    one2one_payload=one2one_payload,
-                    one2many_weight=one2many_weight,
-                    one2one_weight=one2one_weight,
-                )
-                optimizer_step.record_batch_runtime_metrics(
-                    {
-                        "batch_input_height": float(batch_height),
-                        "batch_input_width": float(batch_width),
-                        "model_forward_host_time_ms": (
-                            model_forward_completed_at - model_forward_started_at
-                        )
-                        * 1000.0,
-                        "one2many_loss_host_time_ms": (
-                            one2many_loss_completed_at - one2many_loss_started_at
-                        )
-                        * 1000.0,
-                        "one2one_loss_host_time_ms": (
-                            one2one_loss_completed_at - one2many_loss_completed_at
-                        )
-                        * 1000.0,
-                        **{
-                            f"one2many_{name}": value
-                            for name, value in one2many_runtime.items()
-                        },
-                        **{
-                            f"one2one_{name}": value
-                            for name, value in one2one_runtime.items()
-                        },
-                    }
-                )
-            else:
-                raw_for_loss = raw_outputs
-                single_runtime: dict[str, float] = {}
-                single_loss_started_at = time.perf_counter()
-                loss_payload = compute_yolo26_pose_loss(
-                    torch=imports.torch,
-                    model=model,
-                    raw_outputs=raw_for_loss,
-                    batch_targets=batch.targets,
-                    num_classes=0,
-                    kpt_shape=kpt_shape,
-                    class_loss_weight=class_loss_weight,
-                    box_loss_weight=box_loss_weight,
-                    dfl_loss_weight=dfl_loss_weight,
-                    kpt_loss_weight=kpt_loss_weight,
-                    assign_topk=assign_topk,
-                    assign_alpha=assign_alpha,
-                    assign_beta=assign_beta,
-                    assign_topk2=assign_topk2,
-                    runtime_metrics=single_runtime,
-                )
-                single_loss_completed_at = time.perf_counter()
-                optimizer_step.record_batch_runtime_metrics(
-                    {
-                        "batch_input_height": float(batch_height),
-                        "batch_input_width": float(batch_width),
-                        "model_forward_host_time_ms": (
-                            model_forward_completed_at - model_forward_started_at
-                        )
-                        * 1000.0,
-                        "pose_loss_host_time_ms": (
-                            single_loss_completed_at - single_loss_started_at
-                        )
-                        * 1000.0,
-                        **single_runtime,
-                    }
-                )
+            runtime_metrics = {
+                "batch_input_height": float(batch.images.shape[-2]),
+                "batch_input_width": float(batch.images.shape[-1]),
+                "model_forward_host_time_ms": (
+                    model_forward_completed_at - model_forward_started_at
+                ) * 1000.0,
+            }
+            loss_payload = compute_loss(
+                model,
+                raw_outputs,
+                batch.targets,
+                runtime_metrics=runtime_metrics,
+            )
+            optimizer_step.record_batch_runtime_metrics(runtime_metrics)
         non_finite_components = {
             key: float(value.detach().item())
             for key, value in loss_payload.items()
@@ -617,6 +609,7 @@ def _run_yolo26_pose_epoch(
             )
         total_loss = loss_payload["loss"]
         if not total_loss.requires_grad:
+            raw_for_loss = raw_outputs.get("one2many", raw_outputs)
             total_loss = _build_zero_grad_loss(raw_for_loss, imports.torch)
         optimizer_step.backward_and_step(
             loss=total_loss,
@@ -680,6 +673,7 @@ def _run_yolo26_pose_validation(
     max_epochs: int,
     evaluation_interval: int,
     control_callback: Callable[[], None] | None,
+    compute_loss: PoseValidationLoss,
     evaluation_options: dict[str, object] | None = None,
 ) -> dict[str, float]:
     """执行 YOLO26 pose 训练期 validation。"""
@@ -692,7 +686,7 @@ def _run_yolo26_pose_validation(
     )
     if not should_evaluate:
         return {}
-    return evaluate_yolo26_pose_samples(
+    metrics = evaluate_yolo26_pose_samples(
         evaluation_options=evaluation_options,
         model=model,
         samples=val_annotations,
@@ -705,7 +699,9 @@ def _run_yolo26_pose_validation(
         imports=imports,
         batch_size=batch_size,
         control_callback=control_callback,
+        compute_loss=compute_loss,
     )
+    return serialize_yolo26_spatial_loss_metrics(metrics)
 
 
 def _build_zero_grad_loss(raw_outputs: Any, torch_module: Any) -> Any:

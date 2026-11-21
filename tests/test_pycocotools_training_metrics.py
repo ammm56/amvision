@@ -453,7 +453,7 @@ def test_invalid_minimized_metric_uses_finite_upper_fallback() -> None:
         resolve_yolo26_detection_best_metric_update,
     ],
 )
-@pytest.mark.parametrize("candidate", [-1.0, float("nan"), float("inf"), 0.5])
+@pytest.mark.parametrize("candidate", [-1.0, float("nan"), float("inf")])
 def test_detection_epoch_resolvers_preserve_valid_historical_best(
     resolver,
     candidate: float,
@@ -517,11 +517,11 @@ def test_detection_epoch_resolvers_use_train_loss_without_validation(resolver) -
     assert update.candidate_value == pytest.approx(4.25)
 
 
-@pytest.mark.parametrize("candidate", [-1.0, float("nan"), float("inf"), 0.5])
-def test_yolox_best_metric_rule_rejects_invalid_values_and_ties(
+@pytest.mark.parametrize("candidate", [-1.0, float("nan"), float("inf")])
+def test_yolox_best_metric_rule_rejects_invalid_values(
     candidate: float,
 ) -> None:
-    """YOLOX 也不得用无效指标或平值覆盖历史 best。"""
+    """YOLOX 不得用无效指标覆盖历史 best。"""
 
     assert (
         is_yolox_metric_improved(
@@ -530,4 +530,35 @@ def test_yolox_best_metric_rule_rejects_invalid_values_and_ties(
             higher_is_better=True,
         )
         is False
+    )
+
+
+@pytest.mark.parametrize(
+    "resolver",
+    [
+        resolve_yolov8_detection_best_metric_update,
+        resolve_yolo11_detection_best_metric_update,
+        resolve_yolo26_detection_best_metric_update,
+    ],
+)
+def test_detection_epoch_resolvers_use_latest_tied_validation_map(resolver) -> None:
+    """验证 mAP 持平时更新权重，跳过验证时维持原权重。"""
+
+    def resolve(validation_ran: bool):
+        return resolver(
+            has_validation=True,
+            validation_ran=validation_ran,
+            current_metric_value=0.5,
+            train_loss=0.01,
+            best_metric_value=0.5,
+        )
+
+    assert resolve(True).improved
+    assert not resolve(False).improved
+
+
+def test_yolox_detection_uses_latest_tied_validation_map() -> None:
+    """YOLOX 保存最近一次达到最高 mAP 的权重。"""
+    assert is_yolox_metric_improved(
+        current_metric_value=0.5, best_metric_value=0.5, higher_is_better=True
     )

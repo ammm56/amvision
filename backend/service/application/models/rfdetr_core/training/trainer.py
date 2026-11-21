@@ -119,6 +119,7 @@ def build_trainer(
             monitor_ema="val/ema_mAP_50_95" if enable_ema else None,
             run_test=tc.run_test,
             skip_best_epochs=tc.skip_best_epochs,
+            segmentation=model_config.segmentation_head,
         )
     )
 

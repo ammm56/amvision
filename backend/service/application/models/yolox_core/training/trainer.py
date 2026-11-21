@@ -128,6 +128,7 @@ class YoloXTrainingSavePoint:
     best_checkpoint_bytes: bytes | None = None
     best_metric_name: str = ""
     best_metric_value: float | None = None
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -808,6 +809,14 @@ def run_yolox_training_loop(
         if request.best_checkpoint_bytes is not None
         else None
     )
+    best_checkpoint_saved_epoch = None
+    if best_checkpoint_bytes is not None:
+        checkpoint = request.torch_module.load(
+            io.BytesIO(best_checkpoint_bytes), map_location="meta", weights_only=False
+        )
+        epoch = checkpoint.get("epoch")
+        if type(epoch) is int and epoch > 0:
+            best_checkpoint_saved_epoch = epoch
     current_input_size = tuple(request.current_input_size)
     max_iterations = len(request.train_loader)
     total_iterations = request.max_epochs * max_iterations
@@ -873,6 +882,7 @@ def run_yolox_training_loop(
             best_checkpoint_bytes=best_checkpoint_bytes,
             best_metric_name=best_metric_name,
             best_metric_value=best_metric_value,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
 
     last_completed_savepoint = build_completed_epoch_savepoint(
@@ -1065,6 +1075,7 @@ def run_yolox_training_loop(
         )
         if best_metric_improved:
             best_metric_value = current_metric_value
+            best_checkpoint_saved_epoch = current_epoch
             best_checkpoint_state = build_yolox_checkpoint_state(
                 model=checkpoint_model,
                 optimizer=request.optimizer,
@@ -1413,6 +1424,7 @@ def is_yolox_metric_improved(
         direction="maximize" if higher_is_better else "minimize",
         minimum=0.0,
         maximum=1.0 if higher_is_better else None,
+        prefer_latest_on_tie=True,
     ).improved
 
 

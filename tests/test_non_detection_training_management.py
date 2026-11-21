@@ -359,11 +359,11 @@ def test_list_training_output_files_reads_standard_non_detection_outputs(tmp_pat
     )
     storage.write_json(
         "task-runs/task-4/output-files/train-metrics.json",
-        {"final_metrics": {"loss": 0.2, "accuracy": 0.75}},
+        {"final_metrics": {"loss": 0.2, "accuracy": 0.75}, "epoch_history": [{"epoch": 6}, {"epoch": 7}]},
     )
     storage.write_json(
         "task-runs/task-4/output-files/validation-metrics.json",
-        {"final_metrics": {"top1_accuracy": 0.5, "top5_accuracy": 1.0}},
+        {"final_metrics": {"top1_accuracy": 0.5, "top5_accuracy": 1.0}, "evaluated_epochs": [1, 5]},
     )
     storage.write_json(
         "task-runs/task-4/output-files/runtime-metrics.json",
@@ -373,11 +373,16 @@ def test_list_training_output_files_reads_standard_non_detection_outputs(tmp_pat
                 {
                     "attempt_no": 1,
                     "global_step": 10,
+                    "epoch": 8,
                     "timestamp": "2026-08-13T00:00:00+00:00",
                     "runtime": {"samples_per_second": 40.0},
                 }
             ],
         },
+    )
+    storage.write_json(
+        "task-runs/task-4/output-files/test-metrics.json",
+        {"available": False, "checkpoint_role": "best", "epoch": 7},
     )
     storage.write_text("task-runs/task-4/output-files/labels.txt", "ok\nng\n")
     task = SimpleNamespace(
@@ -399,15 +404,31 @@ def test_list_training_output_files_reads_standard_non_detection_outputs(tmp_pat
     )
 
     assert by_name["train-metrics"].file_status == "ready"
+    assert by_name["train-metrics"].epoch == 7
     assert by_name["validation-metrics"].file_status == "ready"
+    assert by_name["validation-metrics"].epoch == 5
     assert by_name["runtime-metrics"].file_status == "ready"
+    assert by_name["runtime-metrics"].epoch == 8
+    assert by_name["test-metrics"].checkpoint_role == "best"
+    assert by_name["test-metrics"].epoch is None
     assert by_name["runtime-metrics"].object_key == (
         "task-runs/task-4/output-files/runtime-metrics.json"
     )
     assert by_name["labels"].file_status == "ready"
+    assert by_name["labels"].epoch is None
     assert by_name["summary"].file_status == "pending"
     assert by_name["latest-checkpoint"].file_status == "pending"
     assert labels.lines == ["ok", "ng"]
+
+    storage.write_bytes("task-runs/task-4/output-files/best-checkpoint.pt", b"weights")
+    storage.write_json(
+        "task-runs/task-4/output-files/training-summary.json",
+        {"latest_checkpoint_epoch": 7, "best_checkpoint_saved_epoch": 5},
+    )
+    best = output_files_module.read_training_output_file_detail(
+        task=task, dataset_storage=storage, file_name="best-checkpoint",
+    )
+    assert (best.epoch, best.checkpoint_role) == (5, "best")
 
 
 def test_legacy_runtime_metrics_detail_remains_pending_after_task_completion(

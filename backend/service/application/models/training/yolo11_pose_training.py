@@ -148,6 +148,8 @@ class Yolo11PoseTrainingExecutionResult:
     test_metrics_payload: dict[str, object] | None = None
     test_split_name: str | None = None
     test_sample_count: int = 0
+    # 最佳权重文件记录的一基轮次。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @training_engine_entrypoint
@@ -443,6 +445,8 @@ def run_yolo11_pose_training(
             category_names=labels,
             task_type="pose",
         )
+        if loop_result.best_checkpoint_saved_epoch is not None:
+            test_metrics_payload["epoch"] = loop_result.best_checkpoint_saved_epoch
     test_policy = build_pose_evaluation_policy(
         input_size=input_size,
         score_threshold=eval_conf,
@@ -479,6 +483,7 @@ def run_yolo11_pose_training(
         labels=labels,
         warm_start_summary=warm_start_summary,
         best_checkpoint_bytes=loop_result.best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=loop_result.best_checkpoint_saved_epoch,
         test_metrics_payload=test_metrics_payload,
         test_split_name="test" if manifest.test_annotations else None,
         test_sample_count=len(manifest.test_annotations),

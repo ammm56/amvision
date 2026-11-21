@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.training.yolo_obb_training_checkpoints import (
+    read_yolo_obb_checkpoint_epoch,
+)
 from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
@@ -116,6 +119,8 @@ class YoloV8ObbTrainingSavePoint:
     epoch: int
     learning_rate: float
     is_best: bool = False
+    # 当前已保存 best checkpoint 的轮次。首次验证之前为空。
+    best_checkpoint_saved_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -176,6 +181,8 @@ class YoloV8ObbTrainingExecutionResult:
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
     best_checkpoint_bytes: bytes | None = None
+    # 实际保存为 best checkpoint 的权重轮次。
+    best_checkpoint_saved_epoch: int | None = None
     test_metrics_payload: dict[str, object] | None = None
     test_split_name: str | None = None
     test_sample_count: int = 0
@@ -329,6 +336,10 @@ def run_yolov8_obb_training(
         and request.previous_best_checkpoint_path.is_file()
         else b""
     )
+    best_checkpoint_saved_epoch = read_yolo_obb_checkpoint_epoch(
+        torch_module=torch,
+        checkpoint_bytes=best_checkpoint_bytes,
+    )
     validation_history: list[dict[str, object]] = list(
         resume_payload.get("validation_history", []) if resume_payload else []
     )
@@ -389,6 +400,7 @@ def run_yolov8_obb_training(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         learning_rate=resolve_yolo_optimizer_base_learning_rate(
             optimizer=optimizer,
             initial_learning_rate=training_schedule.initial_lr,
@@ -572,6 +584,13 @@ def run_yolov8_obb_training(
                 imports=_build_yolov8_training_imports(cv2, np, torch),
                 batch_size=bs,
                 control_callback=observe_control,
+                compute_batch_loss=lambda outputs, targets: compute_yolov8_obb_loss(
+                    torch=torch,
+                    model=ema.model,
+                    raw_outputs=outputs.get("one2many", outputs),
+                    batch_targets=targets,
+                    num_classes=num_classes,
+                ),
             )
             validation_history.append(
                 build_yolo_epoch_history_item(epoch_index=epoch, metrics=val_metrics)
@@ -582,6 +601,7 @@ def run_yolov8_obb_training(
                 best_value=best_metric_value,
                 direction="maximize",
                 maximum=1.0,
+                prefer_latest_on_tie=True,
             )
             if best_metric_improved:
                 best_metric_value = current_metric
@@ -616,6 +636,7 @@ def run_yolov8_obb_training(
         ckpt_bytes = build_completed_epoch_checkpoint(epoch + 1)
         if best_metric_improved:
             best_checkpoint_bytes = ckpt_bytes
+            best_checkpoint_saved_epoch = epoch + 1
 
         last_completed_savepoint = YoloV8ObbTrainingSavePoint(
             latest_checkpoint_bytes=ckpt_bytes,
@@ -629,6 +650,7 @@ def run_yolov8_obb_training(
                 initial_learning_rate=training_schedule.initial_lr,
             ),
             is_best=best_metric_improved,
+            best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         )
         if checkpoint_decision.should_persist and request.savepoint_callback:
             request.savepoint_callback(last_completed_savepoint)
@@ -644,6 +666,7 @@ def run_yolov8_obb_training(
     )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = ckpt_bytes
+        best_checkpoint_saved_epoch = last_completed_savepoint.epoch
     test_metrics_payload = build_detection_test_metrics_report(
         available=False,
         sample_count=0,
@@ -684,6 +707,8 @@ def run_yolov8_obb_training(
             category_names=labels,
             task_type="obb",
         )
+        if best_checkpoint_saved_epoch is not None:
+            test_metrics_payload["epoch"] = best_checkpoint_saved_epoch
     return YoloV8ObbTrainingExecutionResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
@@ -705,6 +730,7 @@ def run_yolov8_obb_training(
         labels=labels,
         warm_start_summary=warm_start_summary,
         best_checkpoint_bytes=best_checkpoint_bytes,
+        best_checkpoint_saved_epoch=best_checkpoint_saved_epoch,
         test_metrics_payload=test_metrics_payload,
         test_split_name="test" if test_annotations else None,
         test_sample_count=len(test_annotations),
