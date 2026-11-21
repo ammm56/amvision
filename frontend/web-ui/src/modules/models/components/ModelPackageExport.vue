@@ -16,8 +16,15 @@
           </tbody>
         </table>
       </div>
-      <h3>{{ zh ? '包含的元数据' : 'Included metadata' }}</h3>
-      <ul class="package-export__checks"><li>{{ zh ? '类别顺序' : 'Class order' }}</li><li>{{ zh ? '输入输出与预处理' : 'I/O and preprocessing' }}</li><li>{{ zh ? '文件 SHA-256' : 'File SHA-256' }}</li></ul>
+      <section class="package-export__metadata" aria-labelledby="package-export-metadata">
+        <h3 id="package-export-metadata">{{ zh ? '包含的元数据' : 'Included metadata' }}</h3>
+        <dl>
+          <div v-for="item in metadataItems" :key="item.label">
+            <dt><component :is="item.icon" :size="16" aria-hidden="true" />{{ item.label }}</dt>
+            <dd>{{ item.value }}</dd>
+          </div>
+        </dl>
+      </section>
       <label class="field"><span>{{ zh ? '输出文件' : 'Output file' }}</span><input v-model.trim="fileName" /></label>
       <footer><Button @click="$emit('back')">{{ zh ? '返回' : 'Back' }}</Button><Button variant="primary" :loading="busy" :disabled="!fileName.toLowerCase().endsWith('.zip') || (!checkpoint && !selected.length)" @click="start">{{ zh ? '生成模型包' : 'Generate package' }}</Button></footer>
     </template>
@@ -33,7 +40,7 @@
 
 <script setup lang="ts">
 import { modelVersionDisplayName } from '../model-display-name'
-import { Package } from '@lucide/vue'
+import { FileText, Package, Scan, ShieldCheck, SlidersHorizontal } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@/shared/ui/components/Button.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -52,6 +59,21 @@ const props = defineProps<{
 }>()
 defineEmits<{ back: [] }>()
 const hasCheckpoint = computed(() => props.version.files.some(file => /\.(pt|pth)$/i.test(file.storage_uri)))
+const metadataItems = computed(() => {
+  const categories = props.version.metadata.category_names
+  const size = props.version.metadata.input_size
+  const { width, height } = size && typeof size === 'object' ? size as Record<string, unknown> : {}
+  const inputSize = typeof width === 'number' && typeof height === 'number' ? `${width} × ${height}` : ''
+  return [
+    { icon: FileText, label: props.zh ? '类别顺序' : 'Class order',
+      value: Array.isArray(categories) ? (props.zh ? `共 ${categories.length} 类` : `${categories.length} classes`) : '—' },
+    { icon: Scan, label: props.zh ? '输入输出' : 'Inputs and outputs',
+      value: inputSize ? (props.zh ? `输入尺寸 ${inputSize}` : `Input size ${inputSize}`) : '—' },
+    { icon: SlidersHorizontal, label: props.zh ? '前后处理配置' : 'Preprocessing and postprocessing',
+      value: props.zh ? '图像预处理、后处理参数' : 'Image preprocessing and postprocessing parameters' },
+    { icon: ShieldCheck, label: props.zh ? '文件校验' : 'File checksums', value: 'SHA-256' },
+  ]
+})
 const checkpoint = ref(hasCheckpoint.value)
 const selected = ref<string[]>([])
 const versionLabel = modelVersionDisplayName(props.version)
@@ -130,7 +152,13 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer) })
 .package-export :is(h2,h3,p) { margin:0; }
 .package-export__source { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--am-border); border-radius:6px; background:var(--am-surface-soft); }
 .package-export__source span { display:block; color:var(--am-text-muted); overflow-wrap:anywhere; }
-.package-export__checks { display:grid; gap:7px; margin:0; padding-inline-start:20px; }
+.package-export__metadata { display:grid; gap:10px; min-width:0; }
+.package-export__metadata dl { margin:0; border:1px solid var(--am-border); border-radius:6px; }
+.package-export__metadata dl > div { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px 16px; padding:8px 12px; }
+.package-export__metadata dl > div + div { border-block-start:1px solid var(--am-border); }
+.package-export__metadata dt { display:flex; align-items:center; gap:10px; font-weight:600; }
+.package-export__metadata dt svg { flex:none; color:var(--am-text-muted); }
+.package-export__metadata dd { margin:0; margin-inline-start:auto; color:var(--am-text-muted); text-align:end; overflow-wrap:anywhere; }
 .package-export footer { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
 .package-export__read-error { display:flex; align-items:center; flex-wrap:wrap; gap:8px; min-width:0; overflow-wrap:anywhere; }
 </style>

@@ -25,24 +25,12 @@
         </dd></div>
         <div><dt>{{ zh ? '相对路径' : 'Relative path' }}</dt><dd class="model-build-detail__line model-build-detail__path">
           <span class="model-build-detail__path-text">{{ file.path }}</span>
-          <TooltipProvider v-if="fileStates[file.key]?.state === 'present' || checksumOpenKey === file.key" :delay-duration="200">
-            <TooltipRoot :open="checksumOpenKey === file.key" disable-closing-trigger @update:open="setChecksumOpen(file, $event)">
-              <TooltipTrigger as-child>
-                <Button variant="ghost" size="sm" icon-only :aria-label="zh ? '查看 SHA256' : 'View SHA256'"
-                  @click="setChecksumOpen(file, true)" @keydown.esc="dismissChecksum($event, file.key)"><ShieldCheck :size="15" /></Button>
-              </TooltipTrigger>
-              <TooltipPortal>
-                <TooltipContent side="top" align="end" :side-offset="6" :collision-padding="10" :style="{ zIndex: 'var(--am-z-tooltip)' }">
-                  <span class="model-build-detail__checksum">
-                    <strong>SHA256</strong>
-                    <code v-if="checksums[file.key] && checksums[file.key] !== 'failed'">{{ checksums[file.key] }}</code>
-                    <span v-else-if="checksums[file.key] === 'failed'">{{ zh ? '读取失败，重新悬停或点击重试。' : 'Could not read the hash. Hover again or click to retry.' }}</span>
-                    <span v-else>{{ zh ? '正在读取…' : 'Reading…' }}</span>
-                  </span>
-                </TooltipContent>
-              </TooltipPortal>
-            </TooltipRoot>
-          </TooltipProvider>
+          <ModelFileChecksumTooltip v-if="fileStates[file.key]?.state === 'present' || checksumOpenKey === file.key"
+            :open="checksumOpenKey === file.key" :zh="zh" @update:open="setChecksumOpen(file, $event)">
+            <code v-if="checksums[file.key] && checksums[file.key] !== 'failed'">{{ checksums[file.key] }}</code>
+            <span v-else-if="checksums[file.key] === 'failed'">{{ zh ? '读取失败，重新悬停或点击重试。' : 'Could not read the hash. Hover again or click to retry.' }}</span>
+            <span v-else>{{ zh ? '正在读取…' : 'Reading…' }}</span>
+          </ModelFileChecksumTooltip>
           <Button variant="ghost" size="sm" icon-only :aria-label="zh ? '复制文件路径' : 'Copy file path'" @click="copyPath(file.path)"><Copy :size="14" /></Button>
         </dd></div>
       </template>
@@ -74,11 +62,11 @@ import { modelBuildValidation, saveProjectModelDownload } from '../model-artifac
 import { modelVersionDisplayName } from '../model-display-name'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, CircleAlert, CircleCheck, Copy, Download, ShieldCheck } from '@lucide/vue'
-import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from 'reka-ui'
+import { ArrowLeft, CircleAlert, CircleCheck, Copy, Download } from '@lucide/vue'
 import Button from '@/shared/ui/components/Button.vue'
 import { ApiError } from '@/shared/api/error'
 import { downloadProjectModelFile, getProjectModelFileStatus, type ModelFileStatus, type PlatformBaseModelBuild, type PlatformBaseModelVersionDetail } from '../services/model.service'
+import ModelFileChecksumTooltip from './ModelFileChecksumTooltip.vue'
 
 const props = defineProps<{ build?: PlatformBaseModelBuild | null; version: PlatformBaseModelVersionDetail; modelName: string; modelId: string; projectId: string; drawer?: boolean }>()
 defineEmits<{ back: [] }>()
@@ -158,12 +146,6 @@ function setChecksumOpen(file: ArtifactFile, open: boolean): void {
   } else if (!open && checksumOpenKey.value === file.key) {
     checksumOpenKey.value = ''
   }
-}
-function dismissChecksum(event: KeyboardEvent, fileKey: string): void {
-  if (checksumOpenKey.value !== fileKey) return
-  event.stopPropagation()
-  event.preventDefault()
-  checksumOpenKey.value = ''
 }
 async function copyPath(path: string): Promise<void> {
   try {
@@ -256,7 +238,6 @@ const contractEntries = computed(() => [
 .model-build-detail__file > span:not(.model-build-detail__filename) { flex:none; }
 .model-build-detail__filename, .model-build-detail__path-text { flex:1; min-width:0; overflow-wrap:anywhere; }
 .model-build-detail__path { flex-wrap:nowrap; }
-.model-build-detail__checksum { display:grid; gap:4px; max-width:min(480px, calc(100vw - 24px)); padding:8px 10px; border:1px solid var(--am-border-strong); border-radius:6px; background:var(--am-surface-raised); color:var(--am-text); box-shadow:var(--am-shadow-modal); font-size:12px; overflow-wrap:anywhere; }
 .model-build-detail__error { color:var(--am-danger-text); }
 .model-build-detail dl { margin:0; }
 .model-build-detail dl div { display:grid; grid-template-columns:minmax(96px, 30%) minmax(0, 1fr); border:1px solid var(--am-border); border-bottom:0; }

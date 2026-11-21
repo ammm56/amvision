@@ -61,7 +61,7 @@ describe('ModelBuildDetail', () => {
       .mockResolvedValueOnce({ file_id: 'file-1', state: 'present', size_bytes: 10, sha256: 'a'.repeat(64) })
     const wrapper = mount(ModelBuildDetail, { props: { build, version, modelName: 'part detector', modelId: 'm1', projectId: 'p1', drawer: true },
       attachTo: document.body, global: { plugins: [i18n] } })
-    const popup = () => document.querySelector('.model-build-detail__checksum')
+    const popup = () => document.querySelector('.model-file-checksum')
     try {
       await flushPromises()
       expect(status).toHaveBeenCalledTimes(1)
