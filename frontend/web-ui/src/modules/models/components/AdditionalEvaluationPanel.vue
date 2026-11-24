@@ -1,8 +1,8 @@
 <template>
   <div class="additional-evaluations">
     <header>
-      <h2>{{ creating ? (zh ? '创建评估' : 'Create evaluation') : (zh ? '评估任务' : 'Evaluation tasks') }}</h2>
-      <div v-if="!creating">
+      <h2 v-if="creating">{{ zh ? '创建评估' : 'Create evaluation' }}</h2>
+      <div v-else class="additional-evaluations__actions">
         <Button :loading="loading" @click="revision++">{{ zh ? '刷新' : 'Refresh' }}</Button>
         <Button v-if="canWrite" variant="primary" @click="creating = true"><Plus :size="16" />{{ zh ? '创建评估' : 'Create evaluation' }}</Button>
       </div>
@@ -16,7 +16,7 @@
             <td>{{ taskName(task) }}</td><td><TaskStateBadge :state="task.state" /></td>
             <td>{{ task[headline.key]?.toFixed(3) ?? '—' }}</td><td>{{ task.sample_count ?? '—' }}</td>
             <td>{{ formatSystemDateTime(task.created_at, 'minutes') }}</td>
-            <td><RouterLink :to="`/models/${kind}/evaluation-tasks/${encodeURIComponent(task.task_id)}`">{{ zh ? '查看' : 'View' }}</RouterLink></td>
+            <td><ButtonLink size="sm" variant="ghost" class="ui-button--row-view" :to="`/models/${kind}/evaluation-tasks/${encodeURIComponent(task.task_id)}`">{{ zh ? '查看' : 'View' }}</ButtonLink></td>
           </tr>
           <tr v-if="!tasks.length && !error"><td colspan="6" role="status">{{ loading ? (zh ? '加载中…' : 'Loading…') : (zh ? '暂无评估任务' : 'No evaluation tasks') }}</td></tr>
         </tbody>
@@ -56,6 +56,7 @@ import { listDatasetVersionPage } from '@/modules/datasets/services/dataset-work
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import Select from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -209,7 +210,7 @@ async function submit(): Promise<void> {
 <style scoped>
 .additional-evaluations, .evaluation-form { display:grid; gap:14px; min-width:0; }
 .additional-evaluations header, .additional-evaluations header > div, .evaluation-form footer { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
-.additional-evaluations header { justify-content:space-between; }
+.additional-evaluations__actions { margin-inline-start:auto; }
 .additional-evaluations h2, .evaluation-form p { margin:0; }
 .evaluation-form { max-width:860px; }
 .evaluation-form footer { justify-content:flex-end; }
@@ -217,5 +218,4 @@ async function submit(): Promise<void> {
 .task-table table { width:100%; table-layout:fixed; }
 .task-table :is(td,th) { overflow-wrap:anywhere; }
 .task-table th:first-child { width:27%; }
-.task-table a { color:var(--am-brand-primary); }
 </style>

@@ -295,7 +295,8 @@ describe('ModelOperationsPage conversion flow', () => {
     expect(router.currentRoute.value.query).toEqual({ tab: 'evaluation', evaluation: 'classification' })
     await panel.findAll('button').find(button => button.text() === '取消')!.trigger('click')
     await flushPromises()
-    expect(panel.get('h2').text()).toBe('评估任务')
+    expect(panel.find('h2').exists()).toBe(false)
+    expect(panel.findAll('button').some(button => button.text() === '创建评估')).toBe(true)
   })
 
   it('keeps training inputs available when task history fails to load', async () => {

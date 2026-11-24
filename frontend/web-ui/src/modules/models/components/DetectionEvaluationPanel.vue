@@ -2,8 +2,7 @@
   <section class="evaluation-panel">
     <header v-show="!step && (!compareOpen || conflicts.length)" ref="listToolbar" class="evaluation-list-tools">
       <div class="evaluation-toolbar">
-        <h2>{{ zh ? '评估任务' : 'Evaluation tasks' }}</h2>
-        <div>
+        <div class="evaluation-toolbar__end">
           <Button :loading="loading" @click="load"><RefreshCw :size="16" />{{ zh ? '刷新' : 'Refresh' }}</Button>
           <Button v-if="canWrite" variant="primary" @click="openWizard()"><Plus :size="16" />{{ zh ? '创建评估' : 'Create evaluation' }}</Button>
         </div>
@@ -31,7 +30,7 @@
             <td>{{ evaluationRuntime({ task: row, report: {} }) }}</td>
             <td><small>mAP50–95</small><strong>{{ evaluationMetric(row.state === 'succeeded' ? row.map50_95 : null) }}</strong></td>
             <td><StatusBadge v-if="row.state === 'succeeded' && row.report_summary.coverage?.failed" tone="warning" with-dot>{{ zh ? '部分失败' : 'Partially evaluated' }}</StatusBadge><TaskStateBadge v-else :state="row.state" /><small>{{ formatSystemDateTime(row.created_at, 'minutes') }}</small></td>
-            <td><RouterLink :to="`/models/detection/evaluation-tasks/${encodeURIComponent(row.task_id)}`">{{ zh ? '查看' : 'View' }}</RouterLink></td>
+            <td><ButtonLink size="sm" variant="ghost" class="ui-button--row-view" :to="`/models/detection/evaluation-tasks/${encodeURIComponent(row.task_id)}`">{{ zh ? '查看' : 'View' }}</ButtonLink></td>
           </tr>
           <tr v-if="!pageTasks.length"><td colspan="7" role="status">{{ loading ? (zh ? '加载中' : 'Loading') : error ? (zh ? '评估列表读取失败' : 'Could not load evaluations') : tasks.length ? (zh ? '没有符合筛选条件的评估任务' : 'No matching evaluation tasks') : (zh ? '暂无目标检测评估任务' : 'No detection evaluation tasks') }}</td></tr>
         </tbody>
@@ -226,6 +225,7 @@ import { getDatasetWorkspace, listDatasetRecordPage } from '@/modules/datasets/s
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import ModelListPagination from './ModelListPagination.vue'
 import DetectionEvaluationComparison from './DetectionEvaluationComparison.vue'
@@ -679,7 +679,6 @@ onBeforeUnmount(() => { inputRevision++; loadRequest?.abort(); compareRequest?.a
 .evaluation-table .is-selected { background:var(--am-success-surface); }
 .evaluation-table input { accent-color:var(--am-brand-primary); }
 .evaluation-table small { display:block; color:var(--am-text-muted); }
-.evaluation-table a { color:var(--am-brand-primary); }
 .evaluation-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:0; padding:0; list-style:none; }
 .evaluation-steps li { display:flex; align-items:center; gap:10px; color:var(--am-text-muted); }
 .evaluation-steps li:not(:last-child)::after { content:''; flex:1; height:1px; margin-inline-end:12px; background:var(--am-border); }

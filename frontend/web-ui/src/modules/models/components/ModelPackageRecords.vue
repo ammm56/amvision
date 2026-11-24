@@ -134,7 +134,7 @@
             <td>{{ zh ? '模型包导入' : 'Model package' }}<small v-if="item.file_name" :title="item.file_name">{{ item.file_name }}</small></td>
             <td><StatusBadge :tone="importTone(item)" with-dot>{{ packageStatus(item.state, zh) }}</StatusBadge></td>
             <td>{{ formatSystemDateTime(item.created_at, 'minutes') }}</td>
-            <td><Button size="sm" variant="ghost" class="package-records__detail" @click="openRecord(item)">{{ zh ? '详情' : 'Details' }}</Button></td>
+            <td><Button size="sm" variant="ghost" class="ui-button--row-view" @click="openRecord(item)">{{ zh ? '详情' : 'Details' }}</Button></td>
           </tr>
           <tr v-if="!imports.length && !error"><td colspan="5" role="status">{{ busy ? (zh ? '正在加载导入记录…' : 'Loading import records…') : (zh ? '暂无模型包导入记录' : 'No model package imports') }}</td></tr>
         </tbody>
@@ -581,7 +581,6 @@ onBeforeUnmount(reset)
 .package-records__actions { display:flex; flex-wrap:wrap; gap:10px; }
 .package-read-error { display:flex; flex-wrap:wrap; gap:8px; align-items:center; min-width:0; overflow-wrap:anywhere; }
 .package-records small { display:block; max-width:100%; overflow:hidden; color:var(--am-text-muted); text-overflow:ellipsis; white-space:nowrap; }
-.package-records .package-records__detail { color:var(--am-action-primary-strong); }
 .package-records__drawer-footer { display:flex; justify-content:flex-end; inline-size:100%; flex-wrap:wrap; gap:10px; }
 :global(.package-records-drawer.side-drawer) { width:min(max(545px, 46vw), 760px, calc(100vw - 36px)); }
 .package-toolbar h2, .package-content :is(h3,p) { margin:0; }

@@ -28,7 +28,6 @@
 .model-task-list .resource-table :is(th,td) { white-space:normal; overflow-wrap:anywhere; }
 .model-task-list .model-task-list__value { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .model-task-list__actions { display:flex; flex-wrap:wrap; align-items:center; gap:5px 8px; }
-.model-task-list__actions a { color:var(--am-action-primary-strong); white-space:nowrap; }
 
 @media (max-width: 1120px) {
   :is(.model-workspace,.model-drawer) .resource-table :is(th,td) {

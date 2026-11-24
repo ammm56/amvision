@@ -924,6 +924,16 @@ textarea:focus-visible {
   background: var(--am-hover-surface);
 }
 
+.ui-button.ui-button--row-view {
+  padding-inline: 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--am-brand-primary);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
 .ui-button--danger {
   border-color: #dc2626;
   background: #dc2626;

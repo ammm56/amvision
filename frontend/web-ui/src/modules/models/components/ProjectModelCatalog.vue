@@ -51,7 +51,7 @@
             <td :title="latestVersionLabel(model, false)">{{ latestVersionLabel(model, true) }}</td>
             <td>{{ sources(model) }}</td>
             <td><ModelRuntimeFormats :formats="formats(model)" :fallback-label="model.build_count ? (zh ? `${model.build_count} 个产物` : `${model.build_count} builds`) : undefined" /></td>
-            <td><div class="model-catalog__actions"><button class="model-catalog__link" type="button" @click="openDetail(model)">{{ zh ? '查看' : 'View' }}</button><ResourceMenu v-if="canEdit && !error" :label="zh ? '更多操作' : 'More actions'" :items="[{ id: 'edit', label: zh ? '编辑' : 'Edit', icon: Pencil }]" @action="editing = model" /></div></td>
+            <td><div class="model-catalog__actions"><Button size="sm" variant="ghost" class="ui-button--row-view" @click="openDetail(model)">{{ zh ? '查看' : 'View' }}</Button><ResourceMenu v-if="canEdit && !error" :label="zh ? '更多操作' : 'More actions'" :items="[{ id: 'edit', label: zh ? '编辑' : 'Edit', icon: Pencil }]" @action="editing = model" /></div></td>
           </tr>
           <tr v-if="!items.length"><td colspan="6" class="model-catalog__empty">
             <div v-if="filtered" class="model-catalog__no-results"><Search :size="25" aria-hidden="true" />
@@ -91,7 +91,7 @@
                 <td class="model-reference__runtime"><span v-for="state in runtimeStates(item.runtime_states)" :key="state.key" class="model-reference__cell" :class="{ 'is-running': state.status === 'running', 'is-failed': state.status === 'failed' }">
                   <CirclePlay v-if="state.status === 'running'" :size="14" aria-hidden="true" /><CircleStop v-else-if="state.status === 'stopped'" :size="14" aria-hidden="true" /><CircleAlert v-else :size="14" aria-hidden="true" />{{ state.label }}
                 </span></td>
-                <td><RouterLink class="model-reference__cell" :to="{ path: '/deployments', query: { deployment: item.deployment_id } }"><Eye :size="15" aria-hidden="true" />{{ zh ? '查看' : 'View' }}</RouterLink></td>
+                <td><ButtonLink size="sm" variant="ghost" class="ui-button--row-view" :to="{ path: '/deployments', query: { deployment: item.deployment_id } }"><Eye :size="15" aria-hidden="true" />{{ zh ? '查看' : 'View' }}</ButtonLink></td>
               </tr>
               <tr v-if="!references.length"><td colspan="5">{{ referenceQuery ? (zh ? '没有符合条件的引用' : 'No matching references') : (zh ? '暂无直接部署引用' : 'No direct deployment references') }}</td></tr>
             </tbody></table></div>
@@ -220,6 +220,7 @@ import { useI18n } from 'vue-i18n'
 import ProjectSwitcher from '@/modules/projects/components/ProjectSwitcher.vue'
 import { ArrowLeft, ChevronRight, CircleAlert, CircleCheck, CircleHelp, CirclePlay, CircleStop, Database, Download, Eye, FileText, List, LockKeyhole, Package, Pencil, Plus, RefreshCw, Rocket, Search, Trash2, Upload, WifiOff } from '@lucide/vue'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import Select from '@/shared/ui/components/Select.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
@@ -740,8 +741,6 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 .model-catalog__table tr.is-selected { background:var(--am-action-soft); }
 .model-catalog__name-column { width:29%; }.model-catalog__task-column { width:12%; }.model-catalog__version-column { width:15%; }.model-catalog__source-column { width:13%; }.model-catalog__format-column { width:19%; }.model-catalog__action-column { width:12%; }
 .model-catalog__table th, .model-catalog__table td { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.model-catalog__link { padding:6px 0; border:0; background:none; color:#006b4d; cursor:pointer; }
-.model-catalog__link:where([data-theme='dark'] *) { color:var(--am-brand-primary); }
 .model-catalog__actions { display:flex; align-items:center; gap:10px; }
 .model-catalog__empty, .model-catalog__message { padding:40px 16px; text-align:center; color:var(--am-text-muted); }
 .model-catalog__notice { display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px; border:1px solid var(--am-border); border-radius:7px; padding:12px 14px; margin:0 0 14px; }

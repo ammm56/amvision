@@ -197,7 +197,7 @@
                 <td>{{ outputFileEpoch(file) ?? '—' }}</td>
                 <td>{{ file.updated_at ? formatSystemDateTime(file.updated_at) : '—' }}</td>
                 <td><div class="training-output-actions">
-                  <Button v-if="file.file_kind !== 'checkpoint'" size="sm" variant="ghost" :disabled="loading" @click="selectOutputFile(file.file_name)">{{ zh ? '查看' : 'View' }}</Button>
+                  <Button v-if="file.file_kind !== 'checkpoint'" size="sm" variant="ghost" class="ui-button--row-view" :disabled="loading" @click="selectOutputFile(file.file_name)">{{ zh ? '查看' : 'View' }}</Button>
                   <Button size="sm" variant="ghost" :disabled="loading || !!outputDownloading" :loading="outputDownloading === file.file_name" @click.stop="downloadOutput(file)">{{ t('trainingDetail.actions.download') }}</Button>
                 </div></td>
               </tr>

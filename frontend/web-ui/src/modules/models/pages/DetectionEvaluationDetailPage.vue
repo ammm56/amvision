@@ -160,7 +160,7 @@
                     <th scope="row"><span :title="item.name">{{ item.name }}</span></th>
                     <td><span :title="sampleClasses(item)">{{ sampleClasses(item) }}</span></td>
                     <td>{{ sampleIssue(item) }}</td><td>{{ item.gt_count }}</td><td>{{ item.pred_count }}</td>
-                    <td><Button size="sm" :data-sample-index="item.image_index" :aria-label="(zh ? '查看 ' : 'View ') + item.name" @click="sample = item">{{ zh ? '查看' : 'View' }}</Button></td>
+                    <td><Button size="sm" variant="ghost" class="ui-button--row-view" :data-sample-index="item.image_index" :aria-label="(zh ? '查看 ' : 'View ') + item.name" @click="sample = item">{{ zh ? '查看' : 'View' }}</Button></td>
                   </tr></tbody>
                 </table>
               </div>

@@ -173,7 +173,7 @@
             <td :title="row.source_file_name || ''">{{ row.source_file_name || '—' }}</td>
             <td class="dataset-record-status"><TaskStateBadge :state="row.status" appearance="icon" /></td>
             <td><DatasetCounts :items="sampleColumns(row.sample_count, null).slice(0, 1)" summary /></td>
-            <td class="dataset-version-cell"><Button v-if="row.version_number && row.dataset_version_id" size="sm" variant="ghost" class="dataset-catalog-view" @click.stop="openRecordVersion(row)">{{ `v${row.version_number}` }}</Button><span v-else>—</span></td>
+            <td class="dataset-version-cell"><Button v-if="row.version_number && row.dataset_version_id" size="sm" variant="ghost" class="ui-button--row-view" @click.stop="openRecordVersion(row)">{{ `v${row.version_number}` }}</Button><span v-else>—</span></td>
           </template>
           <template v-else>
             <td class="dataset-version-cell">{{ row.version_number ? `v${row.version_number}` : '—' }}</td>
@@ -198,7 +198,7 @@
               <Button
                 size="sm"
                 variant="ghost"
-                class="dataset-catalog-view"
+                class="ui-button--row-view"
                 :disabled="isDataset(row) && !row.latest_version"
                 @click="view(row)"
                 >{{

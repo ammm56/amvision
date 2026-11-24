@@ -52,7 +52,7 @@
               />
             </td>
             <td>{{ task.started_at ? formatSystemDateTime(task.started_at, 'minutes') : '—' }}</td>
-            <td><div class="model-task-list__actions"><RouterLink :to="detailLocation(selectedTaskType, task.task_id)">{{ zh ? '查看' : 'View' }}</RouterLink>
+            <td><div class="model-task-list__actions"><ButtonLink size="sm" variant="ghost" class="ui-button--row-view" :to="detailLocation(selectedTaskType, task.task_id)">{{ zh ? '查看' : 'View' }}</ButtonLink>
               <ResourceMenu :label="zh ? '更多操作' : 'More actions'" :items="rowActions(task)" @action="runAction(task, $event)" />
             </div></td>
           </tr>
@@ -79,6 +79,7 @@ import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { normalizeTaskState } from '@/modules/tasks/task-state'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ModelListToolbar from './ModelListToolbar.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import SelectField from '@/shared/ui/components/Select.vue'

@@ -38,7 +38,7 @@
                     {{ state.label }}</span>
                 </div></td>
                 <td>{{ label('部署实例', 'Deployment') }}</td>
-                <td><RouterLink :to="{ path: '/deployments', query: { deployment: item.deployment_id } }">{{ label('查看', 'View') }}</RouterLink></td>
+                <td><ButtonLink size="sm" variant="ghost" class="ui-button--row-view" :to="{ path: '/deployments', query: { deployment: item.deployment_id } }">{{ label('查看', 'View') }}</ButtonLink></td>
               </tr>
             </tbody>
           </table>
@@ -87,6 +87,7 @@ import { useI18n } from 'vue-i18n'
 import { ApiError } from '@/shared/api/error'
 import { previewModelVersionDeletion, submitResourceDeletion, type ModelVersionDeletionPreview } from '@/shared/api/resource-deletion'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { listModelVersionReferences, type ModelDeploymentReference } from '../services/model.service'

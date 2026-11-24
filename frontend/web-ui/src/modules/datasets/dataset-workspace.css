@@ -282,10 +282,30 @@
 
 /* 数据集管理列表遵循列表母版，避免辅助文本规则缩小版本和数量。 */
 .dataset-catalog > .dataset-heading {
-  border-bottom: 1px solid var(--am-border);
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  box-shadow: inset 0 -1px var(--am-border);
 }
 .dataset-catalog > .dataset-heading .dataset-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
   border-bottom: 0;
+  scrollbar-width: thin;
+}
+.dataset-catalog > .dataset-heading > .ui-button {
+  flex: none;
+  align-self: center;
+  margin-inline-start: auto;
+}
+@media (max-width: 767px) {
+  .dataset-catalog > .dataset-heading {
+    flex-wrap: wrap;
+    box-shadow: none;
+  }
+  .dataset-catalog > .dataset-heading .dataset-tabs {
+    width: 100%;
+    box-shadow: inset 0 -1px var(--am-border);
+  }
 }
 .dataset-catalog .dataset-tabs button[aria-selected='true'] {
   font-weight: 600;
@@ -429,19 +449,11 @@
   justify-content: center;
   gap: 4px;
 }
-.dataset-catalog .dataset-catalog-view {
-  color: var(--am-brand-primary);
-  font-size: 14px;
-  font-weight: 600;
-  padding-inline: 6px;
-}
-.dataset-catalog .dataset-catalog-view,
 .dataset-catalog .dataset-table .ui-button--icon-only {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
-.dataset-catalog .dataset-catalog-view:hover:not(:disabled),
 .dataset-catalog .dataset-table .ui-button--icon-only:hover:not(:disabled) {
   background: var(--am-hover-surface);
 }

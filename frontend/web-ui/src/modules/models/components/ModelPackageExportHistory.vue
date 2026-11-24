@@ -14,7 +14,7 @@
             <td><ModelPackageExportStatus :record="row" :zh="zh" /></td>
             <td>{{ row.completed_at ? formatSystemDateTime(row.completed_at, 'minutes') : '—' }}<small v-if="!row.completed_at && row.created_at" class="package-history__time">{{ zh ? '提交' : 'Submitted' }} {{ formatSystemDateTime(row.created_at, 'minutes') }}</small></td>
             <td><div class="package-history__actions">
-              <Button variant="ghost" size="sm" class="package-history__link" @click="$emit('open', row)">{{ zh ? '查看' : 'View' }}</Button>
+              <Button variant="ghost" size="sm" class="ui-button--row-view" @click="$emit('open', row)">{{ zh ? '查看' : 'View' }}</Button>
               <Button variant="ghost" size="sm" class="package-history__link" :disabled="!canDownloadModelPackage(row) || busy" :loading="downloading === row.operation_id" @click="$emit('download', row)">{{ zh ? '下载' : 'Download' }}</Button>
             </div></td>
           </tr>
