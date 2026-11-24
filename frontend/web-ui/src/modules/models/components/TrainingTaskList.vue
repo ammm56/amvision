@@ -2,7 +2,7 @@
   <section class="model-task-list training-list">
     <ModelListToolbar class="model-task-list__toolbar" :zh="zh" :search="search" :search-label="zh ? '搜索任务名称' : 'Search tasks'"
       @update:search="setSearch" @open-base-models="$emit('open-base-models')">
-      <label><span>{{ zh ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions || []" :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="$emit('change-task-type', String($event))" /></label>
+      <label><span>{{ zh ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions || []" fit-options floating :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="$emit('change-task-type', String($event))" /></label>
       <label><span>{{ zh ? '状态' : 'Status' }}</span><SelectField :model-value="status" @update:model-value="setStatus(String($event))" :options="statusOptions" :aria-label="zh ? '状态' : 'Status'" /></label>
       <Button :loading="loading" @click="$emit('refresh')"><RefreshCw v-if="!loading" :size="16" />{{ t('common.refresh') }}</Button>
     </ModelListToolbar>
@@ -13,7 +13,6 @@
     <EmptyState
       v-else-if="trainingTasks.length === 0"
       :title="t('modelOps.emptyTrainingTitle')"
-      :description="t('modelOps.emptyTrainingDescription')"
     />
     <p v-else-if="filteredTasks.length === 0" role="status">{{ zh ? '没有符合条件的训练任务。' : 'No training tasks match these filters.' }}</p>
     <div v-else class="resource-table" :aria-busy="loading">

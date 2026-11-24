@@ -109,9 +109,8 @@
         <div v-if="activeTask" class="conversion-output-pending">
           <FileCode :size="38" aria-hidden="true" />
           <h2>{{ label('转换完成后显示产物', 'Artifacts appear after conversion') }}</h2>
-          <p>{{ label('转换和校验完成后，可在此查看已登记的文件。', 'Registered files will appear here after conversion and validation.') }}</p>
         </div>
-        <EmptyState v-else-if="!task.builds.length && !hasOutputReport" :title="t('conversionDetail.emptyBuildsTitle')" :description="t('conversionDetail.emptyBuildsDescription')" />
+        <EmptyState v-else-if="!task.builds.length && !hasOutputReport" :title="t('conversionDetail.emptyBuildsTitle')" />
         <div v-else class="resource-table">
           <table>
             <thead>
@@ -804,8 +803,8 @@ async function deleteCurrentTask(): Promise<void> {
 .conversion-output :deep(:is(td,th):first-child) { width:45%; }
 .conversion-output :deep(:is(td,th):last-child) { width:22%; }
 .conversion-output-pending { min-height:165px; display:grid; place-content:center; justify-items:center; gap:8px; padding:20px 12px; text-align:center; }
-.conversion-output-pending svg, .conversion-output-pending p { color:var(--am-text-muted); }
-.conversion-output-pending :is(h2,p) { margin:0; }
+.conversion-output-pending svg { color:var(--am-text-muted); }
+.conversion-output-pending h2 { margin:0; }
 .conversion-file-name { display:flex; align-items:center; gap:8px; }
 .conversion-file-name svg { flex:none; color:var(--am-text-muted); }
 .conversion-build-actions :deep(.ui-button--ghost) { color:var(--am-action-primary-strong); }

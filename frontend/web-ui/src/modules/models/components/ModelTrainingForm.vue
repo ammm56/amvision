@@ -107,8 +107,7 @@
           <input type="radio" name="training-initialization" :aria-label="zh ? '使用权重初始化' : 'Initialize from weights'" :disabled="loading || !trainingTaskSupportsWarmStart" :checked="!!warmStartModelVersionId" @click.prevent="$emit('open-training-weight-picker')" />
           <div class="training-choice__content">
             <div class="training-choice__heading"><strong>{{ zh ? '使用权重初始化' : 'Initialize from weights' }}</strong><Button size="sm" :disabled="loading || !trainingTaskSupportsWarmStart" @click="$emit('open-training-weight-picker')">{{ zh ? '选择权重' : 'Choose weights' }}</Button></div>
-            <small v-if="!warmStartModelVersionId">{{ zh ? '选择可用的基础模型或项目版本。' : 'Choose available base or project model weights.' }}</small>
-            <template v-else>
+            <template v-if="warmStartModelVersionId">
               <dl class="training-weight-summary">
                 <div><dt>{{ zh ? '权重来源' : 'Weight source' }}</dt><dd>{{ warmStartSource || '—' }}</dd></div>
                 <div>

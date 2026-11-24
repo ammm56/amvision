@@ -72,3 +72,23 @@ it('filters conversion tasks and exposes their detail action', async () => {
   await wrapper.find('input').setValue('no-match')
   expect(wrapper.text()).toContain('没有符合条件的转换任务')
 })
+
+it('shows readable conversion sources and preserves custom task names', () => {
+  const task = {
+    task_id: 'conversion-1', model_type: 'yolo11', state: 'succeeded', created_at: '',
+    source_model_version_id: 'model-version-1', target_formats: ['onnx'], builds: [], report_summary: {},
+    display_name: 'yolo11 conversion model-version-1',
+  }
+  const wrapper = shallowMount(ConversionTaskList, {
+    props: {
+      selectedTaskType: 'classification',
+      sourceNames: new Map([['model-version-1', '托盘分类 · v1']]),
+      conversionTasks: [task, { ...task, task_id: 'conversion-2', display_name: '产线兼容性复核' }] as never,
+    },
+    global: { stubs: { RouterLink: RouterLinkStub } },
+  })
+  const [defaultRow, customRow] = wrapper.findAll('tbody tr')
+  expect(defaultRow?.text()).toContain('托盘分类 · v1')
+  expect(defaultRow?.text()).not.toContain('model-version-1')
+  expect(customRow?.text()).toContain('产线兼容性复核')
+})

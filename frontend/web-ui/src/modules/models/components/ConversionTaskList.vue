@@ -2,7 +2,7 @@
   <section class="model-task-list conversion-list">
     <ModelListToolbar class="model-task-list__toolbar" :zh="zh" :search="search" :search-label="zh ? '搜索转换任务' : 'Search conversion tasks'"
       @update:search="setSearch" @open-base-models="$emit('open-base-models')">
-      <label><span>{{ zh ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions || []" :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="$emit('change-task-type', String($event))" /></label>
+      <label><span>{{ zh ? '任务类型' : 'Task type' }}</span><SelectField :model-value="selectedTaskType" :options="taskTypeOptions || []" fit-options floating :aria-label="zh ? '任务类型' : 'Task type'" @update:model-value="$emit('change-task-type', String($event))" /></label>
       <label><span>{{ zh ? '状态' : 'Status' }}</span><SelectField :model-value="status" @update:model-value="setStatus(String($event))" :options="statusOptions" :aria-label="zh ? '状态' : 'Status'" /></label>
       <Button :loading="loading" @click="$emit('refresh')"><RefreshCw v-if="!loading" :size="16" />{{ t('common.refresh') }}</Button>
     </ModelListToolbar>
@@ -15,7 +15,6 @@
     <EmptyState
       v-else-if="conversionTasks.length === 0"
       :title="t('modelOps.emptyConversionTitle')"
-      :description="t('modelOps.emptyConversionDescription')"
     />
     <p v-else-if="filteredTasks.length === 0" role="status">{{ zh ? '没有符合条件的转换任务。' : 'No conversion tasks match these filters.' }}</p>
     <div v-else class="resource-table" :aria-busy="loading">
@@ -36,7 +35,7 @@
               <RouterLink :to="detailLocation(task.task_type || selectedTaskType, task.task_id)">
                 <strong class="model-task-list__value">{{ sourceLabel(task) }}</strong>
               </RouterLink>
-              <small class="model-task-list__value" :title="task.display_name">{{ task.display_name || task.task_id }}</small>
+              <small v-if="customTaskName(task)" class="model-task-list__value" :title="customTaskName(task)">{{ customTaskName(task) }}</small>
             </td>
             <td>{{ task.target_formats.map(format => conversionFormatName(format, zh)).join(' / ') || '—' }}</td>
             <td>{{ targetPrecision(task) }}</td>
@@ -116,7 +115,14 @@ function runAction(task: ModelConversionTaskSummary, action: string): void {
   if (action === 'copy') void router?.push({ path: '/models', query: { ...router.currentRoute.value.query, tab: 'conversion', task: task.task_type || props.selectedTaskType, conversionFrom: task.task_id } })
 }
 function sourceLabel(task: ModelConversionTaskSummary): string {
-  return props.sourceNames?.get(task.source_model_version_id) || '—'
+  const modelName = task.report_summary?.model_name
+  return props.sourceNames?.get(task.source_model_version_id)
+    || (typeof modelName === 'string' && modelName.trim())
+    || (zh.value ? '来源版本暂不可用' : 'Source version unavailable')
+}
+function customTaskName(task: ModelConversionTaskSummary): string {
+  const name = task.display_name?.trim() || ''
+  return name === `${task.model_type} conversion ${task.source_model_version_id}` ? '' : name
 }
 function targetPrecision(task: ModelConversionTaskSummary): string {
   const precisions = task.builds.filter(build => task.target_formats.includes(build.build_format)).map(build => build.runtime_precision?.toUpperCase()).filter(Boolean)

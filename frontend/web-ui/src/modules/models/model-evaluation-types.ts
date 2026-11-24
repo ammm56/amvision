@@ -10,6 +10,11 @@ export const evaluationTypes = {
   anomaly: ['异常检测', 'Anomaly detection'],
 } as const
 
+export function modelTaskLabel(taskType: string | undefined, zh: boolean): string {
+  if (!taskType) return '—'
+  return Object.hasOwn(evaluationTypes, taskType) ? evaluationTypes[taskType as keyof typeof evaluationTypes][zh ? 0 : 1] : taskType
+}
+
 export const evaluationHeadline = {
   classification: { label: 'Top-1', key: 'top1_accuracy' },
   segmentation: { label: 'Mask mAP50–95', key: 'mask_map50_95' },

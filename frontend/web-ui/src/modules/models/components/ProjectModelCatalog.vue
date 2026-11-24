@@ -35,7 +35,6 @@
         <path d="m174 38 2-18m13 23 13-14m-4 28 16-6" stroke="currentColor" stroke-opacity=".75" stroke-width="3.5" stroke-linecap="round" />
       </svg>
       <h2>{{ zh ? '当前项目还没有模型版本' : 'No model versions in this project' }}</h2>
-      <p v-if="canTrain && canEdit">{{ zh ? '通过训练生成模型，或导入已有模型包。' : 'Train a model or import an existing model package.' }}</p>
       <div v-if="canTrain || canEdit" class="model-catalog__empty-actions">
         <Button v-if="canTrain" variant="primary" @click="$emit('create-training')"><Plus :size="18" />{{ zh ? '创建训练' : 'Create training' }}</Button>
         <Button v-if="canEdit" @click="$emit('import-model-package')"><Upload :size="18" />{{ zh ? '导入模型包' : 'Import model package' }}</Button>
@@ -48,7 +47,7 @@
         <thead><tr><th>{{ zh ? '模型名称' : 'Model' }}</th><th>{{ zh ? '任务' : 'Task' }}</th><th>{{ zh ? '最新版本' : 'Latest version' }}</th><th>{{ zh ? '来源' : 'Source' }}</th><th>{{ zh ? '运行格式' : 'Formats' }}</th><th>{{ zh ? '操作' : 'Actions' }}</th></tr></thead>
         <tbody>
           <tr v-for="model in items" :key="model.model_id" :class="{ 'is-selected': selected?.model_id === model.model_id }">
-            <td :title="displayName(model)"><strong>{{ displayName(model) }}</strong></td><td>{{ model.task_type }}</td>
+            <td :title="displayName(model)"><strong>{{ displayName(model) }}</strong></td><td>{{ modelTaskLabel(model.task_type, zh) }}</td>
             <td :title="latestVersionLabel(model, false)">{{ latestVersionLabel(model, true) }}</td>
             <td>{{ sources(model) }}</td>
             <td><ModelRuntimeFormats :formats="formats(model)" :fallback-label="model.build_count ? (zh ? `${model.build_count} 个产物` : `${model.build_count} builds`) : undefined" /></td>
@@ -108,7 +107,7 @@
         </div>
         <p v-else>{{ zh ? '暂无版本' : 'No versions' }}</p>
         <dl class="model-detail__meta">
-          <div><dt>{{ zh ? '任务' : 'Task' }}</dt><dd>{{ detail.task_type }}</dd></div>
+          <div><dt>{{ zh ? '任务' : 'Task' }}</dt><dd>{{ modelTaskLabel(detail.task_type, zh) }}</dd></div>
           <div v-if="categoryCount !== null"><dt>{{ zh ? '类别数' : 'Classes' }}</dt><dd>{{ categoryCount }}</dd></div>
           <div v-if="inputSize"><dt>{{ zh ? '输入尺寸' : 'Input size' }}</dt><dd>{{ inputSize }}</dd></div>
         </dl>
@@ -175,7 +174,6 @@
             <tr v-if="!checkpoint && !versionBuilds.length"><td colspan="4">{{ zh ? '暂无产物' : 'No artifacts' }}</td></tr>
           </tbody></table></div>
           <p v-if="checkpointDownloadError" class="model-detail__action-error" role="alert">{{ zh ? '下载失败，请重试。' : 'Download failed. Try again.' }}</p>
-          <p v-if="versionBuilds.length" class="model-artifact__note"><CircleHelp :size="15" aria-hidden="true" />{{ zh ? '部署兼容性按目标环境检查。' : 'Deployment compatibility is checked against the target environment.' }}</p>
         </section>
         <div class="model-detail__disclosures">
           <details class="model-detail__disclosure"><summary>{{ zh ? '输入输出与类别' : 'Inputs, outputs and classes' }}</summary><p>{{ categoryNames.length ? categoryNames.join(' / ') : (zh ? '暂无类别信息' : 'No class information') }}</p></details>
@@ -237,6 +235,7 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import { ApiError } from '@/shared/api/error'
 import { formatModelNumber } from '../model-number-format'
 import { latestModelVersion, modelDisplayName as displayName, modelVersionCustomName, modelVersionDisplayName } from '../model-display-name'
+import { modelTaskLabel } from '../model-evaluation-types'
 import { modelVersionMetric, type TrainingMetricOutputs } from '../model-version-metrics'
 import { resolveTrainingBestCheckpointEpoch } from '../training-metric-history'
 import { modelBuildValidation, saveProjectModelDownload } from '../model-artifact-presentation'
@@ -249,7 +248,7 @@ const emit = defineEmits<{ 'open-base-models': []; 'create-training': []; 'impor
 const { locale } = useI18n()
 const zh = computed(() => locale.value.startsWith('zh'))
 const taskTypes = ['detection', 'classification', 'segmentation', 'pose', 'obb']
-const taskOptions = computed(() => [{ label: zh.value ? '全部' : 'All', value: '' }, ...taskTypes.map(value => ({ label: value, value }))])
+const taskOptions = computed(() => [{ label: zh.value ? '全部' : 'All', value: '' }, ...taskTypes.map(value => ({ label: modelTaskLabel(value, zh.value), value }))])
 const search = ref('')
 const requestedTaskType = computed(() => taskTypes.find(type => type === props.requestedTaskType) ?? '')
 const taskType = ref(requestedTaskType.value)
@@ -817,7 +816,6 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 .model-detail__table th:last-child { width:26%; }
 .model-detail__table .ui-button { min-height:28px; padding-inline:4px; gap:4px; }
 .model-artifact__success { color:var(--am-success-text); }
-.model-artifact__note { display:flex; align-items:center; gap:6px; margin:8px 0 0; color:var(--am-text-muted); font-size:var(--am-type-caption); }
 .model-detail__disclosures { display:grid; gap:10px; min-width:0; }
 .model-detail__disclosure { min-width:0; padding:12px; border:1px solid var(--am-border); border-radius:5px; overflow-wrap:anywhere; }
 .model-detail__disclosure summary { cursor:pointer; }

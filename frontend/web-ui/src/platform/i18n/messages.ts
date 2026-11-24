@@ -348,9 +348,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyModelsTitle: '暂无基础模型',
       emptyModelsDescription: '平台基础模型会在模型目录登记后显示在这里。',
       emptyTrainingTitle: '暂无训练任务',
-      emptyTrainingDescription: '从数据集导出创建训练任务后，记录会显示在这里。',
       emptyConversionTitle: '暂无转换任务',
-      emptyConversionDescription: '提交 ModelVersion 转换任务后，记录会显示在这里。',
       fields: {
         selectedModel: '当前模型',
         taskType: '任务类型',
@@ -873,7 +871,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       eventsKicker: 'Events',
       eventsTitle: '转换事件',
       emptyBuildsTitle: '暂无输出构建',
-      emptyBuildsDescription: '转换成功并登记 ModelBuild 后会显示在这里。',
       emptyEventsTitle: '暂无转换事件',
       actions: {
         backToModels: '返回模型页',
@@ -2688,9 +2685,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyModelsTitle: 'No base models',
       emptyModelsDescription: 'Platform base models will appear here after the model catalog is registered.',
       emptyTrainingTitle: 'No training tasks',
-      emptyTrainingDescription: 'Training records will appear here after a dataset export is submitted.',
       emptyConversionTitle: 'No conversion tasks',
-      emptyConversionDescription: 'Conversion records will appear here after a ModelVersion conversion is submitted.',
       fields: {
         selectedModel: 'Selected model',
         taskType: 'Task type',
@@ -3214,7 +3209,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       eventsKicker: 'Events',
       eventsTitle: 'Conversion Events',
       emptyBuildsTitle: 'No output builds',
-      emptyBuildsDescription: 'Registered ModelBuild records will appear here after conversion succeeds.',
       emptyEventsTitle: 'No conversion events',
       actions: {
         backToModels: 'Back to Models',
@@ -5025,9 +5019,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyModelsTitle: '基礎モデルはありません',
       emptyModelsDescription: 'モデルカタログ登録後、プラットフォーム基礎モデルがここに表示されます。',
       emptyTrainingTitle: '学習タスクはありません',
-      emptyTrainingDescription: 'データセットエクスポートから学習タスクを作成すると、記録がここに表示されます。',
       emptyConversionTitle: '変換タスクはありません',
-      emptyConversionDescription: 'ModelVersion 変換タスクを送信すると、記録がここに表示されます。',
       fields: {
         selectedModel: '選択中モデル',
         taskType: 'タスク種別',
@@ -5548,7 +5540,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       eventsKicker: 'Events',
       eventsTitle: '変換イベント',
       emptyBuildsTitle: '出力 build はありません',
-      emptyBuildsDescription: '変換成功後に登録された ModelBuild がここに表示されます。',
       emptyEventsTitle: '変換イベントはありません',
       actions: {
         backToModels: 'モデルへ戻る',
@@ -7204,9 +7195,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyModelsTitle: '기본 모델 없음',
       emptyModelsDescription: '모델 카탈로그가 등록되면 플랫폼 기본 모델이 여기에 표시됩니다.',
       emptyTrainingTitle: '학습 작업 없음',
-      emptyTrainingDescription: '데이터셋 내보내기로 학습 작업을 만들면 기록이 여기에 표시됩니다.',
       emptyConversionTitle: '변환 작업 없음',
-      emptyConversionDescription: 'ModelVersion 변환 작업을 제출하면 기록이 여기에 표시됩니다.',
       fields: {
         selectedModel: '선택된 모델',
         taskType: '작업 유형',
@@ -7727,7 +7716,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       eventsKicker: 'Events',
       eventsTitle: '변환 이벤트',
       emptyBuildsTitle: '출력 build 없음',
-      emptyBuildsDescription: '변환이 성공하고 ModelBuild 가 등록되면 여기에 표시됩니다.',
       emptyEventsTitle: '변환 이벤트 없음',
       actions: {
         backToModels: '모델로 돌아가기',

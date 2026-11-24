@@ -20,6 +20,7 @@
 .model-task-list__toolbar label { display:flex; align-items:center; gap:10px; }
 .model-task-list__toolbar :is(label > span,.ui-button) { white-space:nowrap; }
 .model-task-list__toolbar .ui-select { min-width:94px; }
+.model-task-list__toolbar .ui-select--fit-options .ui-select__sizer-option { padding-inline-end:46px; }
 .model-task-list__section { min-width:0; border:1px solid var(--am-border); border-radius:var(--am-radius-md); background:var(--am-surface); }
 .model-task-list__heading { margin:0; padding:12px 14px; border-bottom:1px solid var(--am-border); font-size:var(--am-type-section); }
 .model-task-list__section .resource-table { border:0; border-radius:0; }

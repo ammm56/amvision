@@ -456,13 +456,7 @@ const ampDtypeOptions = computed(() => [
   { label: 'bf16', value: 'bf16' },
 ])
 
-const defaultTaskTypeOptions: Array<{ label: ModelTaskType; value: ModelTaskType }> = [
-  { label: 'detection', value: 'detection' },
-  { label: 'classification', value: 'classification' },
-  { label: 'segmentation', value: 'segmentation' },
-  { label: 'pose', value: 'pose' },
-  { label: 'obb', value: 'obb' },
-]
+const defaultTaskTypes: ModelTaskType[] = ['detection', 'classification', 'segmentation', 'pose', 'obb']
 
 const baseConversionTargetOptions: Array<{ label: string; value: ConversionTargetKey }> = [
   { label: 'ONNX', value: 'onnx' },
@@ -532,15 +526,11 @@ const trainingExportFormatsByTaskAndModelType = computed<Record<string, Record<s
   return rawValue && typeof rawValue === 'object' ? rawValue : {}
 })
 const taskTypeOptions = computed(() => {
-  const supportedOptions = defaultTaskTypeOptions.filter((option) => {
-    const supportedModelTypes = platformModelTypesByTaskType.value[option.value] ?? []
-    return supportedModelTypes.length > 0
-  })
-  return supportedOptions.length > 0 ? supportedOptions : defaultTaskTypeOptions
+  const supported = defaultTaskTypes.filter(type => platformModelTypesByTaskType.value[type]?.length)
+  return (supported.length ? supported : defaultTaskTypes).map(value => ({ value, label: evaluationTypes[value][zh.value ? 0 : 1] }))
 })
 const basePickerTaskTypeOptions = computed(() => taskTypeOptions.value
-  .filter(option => !basePickerWeightsOnly.value || option.value === selectedTaskType.value)
-  .map(({ value }) => ({ value, label: evaluationTypes[value][zh.value ? 0 : 1] })))
+  .filter(option => !basePickerWeightsOnly.value || option.value === selectedTaskType.value))
 
 const {
   training: trainingList,

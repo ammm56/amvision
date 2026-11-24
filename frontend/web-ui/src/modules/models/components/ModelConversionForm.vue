@@ -13,7 +13,7 @@
     <div v-if="step > 1 && conversionSelectedModelSummary" class="conversion-source-summary">
       <strong>{{ modelDisplayName(conversionSelectedModelSummary) }}</strong>
       <span>{{ conversionSourceVersion ? modelVersionDisplayName(conversionSourceVersion) : '—' }}</span>
-      <span>{{ selectedTaskType }}</span>
+      <span>{{ modelTaskLabel(selectedTaskType, zh) }}</span>
       <span aria-hidden="true">→</span><strong>{{ unavailableTarget?.label || selectedTargetLabel }}</strong>
     </div>
     <div class="form-grid model-ops-form__grid">
@@ -21,7 +21,7 @@
         <div class="model-picker-field__header">
           <div class="model-picker-field__title">
             <span>{{ t('modelOps.fields.conversionBaseModel') }}</span>
-            <span class="model-picker-chip">{{ selectedTaskType }}</span>
+            <span class="model-picker-chip">{{ modelTaskLabel(selectedTaskType, zh) }}</span>
           </div>
           <Button
             size="sm"
@@ -38,12 +38,11 @@
             <div class="model-picker-summary__top">
               <div class="model-picker-summary__identity">
                 <strong>{{ modelDisplayName(conversionSelectedModelSummary) }}</strong>
-                <span>{{ conversionSelectedModelSummary.model_id }}</span>
               </div>
               <div class="model-picker-summary__chips">
                 <span class="model-picker-chip">{{ conversionSelectedModelSummary.model_type }}</span>
                 <span class="model-picker-chip">
-                  {{ t('modelOps.columns.scale') }} · {{ conversionSelectedModelSummary.model_scale }}
+                  {{ zh ? '参数量' : 'Scale' }} · {{ conversionSelectedModelSummary.model_scale }}
                 </span>
               </div>
             </div>
@@ -319,6 +318,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotice.vue'
 import { modelDisplayName, modelVersionDisplayName } from '../model-display-name'
+import { modelTaskLabel } from '../model-evaluation-types'
 import { previewModelConversion } from '../services/model.service'
 
 type UpdateStringEvent =

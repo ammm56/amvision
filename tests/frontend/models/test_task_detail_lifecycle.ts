@@ -37,6 +37,10 @@ beforeEach(() => {
 type Kind = 'training' | 'conversion'
 const url = (kind: Kind, id: string, type = 'classification') => `/models/${type}/${kind}-tasks/${id}`
 
+function conversionWithSource(id: string, sourceName = `conversion ${id}`) {
+  return { ...conversionTask(id), report_summary: { model_name: sourceName } }
+}
+
 async function openPage(kind: Kind, type = 'classification') {
   const pinia = createPinia()
   const session = useSessionStore(pinia)
@@ -199,6 +203,10 @@ describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind
     ? vi.mocked(service.getModelTrainingTaskDetail)
     : vi.mocked(service.getModelConversionTaskDetail)
 
+  beforeEach(() => {
+    if (kind === 'conversion') vi.mocked(service.getModelConversionTaskDetail).mockImplementation(async (_type, id) => conversionWithSource(id))
+  })
+
   it('includes task type in ownership but does not reload for unrelated query changes', async () => {
     const { wrapper, router } = await openPage(kind)
     await flushPromises()
@@ -229,7 +237,7 @@ describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(wrapper.findAll('button').some((item) => item.text() === '删除')).toBe(false)
     expect(TaskTestSocket.active()).toHaveLength(0)
-    pending.resolve((kind === 'training' ? trainingTask('b', 'detection') : conversionTask('b')) as ReturnType<typeof trainingTask>)
+    pending.resolve((kind === 'training' ? trainingTask('b', 'detection') : conversionWithSource('b')) as ReturnType<typeof trainingTask>)
     await flushPromises()
     expect(wrapper.findComponent(kind === 'training' ? TrainingTaskDetailPage : ConversionTaskDetailPage).vm.$.uid).toBe(pageId)
     expect(wrapper.text()).toContain(`${kind} b`)
@@ -252,7 +260,9 @@ describe.each<Kind>(['training', 'conversion'])('%s task route ownership', (kind
     await flushPromises()
     const currentReads = detail().mock.calls.length
     if (completion === 'reject') pending.reject(new Error('stale read failure'))
-    else pending.resolve({ ...(kind === 'training' ? trainingTask('a') : conversionTask('a')), display_name: 'stale response' } as ReturnType<typeof trainingTask>)
+    else pending.resolve((kind === 'training'
+      ? { ...trainingTask('a'), display_name: 'stale response' }
+      : conversionWithSource('a', 'stale response')) as ReturnType<typeof trainingTask>)
     await flushPromises()
     expect(signal?.aborted).toBe(true)
     expect(wrapper.text()).toContain(`${kind} a`)
