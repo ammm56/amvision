@@ -4,15 +4,15 @@
     :title="t('tasks.emptyEventsTitle')"
     :description="t('tasks.emptyEventsDescription')"
   />
-  <ol v-else class="task-event-timeline">
+  <ol v-else class="task-event-timeline" :class="{ 'task-event-timeline--compact': compact }">
     <li v-for="event in events" :key="String(event.sequence ?? event.event_id ?? event.created_at ?? event.occurred_at)">
-      <span class="task-event-timeline__marker" aria-hidden="true" />
+      <span class="task-event-timeline__marker" :data-tone="eventTone(event)" aria-hidden="true" />
       <div class="task-event-timeline__content">
         <div class="task-event-timeline__heading">
-          <strong>{{ event.event_type || t('tasks.eventFallback') }}</strong>
-          <time>{{ formatSystemDateTime(event.created_at || event.occurred_at) }}</time>
+          <strong>{{ (compact && event.message) || event.event_type || t('tasks.eventFallback') }}</strong>
+          <time :datetime="event.created_at || event.occurred_at || undefined">{{ formatSystemDateTime(event.created_at || event.occurred_at) }}</time>
         </div>
-        <p>{{ event.message || '-' }}</p>
+        <p v-if="!compact">{{ event.message || '-' }}</p>
       </div>
     </li>
   </ol>
@@ -24,10 +24,22 @@ import { useI18n } from 'vue-i18n'
 import type { TaskEvent } from '@/shared/contracts'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import { normalizeTaskState } from '../task-state'
 
-defineProps<{ events: TaskEvent[] }>()
+defineProps<{ events: TaskEvent[]; compact?: boolean }>()
 
 const { t } = useI18n()
+
+function eventTone(event: TaskEvent): 'neutral' | 'success' | 'warning' | 'danger' {
+  const state = event.payload?.state
+  switch (normalizeTaskState(typeof state === 'string' ? state : undefined)) {
+    case 'succeeded': return 'success'
+    case 'failed':
+    case 'timed_out': return 'danger'
+    case 'paused': return 'warning'
+    default: return 'neutral'
+  }
+}
 </script>
 
 <style scoped>
@@ -42,17 +54,15 @@ const { t } = useI18n()
 .task-event-timeline li {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
-  gap: var(--am-space-md);
-  padding-bottom: var(--am-space-lg);
+  grid-template-columns: 12px minmax(0, 1fr);
+  column-gap: var(--am-space-md);
 }
 
 .task-event-timeline li:not(:last-child)::before {
   position: absolute;
-  top: 12px;
-  bottom: 0;
-  left: 5px;
-  width: 1px;
+  inset-block: 20px -20px;
+  inset-inline-start: 5px;
+  inline-size: 2px;
   background: var(--am-border);
   content: '';
 }
@@ -60,18 +70,30 @@ const { t } = useI18n()
 .task-event-timeline__marker {
   position: relative;
   z-index: 1;
-  width: 11px;
-  height: 11px;
-  margin-top: 4px;
-  border: 2px solid var(--am-info-text);
+  justify-self: center;
+  width: 10px;
+  height: 10px;
+  margin-block-start: 15px;
+  border: 1px solid var(--am-surface);
   border-radius: var(--am-radius-pill);
-  background: var(--am-surface);
+  background: var(--am-neutral-icon);
 }
+
+.task-event-timeline__marker[data-tone='success'] {
+  background: color-mix(in srgb, var(--am-success-icon) 68%, var(--am-text-strong));
+}
+.task-event-timeline__marker[data-tone='warning'] { background: var(--am-warning-icon); }
+.task-event-timeline__marker[data-tone='danger'] { background: var(--am-danger-icon); }
 
 .task-event-timeline__content {
   display: grid;
   gap: 3px;
   min-width: 0;
+  padding-block: 10px;
+}
+
+.task-event-timeline li + li .task-event-timeline__content {
+  border-block-start: 1px solid var(--am-border);
 }
 
 .task-event-timeline__heading {
@@ -87,6 +109,9 @@ const { t } = useI18n()
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+.task-event-timeline--compact strong { font-weight: 500; }
+.task-event-timeline__heading time { flex: none; font-variant-numeric: tabular-nums; }
 
 .task-event-timeline__heading time,
 .task-event-timeline p {

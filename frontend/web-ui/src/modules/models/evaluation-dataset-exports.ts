@@ -1,9 +1,26 @@
 import { datasetFormatLabel } from '@/modules/datasets/dataset-workspace'
 import type { DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
-import type { DatasetVersion } from '@/modules/datasets/services/dataset-workspace.service'
+import { listDatasetVersionPage, type DatasetVersion } from '@/modules/datasets/services/dataset-workspace.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 export type EvaluationDatasetVersion = Pick<DatasetVersion, 'display_name' | 'version_number'>
+
+export async function readEvaluationDatasetVersionNames(
+  projectId: string, taskType: string, ids: readonly string[], signal: AbortSignal,
+): Promise<Map<string, string>> {
+  const missing = new Set(ids.filter(Boolean))
+  const names = new Map<string, string>()
+  const limit = 100
+  for (let offset = 0; missing.size && !signal.aborted; offset += limit) {
+    const page = await listDatasetVersionPage({ project_id: projectId, task_type: taskType, offset, limit }, signal)
+    if (signal.aborted) break
+    for (const version of page.items) {
+      if (missing.delete(version.dataset_version_id)) names.set(version.dataset_version_id, `${version.display_name} · v${version.version_number}`)
+    }
+    if (!page.items.length || offset + limit >= page.total) break
+  }
+  return names
+}
 
 export function isEligibleEvaluationExport(item: DatasetExportSummary, formats: readonly string[]): boolean {
   return formats.includes(item.format_id) && !item.metadata.files_cleaned_at

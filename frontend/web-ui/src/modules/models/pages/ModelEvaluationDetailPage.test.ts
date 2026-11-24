@@ -8,9 +8,8 @@ import { i18n } from '@/platform/i18n'
 import { getModelEvaluation, getModelEvaluationReport, type ModelEvaluationRecord } from '../services/model-evaluation.service'
 import ModelEvaluationDetailPage from './ModelEvaluationDetailPage.vue'
 
-vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { taskType: 'classification', taskId: 'task-1' } }),
-}))
+const routeParams = vi.hoisted(() => ({ taskType: 'classification', taskId: 'task-1' }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ params: routeParams }) }))
 vi.mock('@/app/stores/session.store', () => ({ useSessionStore: () => ({ hasScopes: () => true }) }))
 vi.mock('../composables/useCatalogVersionLabel', () => ({ useCatalogVersionLabel: () => ref('托盘分类模型 · v3') }))
 vi.mock('@/modules/datasets/services/dataset.service', () => ({ getDatasetExportDetail: vi.fn(), listDatasetExports: vi.fn() }))
@@ -45,6 +44,7 @@ async function renderReport() {
 
 describe('Classification evaluation report labels', () => {
   beforeEach(() => {
+    routeParams.taskType = 'classification'
     vi.resetAllMocks()
     vi.mocked(getModelEvaluation).mockResolvedValue(task)
     vi.mocked(getModelEvaluationReport).mockResolvedValue({
@@ -78,6 +78,19 @@ describe('Classification evaluation report labels', () => {
     expect(wrapper.get('.classification-report-context').text()).toContain('数据集信息暂不可用')
     expect(wrapper.get('.classification-report-context').text()).not.toContain('dataset-version-1')
     expect(wrapper.text()).toContain('100%')
+  })
+
+  it('resolves the recorded dataset export for a segmentation report', async () => {
+    routeParams.taskType = 'segmentation'
+    const exportRecord = { ...datasetExport, format_id: 'coco-instance-seg-v1', task_type: 'segmentation' }
+    vi.mocked(getModelEvaluation).mockResolvedValue({ ...task, display_name: '分割复核' })
+    vi.mocked(getDatasetExportDetail).mockResolvedValue(exportRecord)
+    vi.mocked(listDatasetExports).mockResolvedValue([exportRecord])
+    const wrapper = await renderReport()
+    const context = wrapper.get('.report-context')
+    expect(context.text()).toContain('托盘测试集 · v2 · COCO JSON')
+    expect(context.text()).toContain('test · 96 张')
+    expect(context.text()).not.toContain('dataset-version-1')
   })
 
   it.each([

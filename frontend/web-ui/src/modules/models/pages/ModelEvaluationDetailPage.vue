@@ -33,7 +33,7 @@
     <div v-else-if="task" class="resource-section report-context">
       <span>{{ evaluationTypes[kind][zh ? 0 : 1] }}</span>
       <span v-if="modelVersionName">{{ modelVersionName }}</span>
-      <span v-if="task.metadata?.dataset_version_id" :title="task.metadata.dataset_version_id">{{ task.metadata.dataset_version_id }}</span>
+      <span v-if="datasetExportLabel" :title="evaluationDatasetVersionId || undefined">{{ datasetExportLabel }}</span>
       <span v-if="sampleCount != null">{{ evaluationScope }}</span>
       <time :datetime="task.finished_at || task.created_at">{{ formatSystemDateTime(task.finished_at || task.created_at, 'minutes') }}</time>
     </div>
@@ -179,8 +179,13 @@ const kind = computed(() => additionalEvaluationKinds.find(value => value === ro
 const taskId = computed(() => String(route.params.taskId || ''))
 const task = ref<ModelEvaluationRecord | null>(null)
 const modelVersionName = useCatalogVersionLabel(() => [task.value?.project_id, undefined, evaluationModelVersionId(task.value)])
-const classificationExportId = computed(() => kind.value === 'classification' && task.value
-  ? classificationEvaluationExportId(task.value) : '')
+const evaluationExportId = computed(() => {
+  const record = task.value
+  if (!record) return ''
+  if (kind.value === 'classification') return classificationEvaluationExportId(record)
+  return record.dataset_export_id || record.metadata?.dataset_export_id || record.result?.dataset_export_id || ''
+})
+const evaluationDatasetVersionId = computed(() => task.value?.metadata?.dataset_version_id || task.value?.result?.dataset_version_id || '')
 const reportTitle = computed(() => {
   if (kind.value === 'classification' && task.value) {
     return classificationEvaluationTitle(task.value, modelVersionName.value, zh.value)
@@ -192,11 +197,11 @@ const datasetSource = shallowRef<{
   versions: Map<string, EvaluationDatasetVersion>
 } | null>(null)
 const datasetExportLabel = computed(() => {
-  if (!datasetSource.value && classificationExportId.value) return ''
+  if (!datasetSource.value && evaluationExportId.value) return ''
   const label = datasetSource.value && evaluationDatasetExportOptions(datasetSource.value.exports, datasetSource.value.versions, zh.value)
-    .find(option => option.value === classificationExportId.value)?.label
+    .find(option => option.value === evaluationExportId.value)?.label
   if (label) return label
-  if (classificationExportId.value || task.value?.metadata?.dataset_version_id || task.value?.result?.dataset_version_id) {
+  if (evaluationExportId.value || evaluationDatasetVersionId.value) {
     return zh.value ? '数据集信息暂不可用' : 'Dataset information unavailable'
   }
   return ''
@@ -276,7 +281,7 @@ async function requestCancellation(): Promise<void> {
 }
 
 watch([kind, taskId], () => { task.value = null; report.value = null; confirmCancel.value = false; sampleIssue.value = 'all' })
-watch(classificationExportId, async (id, _, onCleanup) => {
+watch(evaluationExportId, async (id, _, onCleanup) => {
   datasetSource.value = null
   if (!id) return
   const request = new AbortController()

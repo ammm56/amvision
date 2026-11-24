@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { i18n } from '@/platform/i18n'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
+import TaskEventTimeline from './TaskEventTimeline.vue'
 import TaskProgress from './TaskProgress.vue'
 import TaskStateBadge from './TaskStateBadge.vue'
 
@@ -54,5 +55,25 @@ describe('task feedback components', () => {
     expect(wrapper.attributes('role')).toBe('alert')
     expect(wrapper.classes()).toContain('inline-message--danger')
     expect(wrapper.text()).toContain('输出文件不可用')
+  })
+
+  it.each([false, true])('colors timeline markers from event state (compact: %s)', (compact) => {
+    const wrapper = mount(TaskEventTimeline, {
+      props: {
+        compact,
+        events: [
+          { sequence: 1, event_type: 'status', message: '已启动', payload: { state: 'running' } },
+          { sequence: 2, event_type: 'result', message: '失败', payload: { state: 'failed' } },
+          { sequence: 3, event_type: 'log', message: '重试' },
+          { sequence: 4, event_type: 'result', message: '完成', payload: { state: 'succeeded' } },
+        ],
+      },
+      global: { plugins: [i18n] },
+    })
+
+    const markers = wrapper.findAll('.task-event-timeline__marker')
+    expect(markers.map(marker => marker.attributes('data-tone'))).toEqual(['neutral', 'danger', 'neutral', 'success'])
+    expect(wrapper.text()).toContain('已启动')
+    expect(wrapper.text()).toContain('完成')
   })
 })

@@ -22,7 +22,7 @@
     <InlineError v-if="error" :message="error" />
     <dl class="resource-section evaluation-run__source">
       <div><dt>{{ label('模型版本', 'Model version') }}</dt><dd>{{ modelVersionName || task.model_type || '—' }}</dd></div>
-      <div v-if="task.dataset_version_id"><dt>{{ label('数据版本', 'Dataset version') }}</dt><dd>{{ task.dataset_version_id }}</dd></div>
+      <div v-if="task.dataset_version_id"><dt>{{ label('数据版本', 'Dataset version') }}</dt><dd :title="task.dataset_version_id">{{ datasetVersionName || '—' }}</dd></div>
       <div v-if="split"><dt>{{ label('评估划分', 'Split') }}</dt><dd>{{ split }}<template v-if="requested != null"> · {{ requested }} {{ label('张', 'images') }}</template></dd></div>
       <div v-if="runtime"><dt>{{ label('运行时', 'Runtime') }}</dt><dd>{{ runtime }}</dd></div>
     </dl>
@@ -81,7 +81,7 @@ import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import { downloadEvaluationJson, type DetectionEvaluationTask } from '../services/model-evaluation.service'
 
-const props = defineProps<{ task: DetectionEvaluationTask; canRetry: boolean; canCancel: boolean; refreshing: boolean; error: string; zh: boolean }>()
+const props = defineProps<{ task: DetectionEvaluationTask; canRetry: boolean; canCancel: boolean; refreshing: boolean; error: string; zh: boolean; datasetVersionName?: string }>()
 const modelVersionName = useCatalogVersionLabel(() => [props.task.project_id, 'detection', props.task.model_version_id])
 const emit = defineEmits<{ refresh: []; cancel: [] }>()
 const label = (zh: string, en: string) => props.zh ? zh : en

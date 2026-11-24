@@ -39,7 +39,7 @@
     </div>
     <div v-show="!step && (!compareOpen || conflicts.length)" class="evaluation-list-footer">
       <div class="evaluation-toolbar evaluation-selection">
-        <span aria-live="polite">{{ zh ? `已选 ${selected.length} 项 · 选择同一数据划分和规则的评估进行比较` : `${selected.length} selected · Compare evaluations that share a split and rules` }}</span>
+        <span aria-live="polite">{{ zh ? `已选 ${selected.length} 项` : `${selected.length} selected` }}</span>
         <div>
           <Button size="sm" :disabled="!selected.length" @click="selected = []">{{ zh ? '清空' : 'Clear selection' }}</Button>
           <Button class="evaluation-compare-trigger" size="sm" variant="primary" :disabled="selected.length < 2" @click="openComparison">{{ zh ? '比较结果' : 'Compare results' }}</Button>
@@ -79,7 +79,7 @@
             <div class="evaluation-data-fields">
               <label class="field"><span>{{ zh ? '数据集导出' : 'Dataset export' }}</span><Select v-model="exportId" floating :aria-label="zh ? '数据集导出' : 'Dataset export'" :options="exportOptions" :disabled="inputLoading || !exportOptions.length" /></label>
               <label class="field"><span>{{ zh ? '数据划分' : 'Dataset split' }}</span><Select v-model="split" floating :aria-label="zh ? '数据划分' : 'Dataset split'" :options="splits" :disabled="!splits.length" /></label>
-              <p v-if="selectedExport" class="evaluation-fact">{{ splits.length === 1 && split === 'val' ? (zh ? '该导出未配置 test，本次使用 val。' : 'This export provides val for evaluation.') : (zh ? '每次评估使用一个数据划分。' : 'Each evaluation uses one split.') }}</p>
+              <p v-if="selectedExport && splits.length === 1 && split === 'val'" class="evaluation-fact">{{ zh ? '该导出未配置 test，本次使用 val。' : 'This export provides val for evaluation.' }}</p>
             </div>
             <p v-if="!inputLoading && !inputError && !exportOptions.length" class="evaluation-fact">{{ zh ? '请先完成包含 val 或 test 的 COCO 数据集导出。' : 'Create a COCO dataset export containing val or test first.' }}</p>
           </section>
@@ -222,7 +222,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, Plus, RefreshCw, Search, TriangleAlert } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDatasetExportDetail, listProjectDatasetExports, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
-import { getDatasetWorkspace, listDatasetRecordPage, listDatasetVersionPage } from '@/modules/datasets/services/dataset-workspace.service'
+import { getDatasetWorkspace, listDatasetRecordPage } from '@/modules/datasets/services/dataset-workspace.service'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import Button from '@/shared/ui/components/Button.vue'
@@ -234,6 +234,7 @@ import Select from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import { modelDisplayName, modelVersionDisplayName, readCatalogVersionNames } from '../model-display-name'
+import { readEvaluationDatasetVersionNames } from '../evaluation-dataset-exports'
 import { formatSmallModelNumber } from '../model-number-format'
 import { listDeploymentSourceModels, type DeploymentSourceModelSummary } from '../services/model.service'
 import { createDetectionEvaluation, getDetectionEvaluation, getDetectionEvaluationReport, listDetectionEvaluations, previewDetectionEvaluation, type DetectionEvaluationInput, type DetectionEvaluationPreview, type DetectionEvaluationTask } from '../services/model-evaluation.service'
@@ -512,24 +513,13 @@ async function load(): Promise<void> {
 }
 
 async function loadTaskNames(projectId: string, rows: DetectionEvaluationTask[], signal: AbortSignal): Promise<void> {
-  const limit = 100
-  const missingVersions = new Set(rows.flatMap(row => row.dataset_version_id ? [row.dataset_version_id] : []))
   await Promise.allSettled([
     readCatalogVersionNames(projectId, 'detection', rows.map(row => row.model_version_id), signal).then(names => {
       if (!signal.aborted) taskModelNames.value = names
     }),
-    (async () => {
-      const names = new Map<string, string>()
-      for (let offset = 0; missingVersions.size; offset += limit) {
-        const page = await listDatasetVersionPage({ project_id: projectId, task_type: 'detection', offset, limit }, signal)
-        if (signal.aborted) return
-        for (const version of page.items) {
-          if (missingVersions.delete(version.dataset_version_id)) names.set(version.dataset_version_id, `${version.display_name} · v${version.version_number}`)
-        }
-        if (!page.items.length || offset + limit >= page.total) break
-      }
-      taskDatasetNames.value = names
-    })(),
+    readEvaluationDatasetVersionNames(projectId, 'detection', rows.map(row => row.dataset_version_id ?? ''), signal).then(names => {
+      if (!signal.aborted) taskDatasetNames.value = names
+    }),
   ])
 }
 

@@ -5,7 +5,7 @@
       <dl>
         <div v-for="field in group.fields" :key="field.label">
           <dt>{{ field.label }}</dt>
-          <dd>{{ field.value }}</dd>
+          <dd :title="field.title">{{ field.value }}</dd>
           <dd v-if="field.notes?.length" class="evaluation-conditions__notes">
             <span v-for="note in field.notes" :key="note">{{ note }}</span>
           </dd>
@@ -17,7 +17,6 @@
         <RotateCcw :size="16" :stroke-width="1.75" />
         {{ label('修改规则并重评', 'Edit rules and run again') }}
       </ButtonLink>
-      <p>{{ label('重评会生成新的任务和报告。', 'Re-evaluation creates a new task and report.') }}</p>
     </div>
   </section>
 </template>
@@ -31,7 +30,7 @@ import { evaluationRuntime } from '../detection-evaluation-comparison'
 import { formatSmallModelNumber } from '../model-number-format'
 import type { DetectionEvaluationReport, DetectionEvaluationTask } from '../services/model-evaluation.service'
 
-const props = defineProps<{ task: DetectionEvaluationTask; report: DetectionEvaluationReport['payload']; canRetry: boolean; zh: boolean }>()
+const props = defineProps<{ task: DetectionEvaluationTask; report: DetectionEvaluationReport['payload']; canRetry: boolean; zh: boolean; datasetVersionName?: string }>()
 const modelVersionName = useCatalogVersionLabel(() => [props.task.project_id, 'detection', props.task.model_version_id])
 const label = (zh: string, en: string) => props.zh ? zh : en
 const notRecorded = computed(() => label('未记录', 'Not recorded'))
@@ -59,7 +58,7 @@ const resizeMethod = computed(() => {
 
 interface ConditionGroup {
   title: string
-  fields: Array<{ label: string; value: string; notes?: string[] }>
+  fields: Array<{ label: string; value: string; notes?: string[]; title?: string }>
 }
 
 const groups = computed<ConditionGroup[]>(() => {
@@ -80,8 +79,9 @@ const groups = computed<ConditionGroup[]>(() => {
         { label: label('框架与精度', 'Runtime and precision'), value: evaluationRuntime({ task, report }) },
         { label: label('评估权重', 'Evaluation weights'), value: text(execution?.runtime_artifact_file_id) },
         {
-          label: label('评估数据', 'Evaluation data'), value: text(task.dataset_version_id),
-          notes: [task.dataset_export_id, split && count != null ? `${split} · ${count} ${label('张图像', 'images')}` : split]
+          label: label('评估数据', 'Evaluation data'), value: text(props.datasetVersionName),
+          title: [task.dataset_version_id, task.dataset_export_id].filter(Boolean).join(' · ') || undefined,
+          notes: [split && count != null ? `${split} · ${count} ${label('张图像', 'images')}` : split]
             .filter((item): item is string => Boolean(item)),
         },
       ],
@@ -136,11 +136,17 @@ const groups = computed<ConditionGroup[]>(() => {
 .evaluation-conditions__group summary::-webkit-details-marker { display:none; }
 .evaluation-conditions__group[open] summary { border-end-start-radius:0; border-end-end-radius:0; }
 .evaluation-conditions__group[open] summary svg { transform:rotate(180deg); }
-.evaluation-conditions__group dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,110px),1fr)); gap:12px 16px; margin:0; padding:12px 14px; }
-.evaluation-conditions__group dl > div { min-width:0; padding-inline-start:12px; border-inline-start:1px solid var(--am-border); }
+.evaluation-conditions__group dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); row-gap:12px; margin:0; padding:12px 14px; }
+.evaluation-conditions__group dl:has(> :nth-child(5)) { grid-template-columns:repeat(5,minmax(0,1fr)); }
+.evaluation-conditions__group dl > div { min-width:0; padding-inline-end:12px; }
+.evaluation-conditions__group dl > div + div { padding-inline-start:12px; border-inline-start:1px solid var(--am-border); }
 .evaluation-conditions__group dt { color:var(--am-text-muted); }
 .evaluation-conditions__group dd { margin:4px 0 0; overflow-wrap:anywhere; }
 .evaluation-conditions__notes { display:grid; gap:2px; color:var(--am-text-muted); font-size:var(--am-type-caption); }
-.evaluation-conditions__actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px 12px; }
-.evaluation-conditions__actions p { margin:0; color:var(--am-text-muted); }
+.evaluation-conditions__actions { display:flex; justify-content:flex-end; }
+@media (max-width:760px) {
+  .evaluation-conditions__group dl,
+  .evaluation-conditions__group dl:has(> :nth-child(5)) { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .evaluation-conditions__group dl > div:nth-child(odd) { padding-inline-start:0; border-inline-start:0; }
+}
 </style>

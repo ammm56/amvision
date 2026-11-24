@@ -7,7 +7,7 @@
       :navigating="sampleLoading" :navigation-error="sampleError" :zh="zh" @close="closeSample" @navigate="navigateSample" />
     <template v-else>
     <DetectionEvaluationRunStatus v-if="task && (active || task.state === 'cancelled')" :key="task.task_id" :task="task" :zh="zh"
-      :can-retry="canRetryEvaluation" :can-cancel="canWrite" :refreshing="loading" :error="cancelError || error" @refresh="load" @cancel="confirmCancel = true" />
+      :can-retry="canRetryEvaluation" :can-cancel="canWrite" :refreshing="loading" :error="cancelError || error" :dataset-version-name="datasetVersionName" @refresh="load" @cancel="confirmCancel = true" />
     <template v-else>
     <div class="evaluation-toolbar">
       <div><RouterLink :to="evaluationReturn">{{ route.query.evalCompare ? (zh ? '返回评估比较' : 'Back to comparison') : (zh ? '返回评估' : 'Back to evaluations') }}</RouterLink><h1>{{ task?.display_name || (zh ? '评估详情' : 'Evaluation details') }}</h1><StatusBadge v-if="partial" tone="warning" with-dot>{{ zh ? '部分失败' : 'Partially evaluated' }}</StatusBadge><TaskStateBadge v-else-if="task" :state="task.state" /></div>
@@ -24,7 +24,7 @@
       <div class="resource-section evaluation-summary">
         <dl>
           <div><dt>{{ zh ? '模型版本' : 'Model version' }}</dt><dd>{{ modelVersionName || task.model_type || '—' }}</dd></div>
-          <div><dt>{{ zh ? '数据版本' : 'Dataset version' }}</dt><dd>{{ task.dataset_version_id || '—' }}</dd></div>
+          <div><dt>{{ zh ? '数据版本' : 'Dataset version' }}</dt><dd :title="task.dataset_version_id">{{ datasetVersionName || '—' }}</dd></div>
           <div><dt>{{ zh ? '评估划分' : 'Split' }}</dt><dd>{{ report?.split_name || task.report_summary.split_name || '—' }}<template v-if="report?.sample_count != null"> · {{ report.sample_count }} {{ zh ? '张' : 'images' }}</template></dd></div>
           <div v-if="report"><dt>{{ zh ? '运行时' : 'Runtime' }}</dt><dd>{{ evaluationRuntime({ task, report }) }}</dd></div>
         </dl>
@@ -69,18 +69,28 @@
         </section>
         <section v-else-if="tab === 'log'" class="evaluation-section">
           <h2>{{ zh ? '处理日志' : 'Processing log' }}</h2>
-          <ol v-if="task.events?.length" class="evaluation-log"><li v-for="event in task.events" :key="event.event_id"><time :datetime="event.created_at">{{ formatSystemDateTime(event.created_at) }}</time> {{ event.message }}</li></ol>
+          <TaskEventTimeline v-if="evaluationEvents.length" :events="evaluationEvents" compact />
           <p v-else>{{ zh ? '暂无处理日志。' : 'No processing events were saved.' }}</p>
         </section>
         <section v-else-if="tab === 'overview'" class="evaluation-section">
           <h2>{{ zh ? '评估概览' : 'Evaluation overview' }}</h2>
-          <dl class="evaluation-overview-fields">
-            <dt>{{ zh ? '样本数' : 'Samples' }}</dt><dd>{{ report.sample_count ?? '—' }}</dd>
-            <dt>{{ zh ? '标注对象' : 'Ground truth' }}</dt><dd>{{ report.ground_truth_count ?? '—' }}</dd>
-            <dt>{{ zh ? '预测对象' : 'Predictions' }}</dt><dd>{{ report.prediction_count ?? '—' }}</dd>
-            <dt>{{ zh ? '有漏检的样本' : 'Samples with missed objects' }}</dt><dd>{{ report.samples_with_false_negatives ?? '—' }}</dd>
-            <dt>{{ zh ? '有误检的样本' : 'Samples with false positives' }}</dt><dd>{{ report.samples_with_false_positives ?? '—' }}</dd>
-          </dl>
+          <div class="evaluation-overview">
+            <section>
+              <h3>{{ zh ? '样本与对象' : 'Samples and objects' }}</h3>
+              <dl>
+                <div><dt>{{ zh ? '样本数' : 'Samples' }}</dt><dd>{{ report.sample_count?.toLocaleString(locale) ?? '—' }}</dd></div>
+                <div><dt>{{ zh ? '标注对象' : 'Ground truth' }}</dt><dd>{{ report.ground_truth_count?.toLocaleString(locale) ?? '—' }}</dd></div>
+                <div><dt>{{ zh ? '预测对象' : 'Predictions' }}</dt><dd>{{ report.prediction_count?.toLocaleString(locale) ?? '—' }}</dd></div>
+              </dl>
+            </section>
+            <section>
+              <h3>{{ zh ? '问题样本' : 'Samples with errors' }}</h3>
+              <dl>
+                <div><dt>{{ zh ? '有漏检的样本' : 'Samples with missed objects' }}</dt><dd>{{ report.samples_with_false_negatives?.toLocaleString(locale) ?? '—' }}</dd></div>
+                <div><dt>{{ zh ? '有误检的样本' : 'Samples with false positives' }}</dt><dd>{{ report.samples_with_false_positives?.toLocaleString(locale) ?? '—' }}</dd></div>
+              </dl>
+            </section>
+          </div>
         </section>
         <section v-else-if="tab === 'class'" class="evaluation-section">
           <h2>{{ zh ? '按类别' : 'By class' }}</h2>
@@ -163,13 +173,21 @@
           </div>
         </section>
         <section v-else class="evaluation-section">
-          <DetectionEvaluationConditions :task="task" :report="report" :can-retry="canRetryEvaluation" :zh="zh" />
+          <DetectionEvaluationConditions :task="task" :report="report" :can-retry="canRetryEvaluation" :zh="zh" :dataset-version-name="datasetVersionName" />
         </section>
       </div>
       <p v-else-if="task.state === 'succeeded' && !loading && !error" class="resource-section" role="status">
         {{ zh ? '评估报告暂不可读取。可刷新后重试。' : 'The evaluation report is unavailable. Refresh to check again.' }}
       </p>
-      <details v-if="!partial && task.events?.length" class="resource-section"><summary>{{ zh ? '任务日志' : 'Task log' }}</summary><ol class="evaluation-log"><li v-for="event in task.events" :key="event.event_id"><time :datetime="event.created_at">{{ formatSystemDateTime(event.created_at) }}</time> {{ event.message }}</li></ol></details>
+      <details v-if="!partial && evaluationEvents.length" class="resource-section evaluation-log">
+        <summary>
+          <ListClock :size="18" aria-hidden="true" />
+          <span>{{ zh ? '任务日志' : 'Task log' }}</span>
+          <span class="evaluation-log__count">{{ zh ? `${evaluationEvents.length} 条` : `${evaluationEvents.length} events` }}</span>
+          <ChevronDown :size="16" class="evaluation-log__chevron" aria-hidden="true" />
+        </summary>
+        <div class="evaluation-log__body"><TaskEventTimeline :events="evaluationEvents" compact /></div>
+      </details>
     </template>
     </template>
     <DetectionEvaluationFailedSamplePreview v-if="selectedFailurePreview" :task-id="taskId" :dataset-export-id="task?.dataset_export_id" :sample="selectedFailurePreview" :reason="failureLabel(selectedFailurePreview.reason)" :advice="failureAdvice(selectedFailurePreview.reason)" :zh="zh" @close="selectedFailurePreview = null" @show-error="showPreviewError" />
@@ -194,7 +212,7 @@
 <script setup lang="ts">
 import { useCatalogVersionLabel } from '../composables/useCatalogVersionLabel'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { CircleAlert, CircleCheck, TriangleAlert, Download, Info } from '@lucide/vue'
+import { ChevronDown, CircleAlert, CircleCheck, TriangleAlert, Download, Info, ListClock } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from '@/shared/ui/components/Button.vue'
@@ -203,10 +221,10 @@ import Select from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import TabList from '@/shared/ui/navigation/TabList.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
+import TaskEventTimeline from '@/modules/tasks/components/TaskEventTimeline.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import { cancelTask } from '@/modules/tasks/services/task.service'
 import { useSessionStore } from '@/app/stores/session.store'
-import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import DetectionEvaluationFailedSamplePreview from '../components/DetectionEvaluationFailedSamplePreview.vue'
 import DetectionEvaluationConditions from '../components/DetectionEvaluationConditions.vue'
 import DetectionEvaluationRunStatus from '../components/DetectionEvaluationRunStatus.vue'
@@ -214,6 +232,7 @@ import DetectionEvaluationSampleViewer from '../components/DetectionEvaluationSa
 import DetectionSampleThumbnail from '../components/DetectionSampleThumbnail.vue'
 import { formatModelNumber } from '../model-number-format'
 import { evaluationClassMean, evaluationRuntime } from '../detection-evaluation-comparison'
+import { readEvaluationDatasetVersionNames } from '../evaluation-dataset-exports'
 import {
   detectionEvaluationSamplePageSize, downloadEvaluationJson, getDetectionEvaluation, getDetectionEvaluationReport, listDetectionEvaluationSamples,
   type DetectionEvaluationReport, type DetectionEvaluationSample, type DetectionEvaluationTask, type EvaluationBox, type EvaluationIssue, type FailedDetectionSample,
@@ -230,6 +249,27 @@ const evaluationReturn = computed(() => ({
   query: { tab: 'evaluation', evalCompare: route.query.evalCompare, evalBaseline: route.query.evalBaseline },
 }))
 const task = ref<DetectionEvaluationTask | null>(null)
+const datasetVersionName = ref('')
+watch([() => task.value?.project_id, () => task.value?.dataset_version_id], async ([project, version], _, onCleanup) => {
+  datasetVersionName.value = ''
+  if (!project || !version || !session.hasScopes(['datasets:read'])) return
+  const request = new AbortController()
+  onCleanup(() => request.abort())
+  try {
+    const names = await readEvaluationDatasetVersionNames(project, 'detection', [version], request.signal)
+    if (!request.signal.aborted) datasetVersionName.value = names.get(version) ?? ''
+  } catch { /* 数据目录不可用时，保留任务保存的版本标识供查看。 */ }
+})
+const evaluationEventMessages: Record<string, string> = {
+  'task created': '任务已创建',
+  'task execution started': '开始执行任务',
+  'detection evaluation started': '开始目标检测评估',
+  'detection evaluation completed': '目标检测评估完成',
+}
+const evaluationEvents = computed(() => (task.value?.events ?? []).map(event => ({
+  ...event,
+  message: zh.value && Object.hasOwn(evaluationEventMessages, event.message) ? evaluationEventMessages[event.message] : event.message,
+})))
 const modelVersionName = useCatalogVersionLabel(() => [task.value?.project_id, 'detection', task.value?.model_version_id])
 const report = ref<DetectionEvaluationReport['payload'] | null>(null)
 const loading = ref(false)
@@ -555,21 +595,31 @@ onBeforeUnmount(() => { request?.abort(); sampleRequest?.abort(); clearTimeout(t
 .evaluation-toolbar a { color:var(--am-brand-primary); }
 .evaluation-summary, .evaluation-report, .evaluation-section { display:grid; gap:14px; min-width:0; }
 .evaluation-summary { padding-block:14px; gap:10px; }
-.evaluation-summary dl { display:flex; flex-wrap:wrap; gap:8px 20px; margin:0; }
-.evaluation-summary dl > div { display:flex; gap:8px; flex-wrap:wrap; }
-.evaluation-overview-fields { display:grid; grid-template-columns:minmax(108px, 1fr) 4fr; gap:8px 12px; margin:0; }
-.evaluation-summary dd,.evaluation-overview-fields dd { margin:0; overflow-wrap:anywhere; }
-.evaluation-summary dt, .evaluation-overview-fields dt { color:var(--am-text-muted); }
+.evaluation-summary dl { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1.5fr) minmax(0,.8fr) minmax(0,.65fr); gap:12px 20px; margin:0; }
+.evaluation-summary dl > div { display:grid; align-content:start; gap:4px; min-width:0; }
+.evaluation-summary dt { font-size:var(--am-type-caption); }
+@media (max-width:760px) { .evaluation-summary dl { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.evaluation-summary dd { margin:0; overflow-wrap:anywhere; }
+.evaluation-summary dt { color:var(--am-text-muted); }
+.evaluation-overview { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:12px; }
+.evaluation-overview section { min-width:0; border:1px solid var(--am-border); border-radius:var(--am-radius-md); }
+.evaluation-overview h3 { margin:0; padding:10px 14px; border-block-end:1px solid var(--am-border); font-size:inherit; font-weight:600; }
+.evaluation-overview dl { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); margin:0; padding-block:12px; }
+.evaluation-overview dl > div { display:grid; align-content:start; gap:5px; min-width:0; padding-inline:14px; }
+.evaluation-overview dl > div + div { border-inline-start:1px solid var(--am-border); }
+.evaluation-overview dt { color:var(--am-text-muted); overflow-wrap:anywhere; }
+.evaluation-overview dd { margin:0; color:var(--am-text); font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .evaluation-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding-block:6px; }
 .evaluation-metrics > div { display:grid; gap:4px; padding:4px 12px; text-align:center; }
 .evaluation-metrics > div + div { border-inline-start:1px solid var(--am-border); }
 .evaluation-metrics span,.evaluation-samples__list small { color:var(--am-text-muted); }
 .evaluation-metrics strong { font-size:24px; font-variant-numeric:tabular-nums; }
 .evaluation-classes { overflow:auto; }
-.evaluation-classes table { width:100%; table-layout:fixed; }
+.evaluation-classes table { width:100%; min-width:0; table-layout:fixed; }
 .evaluation-classes :is(th,td) { overflow-wrap:anywhere; }
 .evaluation-classes th:first-child { width:42%; }
-.evaluation-classes tfoot { background:var(--am-surface-muted); font-weight:600; }
+.evaluation-classes tfoot :is(th,td) { border-block-start:1px solid var(--am-border); border-block-end:0; background:var(--am-surface-muted); color:var(--am-text); font-weight:600; }
+.evaluation-classes tfoot th { font-size:inherit; }
 .evaluation-examples { display:grid; gap:12px; margin-block-start:8px; padding-block-start:14px; border-top:1px solid var(--am-border); min-width:0; }
 .evaluation-examples h3,.evaluation-examples p { margin:0; }
 .evaluation-example-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; }
@@ -604,8 +654,18 @@ onBeforeUnmount(() => { request?.abort(); sampleRequest?.abort(); clearTimeout(t
 .evaluation-legend { gap:12px; }
 .evaluation-legend i { width:20px; height:12px; border:2px dashed #f79235; }
 .evaluation-legend .is-truth { border:2px solid var(--am-brand-primary); }
-.evaluation-log { padding-inline-start:20px; overflow-wrap:anywhere; }
+.evaluation-log.resource-section { display:block; padding:0; }
+.evaluation-log summary { display:flex; align-items:center; gap:10px; min-height:44px; padding:10px 16px; border-radius:inherit; list-style:none; cursor:pointer; font-weight:600; }
+.evaluation-log summary::-webkit-details-marker { display:none; }
+.evaluation-log summary:focus-visible { outline-offset:-3px; }
+.evaluation-log[open] summary { border-end-start-radius:0; border-end-end-radius:0; background:var(--am-surface-muted); }
+.evaluation-log summary:hover { background:var(--am-hover-surface); }
+.evaluation-log__count { margin-inline-start:auto; padding:1px 8px; border:1px solid var(--am-border); border-radius:var(--am-radius-pill); background:var(--am-surface); color:var(--am-text-muted); font-size:var(--am-type-caption); font-weight:400; }
+.evaluation-log__chevron { color:var(--am-text-muted); }
+.evaluation-log[open] .evaluation-log__chevron { transform:rotate(180deg); }
+.evaluation-log__body { border-block-start:1px solid var(--am-border); padding:6px 16px; }
 @media (max-width:560px) {
+  .evaluation-overview { grid-template-columns:minmax(0,1fr); }
   .evaluation-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:10px; }
   .evaluation-metrics > div:nth-child(3) { border-inline-start:0; }
 }
