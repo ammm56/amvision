@@ -1,5 +1,5 @@
 <template>
-  <section v-if="importOpen" class="package-wizard">
+  <section v-if="importOpen" ref="importWizard" class="package-wizard">
     <div class="package-toolbar"><Button @click="closeImport">{{ zh ? '返回' : 'Back' }}</Button><h2>{{ zh ? '导入模型' : 'Import model' }}</h2></div>
     <ol class="package-steps">
       <li v-for="(label, index) in steps" :key="label" :aria-current="index + 1 === step ? 'step' : undefined" :class="{ 'is-complete': index + 1 < step, 'is-failed': index === 3 && registrationFailure }">
@@ -14,11 +14,21 @@
       <template v-if="step === 1">
         <h3>{{ zh ? '上传模型包' : 'Upload model package' }}</h3>
         <p>{{ zh ? '目标项目：' : 'Target project: ' }}<strong>{{ projectName || projectId }}</strong></p>
-        <p class="package-muted">{{ zh ? '选择 AMVAR 导出的模型包 ZIP。上传后还需检查，检查通过后才能登记。' : 'Choose an AMVAR model-package ZIP. Uploaded files must pass inspection before registration.' }}</p>
+        <p class="package-muted">{{ zh ? '请选择 AMVAR 导出的模型包 ZIP。' : 'Choose an AMVAR model-package ZIP.' }}</p>
         <FilePicker :model-value="file" :label="zh ? 'ZIP 文件' : 'ZIP file'" icon="archive" accept=".zip,application/zip" :disabled="busy" @update:model-value="setFile" />
       </template>
       <template v-else>
-        <div v-if="step !== 4" class="package-file"><FileArchive :size="23" /><div><strong>{{ current?.file_name || file?.name }}</strong><span>{{ step === 2 && current?.model && !pending && current.state !== 'failed' ? packageStatus('ready', zh) : packageStatus(current?.state || '', zh) }} · {{ formatSize(current?.upload_bytes) }} <template v-if="current?.created_at">· {{ current.uploaded_at ? (zh ? '上传时间' : 'Uploaded') : (zh ? '提交时间' : 'Submitted') }} {{ formatSystemDateTime(current.uploaded_at || current.created_at, 'minutes') }}</template></span></div></div>
+        <div v-if="step !== 4" class="package-file">
+          <span class="package-file__icon"><FileArchive :size="22" aria-hidden="true" /></span>
+          <div class="package-file__identity">
+            <strong>{{ current?.file_name || file?.name }}</strong>
+            <div class="package-file__metadata">
+              <span>{{ formatPackageBytes(current?.upload_bytes) }}</span>
+              <time v-if="current?.created_at" :datetime="current.uploaded_at || current.created_at">{{ formatSystemDateTime(current.uploaded_at || current.created_at, 'minutes') }}</time>
+            </div>
+          </div>
+          <StatusBadge v-if="current" :tone="fileCheckState === 'ready' ? 'success' : undefined" :status="fileCheckState" with-dot>{{ packageStatus(fileCheckState, zh) }}</StatusBadge>
+        </div>
         <template v-if="step === 2">
           <ModelPackageImportCheck v-if="current" :record="current" :zh="zh" :pending="pending" />
         </template>
@@ -41,31 +51,42 @@
                 <InlineError :message="targetsError" /><Button size="sm" type="button" :loading="targetsLoading" @click="loadTargets">{{ zh ? '重试加载目标' : 'Retry loading targets' }}</Button>
               </div>
               <label class="field"><span>{{ zh ? '说明' : 'Description' }}</span><textarea v-model.trim="description" maxlength="2000" rows="2" /></label>
+              <template v-if="current?.categories?.length">
+                <h3>{{ zh ? '类别顺序' : 'Class order' }}</h3>
+                <ModelPackageClassTable :categories="current.categories" :zh="zh" />
+              </template>
             </section>
-            <section>
-              <h3>{{ zh ? '版本信息' : 'Version information' }}</h3>
-              <p>{{ current?.model?.task_type }} · {{ current?.model?.model_type }}</p>
-              <p>{{ zh ? '来源版本' : 'Source version' }} · {{ current?.source_version_id }}</p>
-              <h3>{{ zh ? '模型产物' : 'Artifacts' }}</h3>
-              <ul class="package-artifacts">
-                <li v-for="entry in current?.files" :key="`${entry.owner}/${entry.path}`">{{ entry.path.split('/').at(-1) }} · {{ formatSize(entry.byte_size) }}</li>
-              </ul>
-            </section>
+            <div v-if="current" class="package-destination__source">
+              <section>
+                <h3>{{ zh ? '版本信息' : 'Version information' }}</h3>
+                <dl class="package-version-fields">
+                  <div><dt>{{ zh ? '来源版本' : 'Source version' }}</dt><dd :title="current.source_version_id">{{ sourceVersionName || '—' }}</dd></div>
+                  <div><dt>{{ zh ? '任务类型' : 'Task type' }}</dt><dd>{{ modelTaskLabel(current.model?.task_type, zh) }}</dd></div>
+                  <div><dt>{{ zh ? '模型结构' : 'Model structure' }}</dt><dd>{{ [current.model?.model_type, current.model?.model_scale].filter(Boolean).join('-') || '—' }}</dd></div>
+                  <div v-if="current.input_size"><dt>{{ zh ? '输入尺寸' : 'Input size' }}</dt><dd>{{ current.input_size.width }} × {{ current.input_size.height }}</dd></div>
+                </dl>
+              </section>
+              <section v-if="current.files?.length">
+                <h3>{{ zh ? '模型产物' : 'Artifacts' }}</h3>
+                <ModelPackageFileTable :files="current.files" :zh="zh" />
+              </section>
+            </div>
           </fieldset>
           <InlineError :message="current?.error || null" />
           <div v-if="issues.length" class="package-issues" role="alert"><p v-for="issue in issues" :key="issue.code">{{ issue.reason }}</p></div>
-          <h3>{{ classConflict ? (zh ? '类别对照（不可重排）' : 'Class comparison (read only)') : (zh ? '类别顺序' : 'Class order') }}</h3>
-          <div class="resource-table package-category-table"><table>
-            <thead><tr><th scope="col">{{ zh ? '索引' : 'Index' }}</th><th v-if="classConflict" scope="col">{{ zh ? '已有模型' : 'Existing model' }}</th><th scope="col">{{ zh ? '模型包' : 'Package' }}</th><th v-if="classConflict" scope="col">{{ zh ? '差异' : 'Difference' }}</th></tr></thead>
-            <tbody><tr v-for="row in classRows" :key="row.index" :class="{ 'is-conflict': row.differs }"><td>{{ row.index }}</td><td v-if="classConflict">{{ row.expected ?? '—' }}</td><td>{{ row.incoming ?? '—' }}</td><td v-if="classConflict">{{ row.differs ? (zh ? '类别不一致' : 'Classes differ') : (zh ? '一致' : 'Match') }}</td></tr></tbody>
-          </table></div>
-          <fieldset v-if="classConflict" class="package-resolution" :disabled="busy || pending">
-            <legend>{{ zh ? '解决方案' : 'Resolve conflict' }}</legend>
-            <div><label><input v-model="resolution" type="radio" name="package-resolution" value="new" />{{ zh ? '新建独立模型' : 'Create a separate model' }}</label>
-              <label class="field">{{ zh ? '新模型名称' : 'New model name' }}<input v-model.trim="resolutionName" :disabled="resolution !== 'new'" maxlength="128" /></label></div>
-            <div><label><input v-model="resolution" type="radio" name="package-resolution" value="replace" />{{ zh ? '返回更换文件' : 'Go back and replace file' }}</label>
-              <p class="package-muted">{{ zh ? '保留原模型，选择另一份模型包。' : 'Keep the original model and choose another package.' }}</p></div>
-          </fieldset>
+          <template v-if="classConflict">
+            <h3>{{ zh ? '类别对照（不可重排）' : 'Class comparison (read only)' }}</h3>
+            <div class="resource-table package-category-table"><table>
+              <thead><tr><th scope="col">{{ zh ? '索引' : 'Index' }}</th><th scope="col">{{ zh ? '已有模型' : 'Existing model' }}</th><th scope="col">{{ zh ? '模型包' : 'Package' }}</th><th scope="col">{{ zh ? '差异' : 'Difference' }}</th></tr></thead>
+              <tbody><tr v-for="row in classRows" :key="row.index" :class="{ 'is-conflict': row.differs }"><td>{{ row.index }}</td><td>{{ row.expected ?? '—' }}</td><td>{{ row.incoming ?? '—' }}</td><td>{{ row.differs ? (zh ? '类别不一致' : 'Classes differ') : (zh ? '一致' : 'Match') }}</td></tr></tbody>
+            </table></div>
+            <fieldset class="package-resolution" :disabled="busy || pending">
+              <legend>{{ zh ? '解决方案' : 'Resolve conflict' }}</legend>
+              <div><label><input v-model="resolution" type="radio" name="package-resolution" value="new" />{{ zh ? '新建独立模型' : 'Create a separate model' }}</label>
+                <label class="field">{{ zh ? '新模型名称' : 'New model name' }}<input v-model.trim="resolutionName" :disabled="resolution !== 'new'" maxlength="128" /></label></div>
+              <div><label><input v-model="resolution" type="radio" name="package-resolution" value="replace" />{{ zh ? '返回更换文件' : 'Go back and replace file' }}</label></div>
+            </fieldset>
+          </template>
         </template>
         <template v-else>
           <ModelPackageImportResult v-if="current" :record="current" :project-id="projectId" :project-name="projectName || projectId" :zh="zh" />
@@ -161,7 +182,11 @@ import ModelPackageExportResult from './ModelPackageExportResult.vue'
 import { modelDisplayName } from '../model-display-name'
 import ModelPackageImportCheck from './ModelPackageImportCheck.vue'
 import ModelPackageImportResult from './ModelPackageImportResult.vue'
+import ModelPackageFileTable from './ModelPackageFileTable.vue'
+import ModelPackageClassTable from './ModelPackageClassTable.vue'
 import ModelListPagination from './ModelListPagination.vue'
+import { formatPackageBytes, packageSourceVersionLabel } from '../model-package-presentation'
+import { modelTaskLabel } from '../model-evaluation-types'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
@@ -195,6 +220,10 @@ const exports = computed(() => items.value.filter(row => row.direction === 'expo
 const current = ref<ModelPackageRecord | null>(null)
 const file = ref<File | null>(null)
 const step = ref(1)
+const importWizard = ref<HTMLElement | null>(null)
+watch([() => props.importOpen, step], ([open]) => {
+  if (open) importWizard.value?.scrollIntoView({ block: 'start', behavior: 'instant' })
+}, { flush: 'post' })
 const mode = ref<'new' | 'existing'>('new')
 const name = ref('')
 const target = ref('')
@@ -239,7 +268,12 @@ const destinationValid = computed(() => mode.value === 'new' ? !!name.value.trim
 let revision = 0
 let timer: ReturnType<typeof setTimeout>
 
-function formatSize(bytes: number | undefined): string { return bytes === undefined ? '—' : `${(bytes / 2 ** 20).toFixed(1)} MB` }
+const sourceVersionName = computed(() => current.value
+  ? [current.value.model?.model_name, packageSourceVersionLabel(current.value)].filter(Boolean).join(' · ') : '')
+const fileCheckState = computed(() => {
+  const state = current.value?.state ?? ''
+  return current.value?.model && !pending.value && ['ready', 'needs_attention'].includes(state) ? 'ready' : state
+})
 function setFile(value: File | File[] | null): void { file.value = Array.isArray(value) ? value[0] ?? null : value }
 
 async function perform(action: () => Promise<void>): Promise<void> {
@@ -541,6 +575,7 @@ onBeforeUnmount(reset)
 .package-category-table :is(th,td) { white-space:normal; overflow-wrap:anywhere; padding-block:8px; }
 @media (max-width:700px) { .package-resolution { grid-template-columns:minmax(0,1fr); } }
 .package-wizard, .package-content, .package-destination section { display:grid; gap:14px; min-width:0; }
+.package-wizard { scroll-margin-block-start:24px; }
 .package-toolbar, .package-actions, .package-actions__end, .package-modes { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .package-records .package-toolbar { justify-content:space-between; margin-bottom:14px; }
 .package-records__actions { display:flex; flex-wrap:wrap; gap:10px; }
@@ -558,13 +593,19 @@ onBeforeUnmount(reset)
 .package-steps .is-complete span { color:var(--am-success-text); border-color:var(--am-success-border); }
 .package-steps .is-failed span { color:var(--am-danger-text); background:var(--am-danger-surface); border-color:var(--am-danger-border); }
 .package-steps .is-failed { color:var(--am-danger-text); }
-.package-file { display:flex; align-items:center; gap:12px; padding:14px; border-radius:6px; background:var(--am-surface-soft); }
-.package-file span { display:block; color:var(--am-text-muted); }
-.package-file strong, .package-content :is(dd,p,td), .package-artifacts li { overflow-wrap:anywhere; }
-.package-destination { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:16px; }
+.package-file { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 12px; border:1px solid var(--am-border); border-radius:6px; }
+.package-file__icon { display:grid; place-items:center; width:38px; height:38px; border-radius:6px; background:var(--am-surface-muted); color:var(--am-text-muted); }
+.package-file__identity { flex:1 1 155px; min-width:0; }
+.package-file__metadata { display:flex; flex-wrap:wrap; gap:2px 14px; color:var(--am-text-muted); font-size:var(--am-type-caption); }
+.package-file strong, .package-content :is(dd,p,td) { overflow-wrap:anywhere; }
+.package-destination { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); align-items:start; gap:16px; }
 .package-destination section { align-content:start; padding:14px; border:1px solid var(--am-border); border-radius:6px; }
+.package-destination__source { display:grid; gap:12px; min-width:0; }
+.package-version-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; margin:0; }
+.package-version-fields > div:first-child { grid-column:1 / -1; padding-block-end:10px; border-block-end:1px solid var(--am-border); }
+.package-version-fields dt { color:var(--am-text-muted); font-size:var(--am-type-caption); }
+.package-version-fields dd { margin:3px 0 0; color:var(--am-text); font-weight:500; }
 .package-modes input { accent-color:var(--am-brand-primary); }
-.package-artifacts { margin:0; padding-inline-start:18px; }
 .package-actions { justify-content:space-between; position:sticky; bottom:0; z-index:1; padding:10px; background:var(--am-surface-raised); border-radius:6px; }
 .package-actions .ui-button--primary:disabled:not(.is-loading) { color:var(--am-text-muted); background:var(--am-surface-muted); border-color:var(--am-border); }
 .package-actions__end { margin-inline-start:auto; }

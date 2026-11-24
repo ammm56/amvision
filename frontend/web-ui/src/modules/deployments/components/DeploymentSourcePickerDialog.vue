@@ -142,7 +142,7 @@
               >
                 <div class="deployment-source-build-meta">
                   <strong>{{ sourceVersionLabel(build.source_model_version_id) }}</strong>
-                  <span v-if="build.metadata.import_provenance">{{ t('deploymentTransfer.importOrigin') }}</span>
+                  <span v-if="sourceImportLabel(build)">{{ sourceImportLabel(build) }}</span>
                   <span>
                     {{ build.build_format }} · {{ build.runtime_backend }} ·
                     {{ build.runtime_precision.toUpperCase() }}
@@ -251,8 +251,16 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 function sourceVersionLabel(id: string): string {
-  const version = props.selectedModelDetail?.versions.find(item => item.model_version_id === id)
+  const version = sourceVersion(id)
   return version ? modelVersionDisplayName(version) : '—'
+}
+function sourceVersion(id: string) {
+  return props.selectedModelDetail?.versions.find(item => item.model_version_id === id)
+}
+function sourceImportLabel(build: DeploymentSourceModelBuild): string {
+  const kind = sourceVersion(build.source_model_version_id)?.source_kind
+  if (kind === 'model-package-import') return t('deploymentTransfer.modelPackageOrigin')
+  return kind === 'deployment-import' || build.metadata.import_provenance ? t('deploymentTransfer.importOrigin') : ''
 }
 const visibleBuilds = computed(() => (props.selectedModelDetail?.builds ?? [])
   .filter(build => (!props.versionId || build.source_model_version_id === props.versionId)

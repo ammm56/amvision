@@ -114,6 +114,18 @@ describe('DeploymentSourcePickerDialog', () => {
     expect(wrapper.find('.deployment-source-action').exists()).toBe(false)
   })
 
+  it('identifies artifacts imported from a model package', () => {
+    const wrapper = mountDialog({
+      selectedModelDetail: {
+        ...selectedDetail,
+        versions: selectedDetail.versions.map(version => ({ ...version, source_kind: 'model-package-import' })),
+        builds: selectedDetail.builds.map(build => ({ ...build, metadata: { ...build.metadata, import_provenance: {} } })),
+      },
+    })
+    expect(wrapper.get('.deployment-source-build-meta').text()).toContain('模型包导入')
+    expect(wrapper.get('.deployment-source-build-meta').text()).not.toContain('部署实例导入')
+  })
+
   it('uses the compact four-step deployment selection layout', () => {
     const wrapper = mountDialog()
 

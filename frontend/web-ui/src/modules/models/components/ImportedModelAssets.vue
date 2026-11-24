@@ -11,7 +11,7 @@
         </tr></thead>
         <tbody><tr v-for="item in items" :key="item.resource_id">
           <td class="imported-model-name"><strong>{{ item.model_name }}</strong><span>{{ item.resource_id }}</span></td>
-          <td>{{ item.task_type }}</td>
+          <td>{{ modelTaskLabel(item.task_type, locale.startsWith('zh')) }}</td>
           <td>{{ item.kind === 'model-version' ? tr('modelVersion') : item.kind === 'model-build' ? tr('modelBuild') : item.kind }}</td>
           <td class="asset-size">{{ (item.byte_size / 1024 / 1024).toFixed(1) }} MB</td>
           <td>{{ tr(item.source_kind === 'model-package-import' ? 'modelPackageOrigin' : 'importOrigin') }}</td>
@@ -24,7 +24,10 @@
 </template>
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { translate } from '@/platform/i18n'
+import { modelTaskLabel } from '../model-evaluation-types'
+const { locale } = useI18n()
 const tr = (key: string) => translate(`deploymentTransfer.${key}`)
 import { apiRequest } from '@/shared/api/http-client'
 import Button from '@/shared/ui/components/Button.vue'
