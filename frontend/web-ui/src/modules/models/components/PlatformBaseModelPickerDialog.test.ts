@@ -42,15 +42,15 @@ function mountDialog(overrides: Partial<InstanceType<typeof PlatformBaseModelPic
 describe('PlatformBaseModelPickerDialog', () => {
   it('groups variants by model family and supports searching a family or scale', async () => {
     const { wrapper } = mountDialog()
-    expect(wrapper.findAll('.base-picker__family-button').map(button => button.text())).toEqual(['yolo11', 'yolox'])
+    expect(wrapper.findAll('.model-picker__family-button').map(button => button.text())).toEqual(['yolo11', 'yolox'])
     const scales = wrapper.findAll('[aria-label="参数量"] button')
     expect(scales.map(button => button.text())).toEqual(['s', 'm'])
     await scales[1].trigger('click')
     expect(wrapper.emitted('select-model')).toEqual([[medium.model_id]])
     await wrapper.get('input[aria-label="搜索模型名称"]').setValue('yolox-s')
-    expect(wrapper.findAll('.base-picker__family-button')).toHaveLength(1)
-    expect(wrapper.get('.base-picker__family-button').text()).toBe('yolox')
-    await wrapper.get('.base-picker__family-button').trigger('click')
+    expect(wrapper.findAll('.model-picker__family-button')).toHaveLength(1)
+    expect(wrapper.get('.model-picker__family-button').text()).toBe('yolox')
+    await wrapper.get('.model-picker__family-button').trigger('click')
     expect(wrapper.emitted('select-model')?.at(-1)).toEqual([missing.model_id])
   })
 

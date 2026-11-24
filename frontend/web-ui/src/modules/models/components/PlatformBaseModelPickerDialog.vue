@@ -6,22 +6,22 @@
     @close="$emit('close')" @change-task-type="$emit('change-task-type', $event)"
   >
     <template #list>
-      <div class="base-picker__list">
-        <label class="base-picker__search">
+      <div class="model-picker__list">
+        <label class="model-picker__search">
           <Search :size="16" aria-hidden="true" />
           <input v-model.trim="query" :aria-label="searchLabel" :placeholder="searchLabel" />
         </label>
-        <p v-if="loading && !models.length" class="base-picker__state" role="status">{{ detailLoadingLabel }}</p>
-        <div v-else-if="listError && !models.length" class="base-picker__state" role="alert">
+        <p v-if="loading && !models.length" class="model-picker__state" role="status">{{ detailLoadingLabel }}</p>
+        <div v-else-if="listError && !models.length" class="model-picker__state" role="alert">
           <span>{{ listError }}</span><Button size="sm" @click="$emit('retry-list')">{{ retryLabel }}</Button>
         </div>
-        <p v-else-if="!modelGroups.length" class="base-picker__state">{{ query ? (zh ? '没有符合条件的模型' : 'No matching models') : emptyTitle }}</p>
-        <div v-else class="base-picker__families" role="group" :aria-label="modelNameLabel">
+        <p v-else-if="!modelGroups.length" class="model-picker__state">{{ query ? (zh ? '没有符合条件的模型' : 'No matching models') : emptyTitle }}</p>
+        <div v-else class="model-picker__families" role="group" :aria-label="modelNameLabel">
           <button v-for="group in modelGroups" :key="group.key" type="button"
-            class="base-picker__family-button" :aria-pressed="group.key === selectedGroup?.key" @click="selectFamily(group)">
+            class="model-picker__family-button" :aria-pressed="group.key === selectedGroup?.key" @click="selectFamily(group)">
             <Box :size="16" aria-hidden="true" />
             <strong>{{ group.name }}</strong>
-            <ChevronRight :size="16" aria-hidden="true" class="base-picker__chevron" />
+            <ChevronRight :size="16" aria-hidden="true" class="model-picker__chevron" />
           </button>
         </div>
         <div v-if="selectedGroup" class="base-picker__scales">
@@ -36,37 +36,37 @@
     </template>
 
     <template #detail>
-      <div class="base-picker__details" :aria-busy="detailLoading">
-        <p v-if="selectedSummary && detailLoading" class="base-picker__state" role="status">{{ detailLoadingLabel }}</p>
-        <div v-else-if="selectedSummary && detailError" class="base-picker__state" role="alert">
+      <div class="model-picker__details" :aria-busy="detailLoading">
+        <p v-if="selectedSummary && detailLoading" class="model-picker__state" role="status">{{ detailLoadingLabel }}</p>
+        <div v-else-if="selectedSummary && detailError" class="model-picker__state" role="alert">
           <span>{{ detailError }}</span><Button size="sm" @click="$emit('retry-detail')">{{ retryLabel }}</Button>
         </div>
         <template v-else-if="currentModel">
-          <div class="base-picker__identity">
+          <div class="model-picker__identity">
             <Box :size="20" aria-hidden="true" />
             <strong>{{ modelDisplayName(currentModel) }}</strong>
-            <span v-if="currentModel.model_scale" class="base-picker__scale">{{ currentModel.model_scale }}</span>
+            <span v-if="currentModel.model_scale" class="model-picker__scale">{{ currentModel.model_scale }}</span>
           </div>
-          <label v-if="!weightsOnly" class="base-picker__option" :class="{ 'is-selected': choice === '' }">
+          <label v-if="!weightsOnly" class="model-picker__option" :class="{ 'is-selected': choice === '' }">
             <input type="radio" :name="choiceName" value="" :checked="choice === ''" @change="pendingChoice = ''" />
             <span>{{ zh ? '仅选择模型结构（从头训练）' : 'Select architecture only (train from scratch)' }}</span>
           </label>
-          <div v-for="group in visibleVersionGroups" :key="group.id" class="base-picker__versions" role="group" :aria-label="group.title">
+          <div v-for="group in visibleVersionGroups" :key="group.id" class="model-picker__versions" role="group" :aria-label="group.title">
             <h3>{{ group.title }} <small v-if="group.versions.length">{{ group.versions.length }}</small></h3>
-            <p v-if="!group.versions.length" class="base-picker__empty">{{ group.empty }}</p>
-            <label v-for="version in group.versions" :key="version.id" class="base-picker__option"
+            <p v-if="!group.versions.length" class="model-picker__empty">{{ group.empty }}</p>
+            <label v-for="version in group.versions" :key="version.id" class="model-picker__option"
               :class="{ 'is-selected': choice === version.id, 'is-disabled': version.state !== 'present' }">
               <input type="radio" :name="choiceName" :value="version.id" :checked="choice === version.id"
                 :disabled="version.state !== 'present'" @change="pendingChoice = version.id" />
-              <span class="base-picker__option-copy">
-                <span class="base-picker__option-name"><strong v-if="version.name">{{ version.name }}</strong><span class="base-picker__version-number">{{ version.number }}</span></span>
+              <span class="model-picker__option-copy">
+                <span class="model-picker__option-name"><strong v-if="version.name">{{ version.name }}</strong><span class="model-picker__version-number">{{ version.number }}</span></span>
                 <small v-if="version.file">{{ version.file }}</small>
               </span>
-              <span class="base-picker__status" :class="`is-${version.state}`">{{ stateText(version.state) }}</span>
+              <span class="model-picker__status" :class="`is-${version.state}`">{{ stateText(version.state) }}</span>
             </label>
           </div>
         </template>
-        <p v-else class="base-picker__state">{{ detailEmptyTitle }}</p>
+        <p v-else class="model-picker__state">{{ detailEmptyTitle }}</p>
       </div>
     </template>
 
@@ -229,46 +229,10 @@ function confirmSelection(): void {
 }
 </script>
 
+<style scoped src="./model-picker-fields.css"></style>
 <style scoped>
-.base-picker__list, .base-picker__details { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
-.base-picker__families, .base-picker__details { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.base-picker__details { scrollbar-gutter: stable; }
-.base-picker__families { display: grid; align-content: start; gap: 8px; }
-.base-picker__search { display: flex; align-items: center; flex: none; gap: 8px; padding-inline: 12px; border: 1px solid var(--am-border-strong); border-radius: 6px; color: var(--am-text-muted); }
-.base-picker__search:focus-within { border-color: var(--am-action-primary); }
-.base-picker__search input { width: 100%; min-width: 0; height: 36px; border: 0; outline: 0; background: transparent; color: var(--am-text); }
-.base-picker__family-button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--am-border); border-radius: 6px; color: var(--am-text); background: transparent; text-align: start; cursor: pointer; }
-.base-picker__family-button strong { overflow-wrap: anywhere; }
-.base-picker__family-button:hover { background: var(--am-hover-surface); }
-.base-picker__family-button[aria-pressed='true'] { border-color: var(--am-action-primary); background: var(--am-row-selected); }
-.base-picker__chevron { margin-inline-start: auto; flex: none; }
 .base-picker__scales { display: flex; align-items: center; flex-wrap: wrap; flex-shrink: 0; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--am-border); border-radius: 6px; color: var(--am-text-muted); font-size: 13px; }
 .base-picker__scale-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .base-picker__scale-options button { min-width: 36px; min-height: 30px; padding: 3px 10px; border: 1px solid var(--am-border-strong); border-radius: 5px; background: var(--am-surface); color: var(--am-text); cursor: pointer; }
 .base-picker__scale-options button[aria-pressed='true'] { border-color: var(--am-action-primary); background: var(--am-row-selected); color: var(--am-text); font-weight: 700; }
-.base-picker__identity { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 10px 12px; border: 1px solid var(--am-border); border-radius: 6px; color: var(--am-text); }
-.base-picker__identity strong { overflow-wrap: anywhere; }
-.base-picker__identity svg { flex: none; }
-.base-picker__scale, .base-picker__version-number { padding: 1px 6px; border: 1px solid var(--am-border-strong); border-radius: 4px; color: var(--am-text-muted); font-size: 12px; overflow-wrap: anywhere; }
-.base-picker__versions { display: grid; gap: 7px; }
-.base-picker__versions h3 { margin: 0; font-size: 14px; }
-.base-picker__versions h3 small { margin-inline-start: 4px; color: var(--am-text-muted); font-weight: 400; }
-.base-picker__option { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; border: 1px solid var(--am-border); border-radius: 6px; cursor: pointer; }
-.base-picker__option.is-selected { border-color: var(--am-action-primary); background: var(--am-row-selected); }
-.base-picker__option.is-disabled { cursor: not-allowed; }
-.base-picker__option input { flex: none; margin: 0; accent-color: var(--am-action-primary); }
-.base-picker__option-copy { display: grid; flex: 1; gap: 3px; min-width: 0; color: var(--am-text); }
-.base-picker__option-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; overflow-wrap: anywhere; }
-.base-picker__option-name strong { min-width: 0; }
-.base-picker__option-copy small { color: var(--am-text-muted); overflow-wrap: anywhere; }
-.base-picker__status { flex: none; color: var(--am-text-muted); font-size: 12px; }
-.base-picker__status.is-present { color: var(--am-success-text); }
-.base-picker__status.is-missing { color: var(--am-danger-text); }
-.base-picker__empty, .base-picker__state { margin: 0; padding: 10px 12px; color: var(--am-text-muted); overflow-wrap: anywhere; }
-.base-picker__empty { border: 1px dashed var(--am-border); border-radius: 6px; }
-.base-picker__state[role='alert'] { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-@media (max-width: 960px) {
-  .base-picker__families { max-height: 230px; }
-  .base-picker__details { overflow: visible; padding-block-end: 4px; }
-}
 </style>

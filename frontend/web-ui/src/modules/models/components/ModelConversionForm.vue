@@ -231,8 +231,8 @@
           </div>
         </details>
       </section>
-      <p v-if="step === 3 && selectedTargetGroup === 'openvino' && !conversionTargetOptions.some(option => option.value === 'openvino-ir-int8')" class="conversion-parameters__hint">
-        <Info :size="16" aria-hidden="true" />{{ zh ? '当前 OpenVINO Worker 支持 FP32 和 FP16。INT8 校准暂不可用。' : 'The OpenVINO worker supports FP32 and FP16. INT8 calibration is unavailable.' }}
+      <p v-if="step === 3 && selectedTargetGroup === 'openvino'" class="field--wide conversion-parameters__hint">
+        <Info :size="16" aria-hidden="true" />{{ openVinoInt8SupportText }}
       </p>
       <details v-if="step === 3 && !int8Enabled && !openVinoInt8Enabled" class="field field--wide conversion-parameters__advanced conversion-parameters__environment">
         <summary>{{ zh ? '执行环境' : 'Execution environment' }}</summary>
@@ -424,9 +424,18 @@ function groupForTarget(value: string): TargetGroup {
   return 'onnx'
 }
 const selectedTargetGroup = computed(() => groupForTarget(props.conversionTarget))
+const openVinoInt8Supported = computed(() => props.conversionTargetOptions.some(option => option.value === 'openvino-ir-int8'))
+const openVinoInt8SupportText = computed(() => {
+  if (openVinoInt8Supported.value) return zh.value
+    ? '所选模型与任务支持 OpenVINO INT8 量化，使用固定输入和批大小 1。'
+    : 'The selected model and task support OpenVINO INT8 quantization with a fixed input shape and batch size 1.'
+  return zh.value
+    ? '所选模型与任务不支持 OpenVINO INT8。当前仅 YOLO11 目标检测支持 INT8 量化，使用固定输入和批大小 1。'
+    : 'The selected model and task do not support OpenVINO INT8. INT8 quantization is available only for YOLO11 object detection with a fixed input shape and batch size 1.'
+})
 const targetOptionLabel = computed(() => {
   if (selectedTargetGroup.value === 'onnx') return zh.value ? '输出选项' : 'Output option'
-  if (selectedTargetGroup.value === 'openvino') return props.conversionTargetOptions.some(option => option.value === 'openvino-ir-int8')
+  if (selectedTargetGroup.value === 'openvino') return openVinoInt8Supported.value
     ? (zh.value ? '优化方式' : 'Optimization') : (zh.value ? '权重压缩' : 'Weight compression')
   return zh.value ? '精度' : 'Precision'
 })

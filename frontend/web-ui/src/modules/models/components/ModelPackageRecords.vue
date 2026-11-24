@@ -95,7 +95,7 @@
   </section>
   <section v-else class="resource-section package-records">
     <div class="package-toolbar">
-      <h2>{{ zh ? '导入模型' : 'Imported models' }}</h2>
+      <h2>{{ zh ? '模型包导入记录' : 'Model package import records' }}</h2>
       <div class="package-records__actions">
         <Button size="sm" :loading="busy && !exportRecordsOpen" @click="load"><RefreshCw :size="15" />{{ zh ? '刷新' : 'Refresh' }}</Button>
         <Button size="sm" variant="primary" @click="$emit('create-import')"><Upload :size="16" />{{ zh ? '导入模型包' : 'Import model package' }}</Button>

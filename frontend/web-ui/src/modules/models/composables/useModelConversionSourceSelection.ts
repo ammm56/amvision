@@ -48,9 +48,11 @@ export function useModelConversionSourceSelection(options: {
       ?? conversionBrowseModel.value?.model_id ?? conversionModels.value[0]?.model_id ?? ''
   }
 
-  function selectConversionVersion(modelVersionId: string): void {
-    const version = conversionBrowseModel.value?.available_versions.find((item) => item.model_version_id === modelVersionId)
+  function selectConversionVersion(modelVersionId: string, modelId = conversionBrowseModelId.value): void {
+    const model = conversionModels.value.find(item => item.model_id === modelId)
+    const version = model?.available_versions.find((item) => item.model_version_id === modelVersionId)
     if (!version || conversionSourceIssue(version) !== null) return
+    conversionBrowseModelId.value = modelId
     selectedVersionId.value = version.model_version_id
     conversionSourcePickerOpen.value = false
   }

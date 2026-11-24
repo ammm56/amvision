@@ -326,9 +326,6 @@ const task = ref<ModelConversionTaskDetail | null>(null)
 const sourceVersionName = useCatalogVersionLabel(() => [task.value?.project_id, String(route.params.taskType ?? ''), task.value?.source_model_version_id])
 const failureDetails = computed(() => task.value?.state === 'failed' ? readConversionValidationFailure(task.value.result.error_details) : null)
 const wasCancelled = computed(() => task.value?.state === 'cancelled')
-const detailTitle = computed(() => !task.value || wasCancelled.value
-  ? label('转换详情', 'Conversion details')
-  : task.value.display_name || task.value.task_id)
 const conversionFailed = computed(() => task.value?.state === 'failed' || task.value?.state === 'timed_out')
 const specialResult = computed(() => Boolean(wasCancelled.value || failureDetails.value))
 const activeTask = computed(() => !!task.value && !isTerminalTask(task.value.state))
@@ -342,11 +339,16 @@ const terminalStages = computed(() => task.value ? readConversionStages(task.val
 const terminalStageLabels = computed(() => ({ done: label('已完成', 'Completed'), failed: failureDetails.value ? label('校验失败', 'Validation failed') : label('失败', 'Failed'),
   cancelled: label('已取消', 'Cancelled'), skipped: label('未执行', 'Not started'), unknown: label('缺少阶段记录', 'Stage not recorded'),
   running: label('运行中', 'Running'), waiting: label('待开始', 'Waiting') }))
-const terminalSourceName = computed(() => {
+const sourceModelLabel = computed(() => {
   const name = task.value?.report_summary.model_name ?? task.value?.metadata.source_model_name
-  return sourceVersionName.value || (typeof name === 'string' && name ? name : '—')
+  return sourceVersionName.value || (typeof name === 'string' ? name.trim() : '')
 })
+const terminalSourceName = computed(() => sourceModelLabel.value || '—')
 const targetLabel = computed(() => task.value ? failureDetails.value?.target_runtime ?? conversionTargetLabel(task.value, locale.value.startsWith('zh')) : '—')
+const detailTitle = computed(() => {
+  if (!sourceModelLabel.value) return label('转换详情', 'Conversion details')
+  return targetLabel.value === '—' ? sourceModelLabel.value : `${sourceModelLabel.value} · ${targetLabel.value}`
+})
 const observedAt = ref(new Date().toISOString())
 const elapsedTime = computed(() => conversionElapsedTime(task.value?.started_at,
   task.value?.finished_at ?? (activeTask.value ? observedAt.value : null), locale.value))

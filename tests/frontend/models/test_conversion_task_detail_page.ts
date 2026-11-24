@@ -8,10 +8,12 @@ import { i18n } from '@/platform/i18n'
 import { readConversionValidationFailure } from '@/modules/models/conversion-validation-failure'
 import ConversionTaskDetailPage from '@/modules/models/pages/ConversionTaskDetailPage.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
-import { getModelConversionTaskDetail, type ModelConversionTaskDetail } from '@/modules/models/services/model.service'
+import { getModelConversionTaskDetail, listProjectModelCatalog, type ModelConversionTaskDetail } from '@/modules/models/services/model.service'
 
 vi.mock('@/modules/models/services/model.service', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/modules/models/services/model.service')>(), getModelConversionTaskDetail: vi.fn(),
+  ...await importOriginal<typeof import('@/modules/models/services/model.service')>(),
+  getModelConversionTaskDetail: vi.fn(),
+  listProjectModelCatalog: vi.fn(),
 }))
 enableAutoUnmount(afterEach)
 
@@ -42,13 +44,22 @@ describe('conversion task terminal states', () => {
     await router.push('/models/classification/conversion-tasks/task-1')
     await router.isReady()
     const task: ModelConversionTaskDetail = {
-      task_id: 'task-1', display_name: 'classification conversion', project_id: 'project-1', created_at: '2026-10-12T00:00:00Z',
-      state: String(state), current_attempt_no: 1, progress: {}, result: {}, metadata: {}, source_model_version_id: 'source-1',
+      task_id: 'task-1', display_name: 'yolo11 conversion model-version-source-1', project_id: 'project-1', created_at: '2026-10-12T00:00:00Z',
+      state: String(state), current_attempt_no: 1, progress: {}, result: {}, metadata: { source_model_name: '已归档分类模型' }, source_model_version_id: 'source-1',
       target_formats: ['onnx'], requested_target_formats: ['onnx'], produced_formats: [], builds: [], report_summary: {}, task_spec: {}, events: [],
     }
     vi.mocked(getModelConversionTaskDetail).mockResolvedValue(task)
+    vi.mocked(listProjectModelCatalog).mockResolvedValue(state === 'running' ? {
+      total: 1,
+      items: [{
+        model_id: 'model-1', scope_kind: 'project', model_type: 'yolo11', model_name: 'original-name', model_scale: 's', task_type: 'classification',
+        metadata: { display_name: '连接器分类' }, version_count: 1, build_count: 0,
+        available_versions: [{ model_version_id: 'source-1', source_kind: 'training-output', version_number: 3, file_ids: [], metadata: {} }],
+      }],
+    } : { items: [], total: 0 })
     const wrapper = mount(ConversionTaskDetailPage, { global: { plugins: [pinia, i18n, router] } })
     await flushPromises()
+    expect(wrapper.get('h1').text()).toBe(state === 'running' ? '连接器分类 · v3 · ONNX' : '已归档分类模型 · ONNX')
     expect(wrapper.getComponent(ResourceMenu).props('items').find(item => item.id === 'delete')?.disabled).toBe(!canDelete)
     expect(wrapper.findAll('button').some(button => button.text() === '取消转换')).toBe(state === 'running')
     expect(wrapper.text()).toContain(state === 'running' ? '转换完成后显示产物' : '转换超时')

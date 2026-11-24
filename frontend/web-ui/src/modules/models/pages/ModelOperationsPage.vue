@@ -245,12 +245,12 @@
     />
 
     <ModelConversionSourcePickerDialog
-      :open="conversionSourcePickerOpen" :loading="loading"
-      :selected-task-type="selectedTaskType" :task-type-options="taskTypeOptions"
-      :models="conversionModels" :selected-model="conversionBrowseModel"
+      :open="conversionSourcePickerOpen" :loading="conversionPickerUsesPage ? loading : conversionPickerLoading" :load-error="conversionPickerError"
+      :selected-task-type="conversionPickerTask" :task-type-options="taskTypeOptions"
+      :models="conversionPickerModels" :selected-model="conversionPickerModel"
       :selected-version-id="conversionSourceModelVersionId"
-      @close="conversionSourcePickerOpen = false" @change-task-type="setTaskType"
-      @select-model="conversionBrowseModelId = $event" @select-version="selectConversionVersion"
+      @close="conversionSourcePickerOpen = false" @change-task-type="changeConversionPickerTask" @retry="conversionPickerRevision++"
+      @select-model="conversionBrowseModelId = $event" @select-version="confirmConversionPickerVersion"
     />
 
     <TrainingDatasetExportPickerDialog
@@ -689,11 +689,67 @@ watch(baseModelPickerOpen, open => {
 }, { flush: 'sync' })
 
 const {
-  conversionModels, conversionSourcePickerOpen, conversionBrowseModelId, conversionBrowseModel,
+  conversionModels, conversionSourcePickerOpen, conversionBrowseModelId,
   selectedConversionSource, conversionSelectedModelSummary, conversionModelType, conversionSourceModelVersionId,
   openConversionSourcePicker, selectConversionVersion, resetConversionSourceSelection,
   applyVersionSource,
 } = useModelConversionSourceSelection({ sourceModels: projectSourceModels, projectId: selectedProjectId, taskType: selectedTaskType })
+const conversionPickerTaskOverride = ref<ModelTaskType | null>(null)
+const conversionPickerTask = computed(() => conversionPickerTaskOverride.value ?? selectedTaskType.value)
+const conversionPickerUsesPage = computed(() => conversionPickerTask.value === selectedTaskType.value)
+const conversionPickerSources = ref<DeploymentSourceModelSummary[]>([])
+const conversionPickerError = ref('')
+const conversionPickerLoading = ref(false)
+const conversionPickerRevision = ref(0)
+const conversionPickerModels = computed(() => conversionPickerUsesPage.value ? conversionModels.value
+  : conversionPickerSources.value.filter(model => model.task_type === conversionPickerTask.value
+    && (model.scope_kind === 'platform-base' || (model.scope_kind === 'project' && model.project_id === selectedProjectId.value))
+    && model.available_versions.length))
+const conversionPickerModel = computed(() => conversionPickerModels.value.find(model => model.model_id === conversionBrowseModelId.value) ?? null)
+
+watch(conversionSourcePickerOpen, open => {
+  if (!open) conversionPickerTaskOverride.value = null
+}, { flush: 'sync' })
+watch([conversionSourcePickerOpen, conversionPickerTask, conversionPickerUsesPage, selectedProjectId, conversionPickerRevision],
+  async ([open, type, usesPage, projectId], _, onCleanup) => {
+    conversionPickerSources.value = []
+    conversionPickerError.value = ''
+    conversionPickerLoading.value = open && !usesPage && Boolean(projectId)
+    if (!conversionPickerLoading.value) return
+    const request = new AbortController()
+    onCleanup(() => request.abort())
+    try {
+      const models = await listDeploymentSourceModels(projectId, type, request.signal)
+      if (!request.signal.aborted) conversionPickerSources.value = models
+    } catch (error) {
+      if (!request.signal.aborted) conversionPickerError.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
+    } finally {
+      if (!request.signal.aborted) conversionPickerLoading.value = false
+    }
+  })
+
+function changeConversionPickerTask(value: string): void {
+  const type = taskTypeOptions.value.find(option => option.value === value)?.value
+  if (!type || type === conversionPickerTask.value) return
+  conversionPickerTaskOverride.value = type
+  conversionBrowseModelId.value = type === selectedTaskType.value ? selectedConversionSource.value?.model.model_id ?? '' : ''
+}
+
+function confirmConversionPickerVersion(versionId: string, modelId: string): void {
+  if (conversionPickerUsesPage.value) {
+    selectConversionVersion(versionId, modelId)
+    return
+  }
+  const model = conversionPickerModels.value.find(item => item.model_id === modelId)
+  const version = model?.available_versions.find(item => item.model_version_id === versionId)
+  if (!model || !version || conversionSourceIssue(version)) return
+  const taskType = conversionPickerTask.value
+  conversionSourcePickerOpen.value = false
+  void applyTaskType(taskType)
+  applyVersionSource(model, versionId)
+  void updateTaskTypeRoute(taskType)
+}
+
 watch(conversionSourceModelVersionId, (current, previous) => {
   if (previous && current !== previous) {
     tensorRtInt8.value = undefined
