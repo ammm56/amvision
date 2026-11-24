@@ -1,9 +1,45 @@
 """Classification 独立评估报告测试。"""
 
+from dataclasses import replace
+
+from backend.service.api.rest.v1.routes.classification_evaluation_tasks.responses import (
+    build_classification_evaluation_detail_response,
+    build_classification_evaluation_summary_response,
+)
 from backend.service.application.models.training.classification_evaluation_report import (
     build_classification_evaluation_report,
     build_unavailable_test_metrics_report,
 )
+from backend.service.domain.tasks.task_records import TaskRecord
+
+
+def test_classification_evaluation_responses_include_title_fields() -> None:
+    """列表和详情返回命名来源，历史记录可从已保存结果取得输入引用。"""
+
+    task = TaskRecord(
+        task_id="task-1",
+        task_kind="classification-evaluation",
+        project_id="project-1",
+        display_name="classification evaluation dataset-export-1",
+        state="succeeded",
+        result={
+            "model_version_id": "model-version-1",
+            "dataset_export_id": "dataset-export-1",
+            "sample_count": 96,
+        },
+    )
+    summary = build_classification_evaluation_summary_response(task)
+    assert summary.model_version_id == "model-version-1"
+    assert summary.dataset_export_id == "dataset-export-1"
+    assert summary.uses_default_name is None
+    assert summary.sample_count == 96
+
+    named_task = replace(task, metadata={"uses_default_name": False})
+    assert build_classification_evaluation_summary_response(named_task).uses_default_name is False
+    detail = build_classification_evaluation_detail_response(named_task)
+    assert detail.display_name == task.display_name
+    assert detail.model_version_id == summary.model_version_id
+    assert detail.uses_default_name is False
 
 
 def test_classification_evaluation_report_contains_confusion_and_per_class_accuracy() -> None:

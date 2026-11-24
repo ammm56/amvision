@@ -47,6 +47,9 @@
           </tr></tbody>
         </table>
       </section>
+      <p class="comparison-note"><Info :size="15" aria-hidden="true" />{{ zh
+        ? '差值按原始精度计算，再保留三位小数，可能与表中显示值直接相减的结果不同。'
+        : 'Differences are calculated at full precision, then rounded to three decimal places. They may differ from subtracting the displayed values.' }}</p>
       <TabList v-model="activeTab" :tabs="tabs" :label="zh ? '比较明细' : 'Comparison details'" />
       <section class="resource-section comparison-section" role="tabpanel" :aria-label="tabs.find(tab => tab.id === activeTab)?.label">
         <table class="comparison-table">

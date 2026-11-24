@@ -31,6 +31,11 @@ class ClassificationEvaluationSummaryResponse(BaseModel):
     top1_accuracy: float | None = None
     top5_accuracy: float | None = None
     sample_count: int | None = None
+    model_version_id: str | None = Field(default=None, description="评估使用的模型版本 id")
+    dataset_export_id: str | None = Field(default=None, description="评估使用的数据集导出 id")
+    uses_default_name: bool | None = Field(
+        default=None, description="是否使用系统默认任务名称，历史任务未记录时为 null"
+    )
 
 
 class ClassificationEvaluationDetailResponse(ClassificationEvaluationSummaryResponse):
@@ -44,6 +49,7 @@ def build_classification_evaluation_summary_response(task: object) -> Classifica
     """把任务记录转换成 classification evaluation 摘要响应。"""
 
     result = dict(task.result) if task.result else {}
+    metadata = dict(task.metadata) if task.metadata else {}
     return ClassificationEvaluationSummaryResponse(
         task_id=task.task_id,
         display_name=task.display_name,
@@ -56,6 +62,9 @@ def build_classification_evaluation_summary_response(task: object) -> Classifica
         top1_accuracy=result.get("top1_accuracy"),
         top5_accuracy=result.get("top5_accuracy"),
         sample_count=result.get("sample_count"),
+        model_version_id=metadata.get("model_version_id") or result.get("model_version_id"),
+        dataset_export_id=metadata.get("dataset_export_id") or result.get("dataset_export_id"),
+        uses_default_name=metadata.get("uses_default_name"),
     )
 
 

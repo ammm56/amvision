@@ -136,11 +136,12 @@ class SqlAlchemyYoloV8ClassificationEvaluationService:
             "save_result_package": request.save_result_package,
             "extra_options": dict(request.extra_options),
         }
+        provided_name = display_name.strip()
         created_task = self.task_service.create_task(
             CreateTaskRequest(
                 project_id=request.project_id,
                 task_kind=CLASSIFICATION_EVALUATION_TASK_KIND,
-                display_name=display_name.strip()
+                display_name=provided_name
                 or f"classification evaluation {dataset_export.dataset_export_id}",
                 created_by=created_by,
                 task_spec=task_spec,
@@ -150,6 +151,7 @@ class SqlAlchemyYoloV8ClassificationEvaluationService:
                     "dataset_export_manifest_key": dataset_export.manifest_object_key,
                     "dataset_version_id": dataset_export.dataset_version_id,
                     "model_version_id": request.model_version_id,
+                    "uses_default_name": not provided_name,
                 },
                 queue_submission=TaskQueueSubmission(
                     queue_name=CLASSIFICATION_EVALUATION_QUEUE_NAME,

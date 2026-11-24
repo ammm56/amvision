@@ -2,6 +2,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { i18n } from '@/platform/i18n'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import TrainingTaskDetailPage from './TrainingTaskDetailPage.vue'
 import TrainingMetricsCharts from '../components/TrainingMetricsCharts.vue'
 import { estimateTrainingRemainingSeconds } from '../training-remaining-time'
@@ -245,7 +246,7 @@ describe('TrainingTaskDetailPage', () => {
       result: {},
       metadata: {},
       dataset_export_id: 'dataset-export-1',
-      model_version_id: null,
+      model_version_id: 'classifier-output-version',
       latest_checkpoint_model_version_id: null,
       output_object_prefix: 'task-runs/task-classification-1',
       checkpoint_object_key: null,
@@ -394,6 +395,10 @@ describe('TrainingTaskDetailPage', () => {
     const bestFile = wrapper.findAll('.training-output-layout tbody tr').find(row => row.text().includes('best-checkpoint.pt'))
     expect(bestFile?.findAll('td')[4].text()).toBe('1')
     expect(wrapper.getComponent(TrainingMetricsCharts).props('bestEpoch')).toBe(1)
+    expect(wrapper.findAllComponents(ButtonLink).find(link => link.text() === '创建评估')?.props('to')).toEqual({
+      path: '/models',
+      query: { tab: 'evaluation', evaluation: 'classification', evaluationFrom: 'classifier-output-version', datasetFrom: 'dataset-export-1' },
+    })
     await trainFile.get('button').trigger('click')
     await flushPromises()
     const preview = document.querySelector('[role="dialog"]')

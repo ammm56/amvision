@@ -9,6 +9,7 @@ import { i18n, setI18nLocale } from '@/platform/i18n'
 import ModelOperationsPage from '@/modules/models/pages/ModelOperationsPage.vue'
 import ModelConversionSourcePickerDialog from '@/modules/models/components/ModelConversionSourcePickerDialog.vue'
 import ModelConversionForm from '@/modules/models/components/ModelConversionForm.vue'
+import AdditionalEvaluationPanel from '@/modules/models/components/AdditionalEvaluationPanel.vue'
 import TrainingTaskList from '@/modules/models/components/TrainingTaskList.vue'
 import ModelTrainingForm from '@/modules/models/components/ModelTrainingForm.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
@@ -18,7 +19,8 @@ import {
   listProjectModelCatalog, previewModelConversion,
 } from '@/modules/models/services/model.service'
 import { getDatasetExportDetail, listProjectDatasetExports, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
-import { listDetectionEvaluations } from '@/modules/models/services/model-evaluation.service'
+import { listDatasetVersionPage } from '@/modules/datasets/services/dataset-workspace.service'
+import { createModelEvaluation, listDetectionEvaluations, listModelEvaluations } from '@/modules/models/services/model-evaluation.service'
 import { conversionTask, trainingTask } from './task_lifecycle_support'
 
 vi.mock('@/modules/models/services/model.service', async (importOriginal) => ({
@@ -30,9 +32,12 @@ vi.mock('@/modules/models/services/model.service', async (importOriginal) => ({
 vi.mock('@/modules/datasets/services/dataset.service', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/modules/datasets/services/dataset.service')>(), listProjectDatasetExports: vi.fn(), getDatasetExportDetail: vi.fn(),
 }))
+vi.mock('@/modules/datasets/services/dataset-workspace.service', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/modules/datasets/services/dataset-workspace.service')>(), listDatasetVersionPage: vi.fn(),
+}))
 vi.mock('@/modules/models/services/model-evaluation.service', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/modules/models/services/model-evaluation.service')>(),
-  listDetectionEvaluations: vi.fn(),
+  listDetectionEvaluations: vi.fn(), listModelEvaluations: vi.fn(), createModelEvaluation: vi.fn(),
 }))
 vi.mock('@/modules/models/training-parameter-support', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/modules/models/training-parameter-support')>(),
@@ -82,12 +87,47 @@ beforeEach(() => {
   vi.mocked(listDeploymentSourceModels).mockImplementation(async (projectId, taskType) => projectId === 'project-1' && taskType === 'classification' ? [sourceModel] : [])
   vi.mocked(listTrainingParameterSchemas).mockResolvedValue({ protocol_version: 1, items: [] })
   vi.mocked(listProjectDatasetExports).mockResolvedValue([])
+  vi.mocked(listDatasetVersionPage).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 100 })
   vi.mocked(listModelTrainingTasks).mockResolvedValue([])
   vi.mocked(listModelConversionTasks).mockResolvedValue([])
   vi.mocked(listDetectionEvaluations).mockResolvedValue([])
+  vi.mocked(listModelEvaluations).mockResolvedValue([])
   vi.mocked(listProjectModelCatalog).mockResolvedValue({ items: [], total: 0 })
   vi.mocked(createModelConversionTask).mockResolvedValue({ task_id: 'conversion-1' } as never)
   vi.mocked(previewModelConversion).mockResolvedValue({ task_type: 'classification', source_model_version_id: 'version-trained', target_formats: ['openvino-ir'], steps: [] })
+})
+
+it('shows report titles for existing classification evaluations and preserves user-entered names', async () => {
+  const app = setupPage()
+  const existing = {
+    task_id: 'evaluation-default', project_id: 'project-1', state: 'succeeded', created_at: '2026-11-24T05:42:00Z',
+    display_name: 'classification evaluation dataset-export-1', uses_default_name: null,
+    model_version_id: 'version-trained', dataset_export_id: 'dataset-export-1', sample_count: 96,
+  }
+  vi.mocked(listModelEvaluations).mockResolvedValue([
+    existing,
+    { ...existing, task_id: 'evaluation-custom', display_name: '产线分类复核' },
+    { ...existing, task_id: 'evaluation-user-entered', uses_default_name: false },
+    { ...existing, task_id: 'evaluation-unavailable', model_version_id: 'removed-version' },
+  ])
+  vi.mocked(listProjectModelCatalog).mockResolvedValue({
+    items: [{
+      ...sourceModel,
+      available_versions: [{ ...sourceModel.available_versions[0]!, version_number: 2 }],
+    }],
+    total: 1,
+  })
+  await app.router.push({ path: '/models', query: { tab: 'evaluation', evaluation: 'classification' } })
+  const { wrapper } = app.mountPage()
+  await flushPromises()
+  const panel = wrapper.getComponent(AdditionalEvaluationPanel)
+  expect(panel.findAll('tbody tr').map(row => row.get('td').text())).toEqual([
+    '图像分类评估 · 托盘分类 · v2',
+    '产线分类复核',
+    'classification evaluation dataset-export-1',
+    '图像分类评估',
+  ])
+  expect(panel.get('tbody a').attributes('href')).toBe('/models/classification/evaluation-tasks/evaluation-default')
 })
 
 describe('ModelOperationsPage copied training draft', () => {
@@ -208,6 +248,54 @@ describe('ModelOperationsPage conversion flow', () => {
     expect(listDetectionEvaluations).toHaveBeenCalledWith('project-1', expect.any(AbortSignal))
     expect(wrapper.text()).toContain('暂无目标检测评估任务')
     expect(wrapper.findAll('button').some(button => button.isVisible() && button.text().includes('创建训练'))).toBe(false)
+  })
+
+  it.each(['version-trained', 'version-unavailable'])('only prefills the exact eligible classification version %s', async versionId => {
+    const app = setupPage()
+    app.session.currentUser!.scopes.push('datasets:read')
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([{
+      ...sourceModel,
+      available_versions: [
+        { ...sourceModel.available_versions[0]!, model_version_id: 'other-version', version_number: 1 },
+        { ...sourceModel.available_versions[0]!, version_number: 2 },
+      ],
+    }])
+    const datasetExport: DatasetExportSummary = {
+      dataset_export_id: 'test-export', project_id: 'project-1', dataset_id: 'dataset-1',
+      dataset_version_id: 'dataset-v1', format_id: 'imagenet-classification-v1', task_type: 'classification',
+      status: 'completed', created_at: '2026-11-20T08:00:00Z', include_test_split: true, split_names: ['test'],
+      sample_count: 3, category_names: ['ok', 'ng', 'rework'], metadata: {},
+    }
+    vi.mocked(listProjectDatasetExports).mockResolvedValue([
+      { ...datasetExport, dataset_export_id: 'older-export', created_at: '2026-11-19T08:00:00Z' },
+      datasetExport,
+      { ...datasetExport, dataset_export_id: 'same-time-export' },
+    ])
+    vi.mocked(listDatasetVersionPage).mockResolvedValue({ items: [{
+      dataset_version_id: 'dataset-v1', version_number: 2, display_name: '分类测试集', dataset_id: 'dataset-1',
+      project_id: 'project-1', task_type: 'classification', created_at: null, sample_count: 3, category_count: 3,
+      object_count: 0, split_counts: { test: 3 }, metadata: {},
+    }], total: 1, offset: 0, limit: 100 })
+    await app.router.push({ path: '/models', query: { tab: 'evaluation', evaluation: 'classification', evaluationFrom: versionId, datasetFrom: 'test-export' } })
+    const { wrapper, router } = app.mountPage()
+    await flushPromises()
+    const panel = wrapper.getComponent(AdditionalEvaluationPanel)
+    expect(panel.get('h2').text()).toBe('创建评估')
+    const [model, dataset] = panel.findAllComponents(SelectField)
+    const available = versionId === 'version-trained'
+    expect(model?.props('modelValue')).toBe(available ? versionId : '')
+    expect(dataset?.props('modelValue')).toBe(available ? 'test-export' : '')
+    const labels = dataset!.props('options').map(option => option.label)
+    expect(labels.every(label => label.startsWith('分类测试集 · v2 · ImageNet · '))).toBe(true)
+    expect(labels[0]).toContain('2026-11-19')
+    expect(labels[1]).toMatch(/2026-11-20.* · #2$/)
+    expect(labels[2]).toMatch(/2026-11-20.* · #1$/)
+    if (!available) expect(panel.text()).toContain('训练输出的模型版本当前不可用')
+    expect(createModelEvaluation).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.query).toEqual({ tab: 'evaluation', evaluation: 'classification' })
+    await panel.findAll('button').find(button => button.text() === '取消')!.trigger('click')
+    await flushPromises()
+    expect(panel.get('h2').text()).toBe('评估任务')
   })
 
   it('keeps training inputs available when task history fails to load', async () => {

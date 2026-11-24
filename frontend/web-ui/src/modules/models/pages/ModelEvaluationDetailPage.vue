@@ -2,7 +2,7 @@
   <section class="page-stack task-report model-workspace">
     <RouterLink :to="{ path: '/models', query: { tab: 'evaluation', evaluation: kind } }">{{ zh ? '返回评估列表' : 'Back to evaluations' }}</RouterLink>
     <header>
-      <div class="report-heading"><h1>{{ task?.display_name || (zh ? '评估报告' : 'Evaluation report') }}</h1><TaskStateBadge v-if="task" :state="task.state" /></div>
+      <div class="report-heading"><h1>{{ reportTitle }}</h1><TaskStateBadge v-if="task" :state="task.state" /></div>
       <div class="report-actions">
         <Button v-if="report && ['classification','pose','obb'].includes(kind)" @click="showErrors">{{ zh ? '查看错误样本' : 'View errors' }}</Button>
         <Button v-if="report" variant="primary" @click="downloadEvaluationJson(`${taskId}-report.json`, report)"><Download :size="16" />{{ zh ? '下载报告' : 'Download report' }}</Button>
@@ -11,11 +11,30 @@
       </div>
     </header>
     <InlineError :message="error || task?.error_message || ''" />
-    <div v-if="task" class="resource-section report-context">
+    <dl v-if="task && kind === 'classification'" class="resource-section classification-report-context">
+      <div>
+        <dt>{{ zh ? '模型版本' : 'Model version' }}</dt>
+        <dd>{{ modelVersionName || '—' }}</dd>
+      </div>
+      <div>
+        <dt>{{ zh ? '数据集导出' : 'Dataset export' }}</dt>
+        <dd>{{ datasetExportLabel || '—' }}</dd>
+      </div>
+      <div>
+        <dt>{{ zh ? '评估范围' : 'Evaluation scope' }}</dt>
+        <dd>{{ evaluationScope || '—' }}</dd>
+      </div>
+      <div>
+        <dt v-if="task.finished_at">{{ zh ? '完成时间' : 'Finished' }}</dt>
+        <dt v-else>{{ zh ? '创建时间' : 'Created' }}</dt>
+        <dd><time :datetime="task.finished_at || task.created_at">{{ formatSystemDateTime(task.finished_at || task.created_at, 'minutes') }}</time></dd>
+      </div>
+    </dl>
+    <div v-else-if="task" class="resource-section report-context">
       <span>{{ evaluationTypes[kind][zh ? 0 : 1] }}</span>
       <span v-if="modelVersionName">{{ modelVersionName }}</span>
       <span v-if="task.metadata?.dataset_version_id" :title="task.metadata.dataset_version_id">{{ task.metadata.dataset_version_id }}</span>
-      <span v-if="report?.sample_count != null || task.sample_count != null">{{ split ? `${split} · ` : '' }}{{ report?.sample_count ?? task.sample_count }} {{ zh ? '张' : 'images' }}</span>
+      <span v-if="sampleCount != null">{{ evaluationScope }}</span>
       <time :datetime="task.finished_at || task.created_at">{{ formatSystemDateTime(task.finished_at || task.created_at, 'minutes') }}</time>
     </div>
     <p v-if="active" class="resource-section" role="status">{{ activeStatus }}</p>
@@ -119,7 +138,7 @@
     <ConfirmDialog v-if="confirmCancel && task"
       :title="zh ? '取消评估任务' : 'Cancel evaluation'"
       :message="zh ? '确认取消这次评估？' : 'Cancel this evaluation?'"
-      :details="task.display_name"
+      :details="reportTitle"
       :cancel-label="zh ? '返回' : 'Back'"
       :confirm-label="zh ? '确认取消' : 'Confirm cancellation'"
       :busy="cancelling"
@@ -131,10 +150,12 @@
 
 <script setup lang="ts">
 import { useCatalogVersionLabel } from '../composables/useCatalogVersionLabel'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Download } from '@lucide/vue'
+import { getDatasetExportDetail, listDatasetExports, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
+import { getDatasetWorkspace } from '@/modules/datasets/services/dataset-workspace.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -144,8 +165,9 @@ import { cancelTask } from '@/modules/tasks/services/task.service'
 import { useSessionStore } from '@/app/stores/session.store'
 import EvaluationConfusionMatrix from '../components/EvaluationConfusionMatrix.vue'
 import ModelEvaluationSamplePreview from '../components/ModelEvaluationSamplePreview.vue'
-import { formatSmallModelNumber } from '../model-number-format'
-import { evaluationTypes } from '../model-evaluation-types'
+import { evaluationDatasetExportOptions, isEligibleEvaluationExport, type EvaluationDatasetVersion } from '../evaluation-dataset-exports'
+import { formatModelNumber, formatSmallModelNumber } from '../model-number-format'
+import { classificationEvaluationExportId, classificationEvaluationTitle, evaluationModelVersionId, evaluationTypes } from '../model-evaluation-types'
 import { additionalEvaluationKinds, downloadEvaluationJson, getModelEvaluation, getModelEvaluationReport,
   type GeometryIssue, type ModelEvaluationRecord, type ModelEvaluationReport } from '../services/model-evaluation.service'
 
@@ -156,7 +178,29 @@ const zh = computed(() => locale.value.startsWith('zh'))
 const kind = computed(() => additionalEvaluationKinds.find(value => value === route.params.taskType) ?? 'classification')
 const taskId = computed(() => String(route.params.taskId || ''))
 const task = ref<ModelEvaluationRecord | null>(null)
-const modelVersionName = useCatalogVersionLabel(() => [task.value?.project_id, undefined, task.value?.metadata?.model_version_id])
+const modelVersionName = useCatalogVersionLabel(() => [task.value?.project_id, undefined, evaluationModelVersionId(task.value)])
+const classificationExportId = computed(() => kind.value === 'classification' && task.value
+  ? classificationEvaluationExportId(task.value) : '')
+const reportTitle = computed(() => {
+  if (kind.value === 'classification' && task.value) {
+    return classificationEvaluationTitle(task.value, modelVersionName.value, zh.value)
+  }
+  return task.value?.display_name || (zh.value ? '评估报告' : 'Evaluation report')
+})
+const datasetSource = shallowRef<{
+  exports: DatasetExportSummary[]
+  versions: Map<string, EvaluationDatasetVersion>
+} | null>(null)
+const datasetExportLabel = computed(() => {
+  if (!datasetSource.value && classificationExportId.value) return ''
+  const label = datasetSource.value && evaluationDatasetExportOptions(datasetSource.value.exports, datasetSource.value.versions, zh.value)
+    .find(option => option.value === classificationExportId.value)?.label
+  if (label) return label
+  if (classificationExportId.value || task.value?.metadata?.dataset_version_id || task.value?.result?.dataset_version_id) {
+    return zh.value ? '数据集信息暂不可用' : 'Dataset information unavailable'
+  }
+  return ''
+})
 const report = ref<ModelEvaluationReport | null>(null)
 const sampleSection = ref<HTMLElement | null>(null)
 const sampleIssue = ref<GeometryIssue>('all')
@@ -180,6 +224,12 @@ const activeStatus = computed(() => {
   return zh.value ? '评估 Worker 正在处理任务。' : 'The evaluation worker is processing the task.'
 })
 const split = computed(() => report.value?.split_name || task.value?.result?.report_summary?.split_name || '')
+const sampleCount = computed(() => report.value?.sample_count ?? task.value?.sample_count)
+const evaluationScope = computed(() => {
+  const count = sampleCount.value
+  const samples = count == null ? '' : `${count} ${zh.value ? '张' : 'images'}`
+  return [split.value, samples].filter(Boolean).join(' · ')
+})
 const classHeading = computed(() => kind.value === 'segmentation' ? 'BBox AP50–95' : kind.value === 'pose' ? 'OKS AP50–95' : 'Rotated AP50–95')
 function decimal(value?: number): string { return value == null ? '—' : value.toFixed(3) }
 function formatSigmas(values: number[]): string {
@@ -192,10 +242,11 @@ const mainMetrics = computed<Array<{ label: string; value: string | number; ap50
   const data = report.value
   if (!data) return []
   if (kind.value === 'classification') {
+    const accuracy = data.top1_accuracy
     const valid = data.per_class_metrics?.length && data.per_class_metrics.every(row => typeof row.correct_count === 'number')
     const correct = valid ? data.per_class_metrics?.reduce((sum, row) => sum + (row.correct_count ?? 0), 0) : undefined
     return [
-      { label: 'Top-1', value: data.top1_accuracy == null ? '—' : `${(data.top1_accuracy * 100).toFixed(2)}%` },
+      { label: 'Top-1', value: accuracy != null && Number.isFinite(accuracy) ? `${formatModelNumber(accuracy * 100, 2)}%` : '—' },
       { label: zh.value ? '正确' : 'Correct', value: correct ?? '—' },
       { label: zh.value ? '错误' : 'Incorrect', value: correct == null || data.sample_count == null ? '—' : data.sample_count - correct },
       { label: zh.value ? '样本数' : 'Samples', value: data.sample_count ?? '—' },
@@ -225,6 +276,32 @@ async function requestCancellation(): Promise<void> {
 }
 
 watch([kind, taskId], () => { task.value = null; report.value = null; confirmCancel.value = false; sampleIssue.value = 'all' })
+watch(classificationExportId, async (id, _, onCleanup) => {
+  datasetSource.value = null
+  if (!id) return
+  const request = new AbortController()
+  onCleanup(() => request.abort())
+  const { signal } = request
+  const selected = await getDatasetExportDetail(id, signal).catch(() => null)
+  if (signal.aborted) return
+  const versions = new Map<string, EvaluationDatasetVersion>()
+  if (!selected) {
+    datasetSource.value = { exports: [], versions }
+    return
+  }
+  const { dataset_id: datasetId, dataset_version_id: versionId } = selected
+  const [siblings, version] = await Promise.all([
+    listDatasetExports(datasetId, versionId, signal).catch(() => []),
+    !selected.display_name?.trim() || selected.version_number == null
+      ? getDatasetWorkspace(datasetId, versionId, signal).catch(() => null)
+      : null,
+  ])
+  if (signal.aborted) return
+  if (version) versions.set(versionId, version)
+  const exports = siblings.filter(item => item.dataset_export_id !== id && item.status === 'completed'
+    && isEligibleEvaluationExport(item, [selected.format_id]))
+  datasetSource.value = { exports: [selected, ...exports], versions }
+}, { immediate: true })
 watch([kind, taskId, revision], async ([type, id], _, onCleanup) => {
   if (!id) return
   const controller = new AbortController()
@@ -261,6 +338,17 @@ watch([kind, taskId, revision], async ([type, id], _, onCleanup) => {
 .report-context { color:var(--am-text-muted); }
 .report-context > span { max-width:100%; overflow-wrap:anywhere; }
 .report-context > * + * { border-inline-start:1px solid var(--am-border); padding-inline-start:12px; }
+.classification-report-context {
+  display:grid;
+  grid-template-columns:minmax(0,1.25fr) minmax(0,1.4fr) minmax(0,.75fr) minmax(0,.9fr);
+  align-items:start;
+  gap:14px 24px;
+  margin:0;
+  padding:14px 20px;
+}
+.classification-report-context > div { min-width:0; }
+.classification-report-context dt { color:var(--am-text-muted); font-size:var(--am-type-caption); }
+.classification-report-context dd { margin:4px 0 0; color:var(--am-text); font-weight:500; overflow-wrap:anywhere; }
 .report-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .report-columns--classification { grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); }
 .report-columns > article { min-width:0; align-content:start; gap:8px; padding:14px 16px; }
@@ -289,5 +377,11 @@ watch([kind, taskId, revision], async ([type, id], _, onCleanup) => {
 .obb-coordinates p { flex:1 0 min(100%, 170px); margin:0; }
 .obb-axes { display:grid; grid-template-columns:auto auto; gap:0 8px; padding:8px 12px; border-radius:6px; color:var(--am-text-muted); background:var(--am-surface-soft); white-space:nowrap; }
 .obb-issues { display:flex; flex-wrap:wrap; gap:8px; }
-@media (max-width:790px) { .report-columns { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:790px) {
+  .report-columns { grid-template-columns:minmax(0,1fr); }
+  .classification-report-context { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:480px) {
+  .classification-report-context { grid-template-columns:minmax(0,1fr); }
+}
 </style>

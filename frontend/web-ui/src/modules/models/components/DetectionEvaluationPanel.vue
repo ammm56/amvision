@@ -653,7 +653,8 @@ watch(() => props.projectId, () => {
 }, { immediate: true })
 watch([() => route.query.evaluationFrom, () => route.query.datasetFrom, () => props.projectId, () => props.canWrite],
   async ([modelId, datasetId, projectId, canWrite]) => {
-    if (typeof modelId !== 'string' || !modelId || !projectId || !canWrite) return
+    if ((route.query.evaluation && route.query.evaluation !== 'detection')
+      || typeof modelId !== 'string' || !modelId || !projectId || !canWrite) return
     await openWizard({ modelId, exportId: typeof datasetId === 'string' ? datasetId : '', split: null, score: 0.25, nms: 0.7 })
     if (route.query.evaluationFrom === modelId && props.projectId === projectId) {
       const { evaluationFrom: _model, datasetFrom: _dataset, ...query } = route.query

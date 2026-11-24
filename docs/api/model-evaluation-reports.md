@@ -29,6 +29,8 @@
 
 样本和图层依赖任务保存的文件。历史报告可以缺少几何或图层，数据集导出清理后原图也可能不可用。
 
+分类评估的列表和详情响应提供 `model_version_id`、`dataset_export_id` 和 `uses_default_name`。`uses_default_name` 为 `true` 时表示提交时未填写名称，为 `false` 时表示使用提交时填写的名称。历史任务未记录的字段为 `null`。`display_name` 仍返回任务保存的名称。
+
 姿态和旋转框通过 `/samples?issue=errors` 查看错误样本，也可使用 `missed` 和 `extra`。姿态可使用 `keypoints`，旋转框可使用 `angle` 和 `localization`。两类都先按置信度匹配同类标注，合格匹配阈值为 OKS 或 rotated IoU 0.50。剩余同类框按重叠诊断偏差，旋转框仅对齐角度后能达到阈值的记为角度偏差。响应提供按样本统计的 `issue_counts`。
 
 ## 语义分割与异常检测

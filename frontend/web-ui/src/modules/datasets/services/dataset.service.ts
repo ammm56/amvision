@@ -229,9 +229,10 @@ export async function createDatasetExport(input: DatasetExportInput): Promise<Da
   })
 }
 
-export async function listDatasetExports(datasetId: string, datasetVersionId: string): Promise<DatasetExportSummary[]> {
+export async function listDatasetExports(datasetId: string, datasetVersionId: string, signal?: AbortSignal): Promise<DatasetExportSummary[]> {
   return apiRequest<DatasetExportSummary[]>(
     `/datasets/${encodeURIComponent(datasetId)}/versions/${encodeURIComponent(datasetVersionId)}/exports`,
+    { signal },
   )
 }
 

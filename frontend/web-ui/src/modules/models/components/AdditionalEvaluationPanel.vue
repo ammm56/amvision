@@ -13,7 +13,7 @@
         <thead><tr><th scope="col">{{ zh ? '任务名称' : 'Task name' }}</th><th scope="col">{{ zh ? '状态' : 'Status' }}</th><th scope="col">{{ headline.label }}</th><th scope="col">{{ zh ? '样本' : 'Samples' }}</th><th scope="col">{{ zh ? '创建时间' : 'Created' }}</th><th scope="col">{{ zh ? '操作' : 'Actions' }}</th></tr></thead>
         <tbody>
           <tr v-for="task in tasks" :key="task.task_id">
-            <td>{{ task.display_name }}</td><td><TaskStateBadge :state="task.state" /></td>
+            <td>{{ taskName(task) }}</td><td><TaskStateBadge :state="task.state" /></td>
             <td>{{ task[headline.key]?.toFixed(3) ?? '—' }}</td><td>{{ task.sample_count ?? '—' }}</td>
             <td>{{ formatSystemDateTime(task.created_at, 'minutes') }}</td>
             <td><RouterLink :to="`/models/${kind}/evaluation-tasks/${encodeURIComponent(task.task_id)}`">{{ zh ? '查看' : 'View' }}</RouterLink></td>
@@ -30,8 +30,9 @@
       </template>
       <template v-else>
       <p v-if="inputLoading" role="status">{{ zh ? '正在读取模型和数据集导出…' : 'Loading model versions and dataset exports…' }}</p>
-      <label class="field"><span>{{ zh ? '模型版本' : 'Model version' }}</span><Select v-model="modelId" :options="sourceOptions" /></label>
-      <label class="field"><span>{{ zh ? '数据集导出' : 'Dataset export' }}</span><Select v-model="exportId" :options="exportOptions" /></label>
+      <label class="field"><span>{{ zh ? '模型版本' : 'Model version' }}</span><Select v-model="modelId" :options="sourceOptions" :aria-label="zh ? '模型版本' : 'Model version'" /></label>
+      <label class="field"><span>{{ zh ? '数据集导出' : 'Dataset export' }}</span><Select v-model="exportId" :options="exportOptions" :aria-label="zh ? '数据集导出' : 'Dataset export'" /></label>
+      <p v-if="prefillUnavailable && !modelId" role="status">{{ zh ? '训练输出的模型版本当前不可用，请选择可用版本。' : 'The training output version is unavailable. Select an available version.' }}</p>
       <p v-if="!inputLoading && (!models.length || !exports.length)" role="status">{{ zh ? '需要已登记权重和含 test 或 val 的数据集导出。' : 'A registered checkpoint and a dataset export with a test or val split are required.' }}</p>
       <p v-if="mismatch" role="alert">{{ zh ? '模型和导出的类别顺序不同。' : 'The model and export use different class orders.' }}</p>
       <p v-else-if="selectedExport">{{ zh ? '评估划分' : 'Evaluation split' }} · {{ selectedExport.split_names.includes('test') ? 'test' : 'val' }}</p>
@@ -46,24 +47,28 @@
 </template>
 
 <script setup lang="ts">
-import { modelDisplayName, modelVersionDisplayName } from '../model-display-name'
-import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { modelDisplayName, modelVersionDisplayName, readCatalogVersionNames } from '../model-display-name'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Plus } from '@lucide/vue'
 import { listProjectDatasetExports, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
+import { listDatasetVersionPage } from '@/modules/datasets/services/dataset-workspace.service'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import Select from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import { evaluationHeadline } from '../model-evaluation-types'
+import { evaluationDatasetExportOptions, isEligibleEvaluationExport, type EvaluationDatasetVersion } from '../evaluation-dataset-exports'
+import { classificationEvaluationTitle, evaluationHeadline, evaluationModelVersionId, usesDefaultClassificationEvaluationName } from '../model-evaluation-types'
 import { listDeploymentSourceModels, type DeploymentSourceModelSummary } from '../services/model.service'
 import { createDenseEvaluation, createModelEvaluation, isDenseEvaluation, listModelEvaluations, type AdditionalEvaluationKind, type ModelEvaluationRecord } from '../services/model-evaluation.service'
 
 const props = defineProps<{ projectId: string; zh: boolean; canWrite: boolean; kind: AdditionalEvaluationKind }>()
+const route = useRoute()
 const router = useRouter()
 const tasks = ref<ModelEvaluationRecord[]>([])
+const modelVersionNames = shallowRef(new Map<string, string>())
 const revision = ref(0)
 const loading = ref(false)
 const creating = ref(false)
@@ -72,8 +77,11 @@ const submitting = ref(false)
 const error = ref('')
 const models = ref<DeploymentSourceModelSummary[]>([])
 const exports = ref<DatasetExportSummary[]>([])
+const datasetVersions = ref(new Map<string, EvaluationDatasetVersion>())
 const modelId = ref('')
 const exportId = ref('')
+const prefillUnavailable = ref(false)
+let pendingPrefill: { projectId: string; versionId: string; exportId: string } | null = null
 const name = ref('')
 const file = ref<File | null>(null)
 const threshold = ref(0.5)
@@ -89,7 +97,7 @@ const sources = computed(() => models.value.flatMap(model => model.available_ver
   .filter(version => version.checkpoint_storage_uri && version.checkpoint_state !== 'missing')
   .map(version => ({ model, version }))))
 const sourceOptions = computed(() => sources.value.map(({ model, version }) => ({ value: version.model_version_id, label: `${modelDisplayName(model)} · ${modelVersionDisplayName(version, true)}` })))
-const exportOptions = computed(() => exports.value.map(item => ({ value: item.dataset_export_id, label: item.display_name || item.dataset_export_id })))
+const exportOptions = computed(() => evaluationDatasetExportOptions(exports.value, datasetVersions.value, props.zh))
 const selectedExport = computed(() => exports.value.find(item => item.dataset_export_id === exportId.value))
 const mismatch = computed(() => {
   const labels = sources.value.find(item => item.version.model_version_id === modelId.value)?.version.metadata.category_names
@@ -98,32 +106,85 @@ const mismatch = computed(() => {
 })
 const readyToSubmit = computed(() => dense.value ? Boolean(file.value) : Boolean(modelId.value && selectedExport.value && !mismatch.value))
 
-watch([() => props.projectId, revision, creating], async ([project, , open], _, onCleanup) => {
+function taskName(task: ModelEvaluationRecord): string {
+  if (props.kind !== 'classification') return task.display_name
+  return classificationEvaluationTitle(task, modelVersionNames.value.get(evaluationModelVersionId(task)) ?? '', props.zh)
+}
+
+watch([() => route.query.evaluation, () => route.query.evaluationFrom, () => route.query.datasetFrom,
+  () => props.projectId, () => props.canWrite],
+([kind, versionId, datasetId, projectId, canWrite]) => {
+  if (kind !== props.kind || dense.value || !projectId || !canWrite || typeof versionId !== 'string' || !versionId) return
+  pendingPrefill = { projectId, versionId, exportId: typeof datasetId === 'string' ? datasetId : '' }
+  if (creating.value) revision.value++
+  else creating.value = true
+  const { evaluationFrom: _version, datasetFrom: _dataset, ...query } = route.query
+  void router.replace({ query })
+}, { immediate: true })
+
+watch([() => props.projectId, () => props.kind, revision, creating], async ([project, kind, , open], previous, onCleanup) => {
+  if (project !== previous?.[0] || kind !== previous?.[1]) {
+    tasks.value = []
+    modelVersionNames.value = new Map()
+  }
   if (!project) return
   const request = new AbortController()
   onCleanup(() => request.abort())
   error.value = ''
   if (open) {
+    const prefill = pendingPrefill?.projectId === project ? pendingPrefill : null
+    pendingPrefill = null
     modelId.value = ''; exportId.value = ''; name.value = ''
     file.value = null; threshold.value = 0.5
-    models.value = []; exports.value = []
-    const kind = props.kind
+    models.value = []; exports.value = []; datasetVersions.value = new Map()
+    prefillUnavailable.value = false
     if (isDenseEvaluation(kind)) return
     inputLoading.value = true
     try {
       const [availableModels, availableExports] = await Promise.all([
-        listDeploymentSourceModels(project, kind), listProjectDatasetExports(project, kind, 'completed'),
+        listDeploymentSourceModels(project, kind, request.signal), listProjectDatasetExports(project, kind, 'completed'),
       ])
       if (request.signal.aborted) return
+      const eligibleExports = availableExports.filter(item => isEligibleEvaluationExport(item, formats[kind]))
+      const identities = new Map<string, EvaluationDatasetVersion>()
+      const missing = new Set(eligibleExports.filter(item => !item.display_name?.trim() || item.version_number == null)
+        .map(item => item.dataset_version_id))
+      const limit = 100
+      try {
+        for (let offset = 0; missing.size; offset += limit) {
+          const page = await listDatasetVersionPage({ project_id: project, task_type: kind, offset, limit }, request.signal)
+          if (request.signal.aborted) return
+          for (const item of page.items) {
+            if (missing.delete(item.dataset_version_id)) identities.set(item.dataset_version_id, item)
+          }
+          if (!page.items.length || offset + limit >= page.total) break
+        }
+      } catch { /* 版本目录暂不可用时保留可选导出，使用导出已有的信息。 */ }
+      if (request.signal.aborted) return
+      datasetVersions.value = identities
       models.value = availableModels
-      exports.value = availableExports.filter(item => formats[kind].includes(item.format_id)
-        && !item.metadata.files_cleaned_at && item.split_names.some(split => ['val', 'test'].includes(split)))
+      exports.value = eligibleExports
+      if (prefill) {
+        if (sources.value.some(({ version }) => version.model_version_id === prefill.versionId)) {
+          modelId.value = prefill.versionId
+          if (exports.value.some(item => item.dataset_export_id === prefill.exportId)) exportId.value = prefill.exportId
+        } else prefillUnavailable.value = true
+      }
     } catch (cause) { if (!request.signal.aborted) error.value = cause instanceof Error ? cause.message : String(cause) }
     finally { if (!request.signal.aborted) inputLoading.value = false }
     return
   }
   loading.value = true
-  try { tasks.value = await listModelEvaluations(props.kind, project, request.signal) }
+  try {
+    const results = await listModelEvaluations(kind, project, request.signal)
+    if (request.signal.aborted) return
+    tasks.value = results
+    if (kind === 'classification') {
+      const versionIds = results.filter(usesDefaultClassificationEvaluationName).map(evaluationModelVersionId)
+      const names = await readCatalogVersionNames(project, '', versionIds, request.signal).catch(() => new Map<string, string>())
+      if (!request.signal.aborted) modelVersionNames.value = names
+    }
+  }
   catch (cause) { if (!request.signal.aborted) error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { if (!request.signal.aborted) loading.value = false }
 }, { immediate: true })

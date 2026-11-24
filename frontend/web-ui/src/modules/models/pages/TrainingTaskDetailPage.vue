@@ -707,9 +707,9 @@ watch([() => task.value?.project_id, () => task.value?.dataset_export_id, cancel
 })
 const evaluationLocation = computed(() => {
   const source = task.value
-  if (taskType.value !== 'detection' || source?.state !== 'succeeded' || !source.model_version_id || primaryVersionDeleted.value
+  if (!taskType.value || source?.state !== 'succeeded' || !source.model_version_id || primaryVersionDeleted.value
     || !sessionStore.hasScopes(['models:read', 'datasets:read', 'tasks:read', 'tasks:write'])) return null
-  return { path: '/models', query: { tab: 'evaluation', evaluation: 'detection', evaluationFrom: source.model_version_id, datasetFrom: source.dataset_export_id ?? undefined } }
+  return { path: '/models', query: { tab: 'evaluation', evaluation: taskType.value, evaluationFrom: source.model_version_id, datasetFrom: source.dataset_export_id ?? undefined } }
 })
 function selectOutputTab(tab: string): void {
   if (tab === 'events' && !cancelledTraining.value) {

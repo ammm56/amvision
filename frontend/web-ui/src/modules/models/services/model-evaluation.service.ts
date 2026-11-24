@@ -206,8 +206,11 @@ export interface ModelEvaluationRecord {
   error_message?: string
   progress?: { percent?: number }
   sample_count?: number | null
+  model_version_id?: string | null
+  dataset_export_id?: string | null
+  uses_default_name?: boolean | null
   metadata?: { model_version_id?: string; dataset_version_id?: string; dataset_export_id?: string }
-  result?: { report_summary?: { split_name?: string }; report_object_key?: string }
+  result?: { report_summary?: { split_name?: string }; report_object_key?: string; model_version_id?: string; dataset_export_id?: string; dataset_version_id?: string }
   top1_accuracy?: number | null
   map50_95?: number | null
   mask_map50_95?: number | null
