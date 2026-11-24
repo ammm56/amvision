@@ -1,8 +1,37 @@
-import type { ModelTaskType } from './services/model.service'
+import type { ModelTaskType, ModelTrainingTaskDetail } from './services/model.service'
 
 export interface TrainingMetricPoint {
   epoch: number
   metrics: Record<string, number>
+}
+
+export type TrainingCheckpointTask = Pick<ModelTrainingTaskDetail, 'task_type' | 'model_type' | 'training_summary' | 'progress' | 'events'>
+
+export function matchingTrainingMetricEpochs(
+  history: readonly TrainingMetricPoint[],
+  name: string | null | undefined,
+  value: number | null | undefined,
+): number[] {
+  if (!name || value == null) return []
+  const key = name.replace(/^val[_/]/, '')
+  return history.filter(point => (point.metrics[name] ?? point.metrics[key] ?? point.metrics[`val_${key}`]) === value)
+    .map(point => point.epoch)
+}
+
+export function resolveTrainingBestCheckpointEpoch(
+  task: TrainingCheckpointTask | null,
+  matchingEpochs: readonly number[],
+  fileEpoch?: number | null,
+): number | undefined {
+  const recorded = readEpoch({ epoch: fileEpoch })
+    ?? readEpoch({ epoch: task?.training_summary.best_checkpoint_saved_epoch })
+    ?? readEpoch({ epoch: task?.progress.best_checkpoint_saved_epoch })
+    ?? task?.events.map(event => readEpoch({ epoch: readRecord(event.payload.progress).best_checkpoint_saved_epoch }))
+      .filter(epoch => epoch !== null).at(-1)
+  if (recorded != null) return recorded
+  // 旧 YOLO 分类训练只在指标首次达到最高分时保存最佳权重。
+  const savesFirstBest = task?.task_type === 'classification' && ['yolov8', 'yolo11', 'yolo26'].includes(task.model_type ?? '')
+  return matchingEpochs.length === 1 || savesFirstBest ? matchingEpochs[0] : undefined
 }
 
 export interface TrainingScalarPoint {
@@ -203,7 +232,9 @@ export function buildLearningRatePointFromProgress(
   return { epoch, value: learningRate }
 }
 
-export function readPersistedMetricHistory(payload: Record<string, unknown>): TrainingMetricPoint[] {
+export function readPersistedMetricHistory(
+  payload: Record<string, unknown>, { requireRecordedEpoch = false } = {},
+): TrainingMetricPoint[] {
   const rawHistory = readRawHistory(payload)
   const evaluatedEpochs = Array.isArray(payload.evaluated_epochs)
     ? payload.evaluated_epochs
@@ -214,7 +245,7 @@ export function readPersistedMetricHistory(payload: Record<string, unknown>): Tr
     const epoch = readEpoch(record)
       ?? (typeof evaluatedEpoch === 'number' && Number.isInteger(evaluatedEpoch) && evaluatedEpoch >= 1
         ? evaluatedEpoch
-        : index + 1)
+        : requireRecordedEpoch ? null : index + 1)
     const metrics = readFiniteMetrics(record)
     return appendTrainingMetricPoint(
       history,

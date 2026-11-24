@@ -9,6 +9,7 @@ const version: PlatformBaseModelVersionSummary = {
   },
 }
 const task = {
+  task_type: 'detection', model_type: 'yolo11', progress: {}, events: [],
   state: 'succeeded', model_version_id: 'best-version', best_metric_name: 'map50_95', best_metric_value: 0.628358,
   training_summary: {
     validation_metrics_payload: {
@@ -40,5 +41,23 @@ describe('model version metrics', () => {
       max_epochs: 80, epoch_history: [{ epoch: 72, val_map50_95: 0.628358 }],
     }
     expect(modelVersionMetric(version, null, report)?.epoch).toBe(72)
+  })
+
+  it('uses the same first best epoch as legacy YOLO classification training when scores tie', () => {
+    const classifier = {
+      ...task, task_type: 'classification', best_metric_name: 'val_top1_accuracy', best_metric_value: 1,
+      training_summary: { max_epochs: 100 },
+    }
+    const trainedVersion = {
+      ...version, metadata: { metrics_summary: { best_metric_name: 'val_top1_accuracy', best_metric_value: 1 } },
+    }
+    const validationMetrics = {
+      evaluated_epochs: [25, 30, 35],
+      epoch_history: [{ top1_accuracy: 0.99 }, { top1_accuracy: 1 }, { top1_accuracy: 1 }],
+    }
+    expect(modelVersionMetric(trainedVersion, classifier, undefined, { validationMetrics })?.epoch).toBe(30)
+    expect(modelVersionMetric(trainedVersion, classifier, undefined, { validationMetrics, checkpointEpoch: 35 })?.epoch).toBe(35)
+    expect(modelVersionMetric({ ...trainedVersion, model_version_id: 'other-version' }, classifier, undefined,
+      { validationMetrics, checkpointEpoch: 35 })?.epoch).toBeUndefined()
   })
 })

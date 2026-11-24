@@ -237,11 +237,12 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import { ApiError } from '@/shared/api/error'
 import { formatModelNumber } from '../model-number-format'
 import { latestModelVersion, modelDisplayName as displayName, modelVersionCustomName, modelVersionDisplayName } from '../model-display-name'
-import { modelVersionMetric } from '../model-version-metrics'
+import { modelVersionMetric, type TrainingMetricOutputs } from '../model-version-metrics'
+import { resolveTrainingBestCheckpointEpoch } from '../training-metric-history'
 import { modelBuildValidation, saveProjectModelDownload } from '../model-artifact-presentation'
 import { conversionSourceIssue } from '../conversion-source-support'
 import { isModelVersionTaskType, type ModelVersionAction } from '../model-version-action'
-import { downloadProjectModelFile, getProjectModelFileStatus, getModelTrainingTaskDetail, getProjectModelCatalogDetail, getProjectModelVersionSource, listModelVersionReferences, listProjectModelCatalog, type ModelDeploymentReference, type ModelTaskType, type ModelTrainingTaskDetail, type PlatformBaseModelBuild, type PlatformBaseModelDetail, type PlatformBaseModelSummary, type ProjectModelCatalogItem, type ProjectModelVersionSource } from '../services/model.service'
+import { downloadProjectModelFile, getProjectModelFileStatus, getModelTrainingOutputFileDetail, getModelTrainingTaskDetail, getProjectModelCatalogDetail, getProjectModelVersionSource, listModelVersionReferences, listProjectModelCatalog, type ModelDeploymentReference, type ModelTaskType, type ModelTrainingTaskDetail, type PlatformBaseModelBuild, type PlatformBaseModelDetail, type PlatformBaseModelSummary, type ProjectModelCatalogItem, type ProjectModelVersionSource } from '../services/model.service'
 
 const props = withDefaults(defineProps<{ projectId: string; principalKey?: string; active?: boolean; canEdit?: boolean; canTrain?: boolean; canConvert?: boolean; canDeploy?: boolean; launchingConversion?: boolean; launchError?: string; openModelId?: string; openVersionId?: string; requestedTaskType?: string }>(), { active: true, canEdit: false })
 const emit = defineEmits<{ 'open-base-models': []; 'create-training': []; 'import-model-package': []; 'empty-state': [empty: boolean]; 'create-conversion': [source: ModelVersionAction]; 'create-deployment': [source: ModelVersionAction]; 'version-change': [versionId: string]; 'version-deleted': [versionId: string]; 'change-task-type': [task: string] }>()
@@ -321,7 +322,9 @@ const versionOptions = computed(() => detail.value?.versions.map(version => {
   return { label: modelVersionDisplayName(version), value: version.model_version_id, description: modelVersionCustomName(version) || description }
 }) ?? [])
 const metricsReport = shallowRef<unknown>()
-const versionMetric = computed(() => activeVersion.value ? modelVersionMetric(activeVersion.value, trainingTask.value, metricsReport.value) : null)
+const trainingMetricOutputs = shallowRef<TrainingMetricOutputs>()
+const versionMetric = computed(() => activeVersion.value
+  ? modelVersionMetric(activeVersion.value, trainingTask.value, metricsReport.value, trainingMetricOutputs.value) : null)
 const checkpoint = computed(() => activeVersion.value?.files.find(file => file.file_id === activeVersion.value?.checkpoint_file_id))
 const checkpointState = ref<'checking' | 'present' | 'missing' | 'unavailable'>('checking')
 const checkpointDownloading = ref(false)
@@ -637,12 +640,29 @@ watch([referenceQuery, referencePage], ([query], [previousQuery], onCleanup) => 
 })
 watch([activeVersion, () => detail.value?.task_type, () => props.projectId], async ([version, type, projectId], _, onCleanup) => {
   trainingTask.value = null
+  trainingMetricOutputs.value = undefined
   if (!version?.training_task_id || !type || !isKnownTask(type)) return
   const request = new AbortController()
   onCleanup(() => request.abort())
   try {
     const result = await getModelTrainingTaskDetail(type, version.training_task_id, request.signal)
-    if (!request.signal.aborted && result.project_id === projectId) trainingTask.value = result
+    if (request.signal.aborted || result.project_id !== projectId) return
+    trainingTask.value = result
+    if (result.state !== 'succeeded' || result.model_version_id !== version.model_version_id
+      || resolveTrainingBestCheckpointEpoch(result, []) !== undefined) return
+
+    const bestFile = result.checkpoint_object_key
+      ? await getModelTrainingOutputFileDetail(type, result.task_id, 'best-checkpoint', request.signal).catch(() => null)
+      : null
+    if (request.signal.aborted) return
+    if (bestFile?.epoch != null) {
+      trainingMetricOutputs.value = { checkpointEpoch: bestFile.epoch }
+    } else if (result.validation_metrics_object_key) {
+      const report = await getModelTrainingOutputFileDetail(type, result.task_id, 'validation-metrics', request.signal)
+      if (!request.signal.aborted && report.file_status === 'ready') {
+        trainingMetricOutputs.value = { validationMetrics: report.payload }
+      }
+    }
   } catch { /* 任务已清理或当前账号无权读取时，版本详情仍可查看。 */ }
 })
 watch([activeVersion, selected, () => props.projectId] as const, ([version, model, projectId], _, onCleanup) => {
@@ -721,7 +741,8 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 .model-catalog__table tr.is-selected { background:var(--am-action-soft); }
 .model-catalog__name-column { width:29%; }.model-catalog__task-column { width:12%; }.model-catalog__version-column { width:15%; }.model-catalog__source-column { width:13%; }.model-catalog__format-column { width:19%; }.model-catalog__action-column { width:12%; }
 .model-catalog__table th, .model-catalog__table td { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.model-catalog__link { padding:6px 0; border:0; background:none; color:var(--am-brand-primary); cursor:pointer; }
+.model-catalog__link { padding:6px 0; border:0; background:none; color:#006b4d; cursor:pointer; }
+.model-catalog__link:where([data-theme='dark'] *) { color:var(--am-brand-primary); }
 .model-catalog__actions { display:flex; align-items:center; gap:10px; }
 .model-catalog__empty, .model-catalog__message { padding:40px 16px; text-align:center; color:var(--am-text-muted); }
 .model-catalog__notice { display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px; border:1px solid var(--am-border); border-radius:7px; padding:12px 14px; margin:0 0 14px; }

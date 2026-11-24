@@ -518,10 +518,12 @@ import {
   buildMetricPointFromProgress,
   buildRuntimePoint,
   formatTrainingMetricLabel,
+  matchingTrainingMetricEpochs,
   readLegacyRfdetrMetricHistory,
   readPersistedLearningRateHistory,
   readPersistedMetricHistory,
   readPersistedRuntimeHistory,
+  resolveTrainingBestCheckpointEpoch,
   type TrainingMetricPoint,
   type TrainingRuntimePoint,
   type TrainingScalarPoint,
@@ -861,26 +863,14 @@ const estimatedDuration = computed(() => {
 })
 const completedTrainHistory = computed(() => trainMetricHistory.value.filter(point => completedTrainingEpoch.value === null || point.epoch <= completedTrainingEpoch.value))
 const completedValidationHistory = computed(() => validationMetricHistory.value.filter(point => completedTrainingEpoch.value === null || point.epoch <= completedTrainingEpoch.value))
-const bestMetricEpochs = computed(() => {
-  const name = task.value?.best_metric_name
-  const value = task.value?.best_metric_value
-  if (!name || value == null) return []
-  return completedValidationHistory.value
-    .filter(point => (point.metrics[name] ?? point.metrics[name.replace(/^val[_/]/, '')]) === value)
-    .map(point => point.epoch)
-})
-const bestCheckpointEpoch = computed(() => {
-  const recorded = outputFiles.value.find(file => file.file_name === 'best-checkpoint')?.epoch
-    ?? readNumber(task.value?.training_summary.best_checkpoint_saved_epoch)
-    ?? readNumber(progressSnapshot.value.best_checkpoint_saved_epoch)
-    ?? task.value?.events.map(event => readNumber(readRecord(event.payload.progress).best_checkpoint_saved_epoch))
-      .filter(value => value !== null).at(-1)
-  if (recorded != null) return recorded
-  // 兼容未登记权重轮次、且按首次最高分保存的旧分类任务。
-  const savesFirstBest = taskType.value === 'classification' && ['yolov8', 'yolo11', 'yolo26'].includes(task.value?.model_type ?? '')
-  return bestMetricEpochs.value.length === 1 || savesFirstBest ? bestMetricEpochs.value[0] : undefined
-})
-const bestMetricEpoch = computed(() => bestCheckpointEpoch.value ?? bestMetricEpochs.value.at(-1))
+const bestMetricEpochs = computed(() => matchingTrainingMetricEpochs(
+  completedValidationHistory.value, task.value?.best_metric_name, task.value?.best_metric_value,
+))
+const bestCheckpointEpoch = computed(() => resolveTrainingBestCheckpointEpoch(
+  task.value, bestMetricEpochs.value, outputFiles.value.find(file => file.file_name === 'best-checkpoint')?.epoch,
+))
+const bestMetricEpoch = computed(() => bestCheckpointEpoch.value
+  ?? (task.value?.state === 'succeeded' ? undefined : bestMetricEpochs.value.at(-1)))
 const latestCheckpointEpoch = computed(() => readNumber(task.value?.training_summary.latest_checkpoint_epoch)
   ?? readNumber(task.value?.result.latest_checkpoint_epoch) ?? readNumber(task.value?.control_status.last_save_epoch)
   ?? (task.value?.state === 'succeeded' ? completedTrainingEpoch.value : null))
