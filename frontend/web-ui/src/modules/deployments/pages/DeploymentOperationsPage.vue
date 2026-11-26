@@ -189,6 +189,7 @@
       @refresh="transferPanel?.refresh()"
       @begin-import="openDeploymentImportDialog"
       @open-import="transferPanel?.open($event)"
+      @open-deployment="openImportedDeployment"
       @cancel="transferPanel?.cancel($event)"
       @dismiss="transferPanel?.dismiss($event)"
       @updated="transferPanel?.store($event)"
@@ -216,13 +217,13 @@
     <!-- Stop Deployment Confirmation -->
     <ConfirmDialog
       v-if="pendingStopDeployment"
-      :title="t('deploymentWorkspace.dialogs.stopNamedTitle', { name: deploymentCardTitle(pendingStopDeployment) })"
+      :title="t('deploymentWorkspace.dialogs.stopTitle')"
       :message="stopReferences.length ? t('deploymentWorkspace.dialogs.stopNamedMessage') : t('deploymentWorkspace.dialogs.stopMessage')"
       :confirm-label="t('deploymentWorkspace.actions.confirmStop')"
       :cancel-label="t('common.cancel')"
       :busy="!!deploymentRunningAction(pendingStopDeployment.deployment_instance_id)"
       confirm-variant="danger"
-      size="medium"
+      size="default"
       panel-class="deployment-confirm-dialog"
       @cancel="pendingStopDeploymentId = null"
       @confirm="confirmStopDeployment"
@@ -230,6 +231,18 @@
       <template #title-icon>
         <AlertTriangle class="dialog-title-icon is-warning" :size="20" aria-hidden="true" />
       </template>
+      <dl class="deployment-dialog-card">
+        <div><dt>{{ t('deploymentWorkspace.columns.name') }}</dt><dd>{{ deploymentCardTitle(pendingStopDeployment) }}</dd></div>
+        <div>
+          <dt>{{ t('deploymentWorkspace.columns.status') }}</dt>
+          <dd>
+            <span class="dialog-dot-status" :class="{ 'is-running': deploymentSummaryTone(pendingStopDeployment) === 'success' }">
+              <span aria-hidden="true" />{{ deploymentSummaryLabel(pendingStopDeployment) }}
+            </span>
+          </dd>
+        </div>
+        <div><dt>{{ t('deploymentWorkspace.dialogs.resetBusyCount') }}</dt><dd>{{ stopBusyCount }}</dd></div>
+      </dl>
       <div v-if="stopReferences.length" class="dialog-table-wrap">
         <table>
           <thead>
@@ -245,19 +258,16 @@
               <td>Runtime</td>
               <td>
                 <span class="dialog-dot-status" :class="{ 'is-running': refItem.observed_state === 'running' }">
-                  <span aria-hidden="true" />{{ refItem.observed_state }}
+                  <span aria-hidden="true" />{{ dialogReferenceStateLabel(refItem.observed_state) }}
                 </span>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p class="dialog-sub-note">
-        {{ t('deploymentWorkspace.dialogs.stopNoRefsMessage', { busy: stopBusyCount }) }}
-      </p>
-      <div class="dialog-info-bar">
-        <Info :size="15" aria-hidden="true" />
-        <span>{{ t('deploymentWorkspace.dialogs.stopFooterHint') }}</span>
+      <div v-if="stopBusyCount > 0" class="dialog-warning-bar">
+        <AlertCircle :size="15" aria-hidden="true" />
+        <span>{{ t('deploymentWorkspace.dialogs.stopBusyWarning') }}</span>
       </div>
     </ConfirmDialog>
 
@@ -270,7 +280,7 @@
       :confirm-disabled="resetChecking"
       :confirm-variant="resetBusyCount > 0 ? 'primary' : 'danger'"
       :busy="resetChecking || !!deploymentRunningAction(pendingResetDeployment.deployment_instance_id)"
-      size="medium"
+      size="default"
       panel-class="deployment-confirm-dialog"
       @cancel="pendingResetDeploymentId = null"
       @confirm="resetBusyCount > 0 ? recheckResetDeployment() : confirmResetDeployment()"
@@ -299,15 +309,27 @@
 
       <div class="dialog-numbered-section">
         <strong>{{ resetBusyCount > 0 ? t('deploymentWorkspace.dialogs.resetCheckTitle') : t('deploymentWorkspace.dialogs.resetImpactTitle') }}</strong>
-        <ol v-if="resetBusyCount > 0" class="dialog-numbered-list">
-          <li><span>{{ t('deploymentWorkspace.dialogs.resetBusyCount') }}</span><em class="is-warning">{{ t('deploymentWorkspace.dialogs.resetStepBusyCount', { busy: resetBusyCount }) }}</em></li>
-          <li><span>{{ t('deploymentOps.actions.reset') }}</span><em>{{ t('deploymentWorkspace.dialogs.resetStepNotExecuted') }}</em></li>
-          <li><span>{{ t('deploymentWorkspace.dialogs.resetImpactRetain') }}</span><em class="is-success">{{ t('deploymentWorkspace.dialogs.resetStepRetained') }}</em></li>
+        <ol v-if="resetBusyCount > 0" class="dialog-numbered-list dialog-numbered-list--checks">
+          <li>
+            <span class="dialog-step-badge" aria-hidden="true">1</span>
+            <span class="dialog-step-label">{{ t('deploymentWorkspace.dialogs.resetBusyCount') }}</span>
+            <span class="dialog-step-status is-warning"><span class="dialog-step-dot" aria-hidden="true" />{{ t('deploymentWorkspace.dialogs.resetStepBusyCount', { busy: resetBusyCount }) }}</span>
+          </li>
+          <li>
+            <span class="dialog-step-badge" aria-hidden="true">2</span>
+            <span class="dialog-step-label">{{ t('deploymentOps.actions.reset') }}</span>
+            <span class="dialog-step-status is-neutral"><span class="dialog-step-dot" aria-hidden="true" />{{ t('deploymentWorkspace.dialogs.resetStepNotExecuted') }}</span>
+          </li>
+          <li>
+            <span class="dialog-step-badge" aria-hidden="true">3</span>
+            <span class="dialog-step-label">{{ t('deploymentWorkspace.dialogs.resetImpactRetain') }}</span>
+            <span class="dialog-step-status is-success"><span class="dialog-step-dot" aria-hidden="true" />{{ t('deploymentWorkspace.dialogs.resetStepRetained') }}</span>
+          </li>
         </ol>
-        <ol v-else class="dialog-numbered-list">
-          <li>{{ t('deploymentWorkspace.dialogs.resetImpactRelease') }}</li>
-          <li>{{ t('deploymentWorkspace.dialogs.resetImpactCounters') }}</li>
-          <li>{{ t('deploymentWorkspace.dialogs.resetImpactRetain') }}</li>
+        <ol v-else class="dialog-numbered-list dialog-numbered-list--impact">
+          <li><span class="dialog-step-badge" aria-hidden="true">1</span><span class="dialog-step-text">{{ t('deploymentWorkspace.dialogs.resetImpactRelease') }}</span></li>
+          <li><span class="dialog-step-badge" aria-hidden="true">2</span><span class="dialog-step-text">{{ t('deploymentWorkspace.dialogs.resetImpactCounters') }}</span></li>
+          <li><span class="dialog-step-badge" aria-hidden="true">3</span><span class="dialog-step-text">{{ t('deploymentWorkspace.dialogs.resetImpactRetain') }}</span></li>
         </ol>
       </div>
 
@@ -326,7 +348,7 @@
       :cancel-label="isDeleteBlocked ? t('common.close') : t('common.cancel')"
       :confirm-variant="isDeleteBlocked ? 'primary' : 'danger'"
       :busy="isDeleteActionBusy(pendingDeleteDeployment.deployment_instance_id)"
-      size="medium"
+      size="default"
       panel-class="deployment-confirm-dialog"
       @cancel="closeDeleteDeploymentDialog"
       @confirm="isDeleteBlocked ? openDeleteBlockedReferences() : confirmDeleteDeployment()"
@@ -351,7 +373,7 @@
                 <td><strong>{{ refItem.display_name || refItem.workflow_runtime_id }}</strong></td>
                 <td>
                   <span class="dialog-dot-status" :class="{ 'is-running': refItem.observed_state === 'running' }">
-                    <span aria-hidden="true" />Runtime {{ refItem.observed_state }}
+                    <span aria-hidden="true" />{{ dialogReferenceStateLabel(refItem.observed_state) }}
                   </span>
                 </td>
                 <td>
@@ -367,7 +389,6 @@
           <AlertCircle :size="15" aria-hidden="true" />
           <span>{{ !canDeleteDeployment(pendingDeleteDeployment) ? t('deploymentWorkspace.dialogs.deleteRunningHint') : t('deploymentWorkspace.dialogs.deleteBlockedHint') }}</span>
         </div>
-        <p class="dialog-sub-note">{{ t('deploymentWorkspace.dialogs.deleteBlockedModelRetain') }}</p>
       </template>
 
       <template v-else>
@@ -384,7 +405,6 @@
           <AlertCircle :size="15" aria-hidden="true" />
           <span>{{ t('deploymentWorkspace.dialogs.deleteRetentionHint') }}</span>
         </div>
-        <p class="dialog-sub-note">{{ t('deploymentWorkspace.dialogs.deleteRecheckHint') }}</p>
         <InlineError :message="errorMessage" />
       </template>
     </ConfirmDialog>
@@ -431,7 +451,7 @@ import { modelDisplayName, modelVersionDisplayName } from '@/modules/models/mode
 import { modelTaskLabel } from '@/modules/models/model-evaluation-types'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { AlertCircle, AlertTriangle, Cpu, Info, Plus, Trash2, Upload } from '@lucide/vue'
+import { AlertCircle, AlertTriangle, Cpu, Plus, Trash2, Upload } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
@@ -1442,6 +1462,12 @@ function deploymentSummaryTone(item: TaskDeploymentInstance): 'neutral' | 'succe
   return resolveDeploymentVisualState(snap?.status, snap?.health).tone
 }
 
+function dialogReferenceStateLabel(state: string): string {
+  if (state === 'running') return t('deploymentWorkspace.drawer.referenceStateRunning')
+  if (state === 'stopped') return t('deploymentWorkspace.drawer.referenceStateStopped')
+  return t('deploymentWorkspace.drawer.referenceStateOther', { state })
+}
+
 function createEmptyRuntimeSnapshot(): DeploymentRuntimeSnapshot {
   return { status: null, health: null }
 }
@@ -1725,6 +1751,11 @@ function openDeploymentStatusDrawer(deploymentId: string, initialTab: Deployment
   statusDrawerInitialTab.value = initialTab
   statusDrawerOpen.value = true
   void selectDeployment(deploymentId)
+}
+
+function openImportedDeployment(deploymentId: string): void {
+  setActiveTab('instances')
+  openDeploymentStatusDrawer(deploymentId)
 }
 
 function closeDeploymentStatusDrawer(): void {
@@ -2099,9 +2130,31 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   }
 }
 
+:global(.deployment-confirm-dialog.confirm-dialog) {
+  width: min(500px, calc(100vw - 36px));
+  padding: 20px 22px;
+  gap: 14px;
+}
+
+:global(.deployment-confirm-dialog .confirm-dialog__header h2) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:global(.deployment-confirm-dialog .confirm-dialog__content) {
+  gap: 12px;
+}
+
 .dialog-title-icon {
-  vertical-align: -4px;
-  margin-right: 8px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin: 0;
 }
 
 .dialog-title-icon.is-warning {
@@ -2115,32 +2168,35 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 .deployment-dialog-card {
   display: grid;
   gap: 8px;
-  margin: 0 0 14px;
-  padding: 12px 14px;
+  margin: 0;
+  padding: 12px 16px;
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
   font-size: 13px;
 }
 
 .deployment-dialog-card > div {
   display: grid;
-  grid-template-columns: minmax(96px, 34%) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
 }
 
 .deployment-dialog-card dt {
   color: var(--am-text-muted);
+  white-space: nowrap;
 }
 
 .deployment-dialog-card dd {
   margin: 0;
+  color: var(--am-text-strong, var(--am-text));
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 
 .dialog-table-wrap {
-  margin-bottom: 12px;
+  margin: 0;
   border: 1px solid var(--am-border);
   border-radius: 8px;
   overflow-x: auto;
@@ -2164,9 +2220,9 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 }
 
 .dialog-table-wrap th {
-  background: var(--am-table-header);
-  color: var(--am-text-muted);
-  font-size: 12px;
+  background: var(--am-surface);
+  color: var(--am-text);
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -2195,8 +2251,14 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 .dialog-numbered-section {
   display: grid;
   gap: 8px;
-  margin-bottom: 12px;
+  margin: 0;
   font-size: 13px;
+}
+
+.dialog-numbered-section > strong {
+  color: var(--am-text-strong, var(--am-text));
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .dialog-numbered-list {
@@ -2205,15 +2267,25 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   list-style: none;
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  counter-reset: dialog-step;
+  background: var(--am-surface);
+  overflow: hidden;
 }
 
-.dialog-numbered-list li {
-  display: flex;
+.dialog-numbered-list--impact li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  padding: 9px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--am-border);
+}
+
+.dialog-numbered-list--checks li {
+  display: grid;
+  grid-template-columns: 28px 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--am-border);
 }
 
@@ -2221,62 +2293,65 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   border-bottom: 0;
 }
 
-.dialog-numbered-list li::before {
-  counter-increment: dialog-step;
-  content: counter(dialog-step);
+.dialog-step-badge {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  margin-right: 8px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
-  background: var(--am-surface-muted);
   border: 1px solid var(--am-border);
+  background: var(--am-surface);
+  color: var(--am-text-muted);
   font-size: 11px;
-  color: var(--am-text-muted);
-  flex-shrink: 0;
-}
-
-.dialog-numbered-list li > span:first-child {
-  flex: 1 1 auto;
-}
-
-.dialog-numbered-list em {
-  font-style: normal;
   font-weight: 600;
-  color: var(--am-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-.dialog-numbered-list em.is-warning { color: var(--am-warning-text); }
-.dialog-numbered-list em.is-success { color: var(--am-action-primary-strong); }
+.dialog-step-text {
+  color: var(--am-text);
+  line-height: 1.45;
+}
 
-.dialog-info-bar,
+.dialog-step-label {
+  color: var(--am-text);
+  font-weight: 500;
+}
+
+.dialog-step-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.dialog-step-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--am-neutral-icon);
+}
+
+.dialog-step-status.is-warning { color: var(--am-warning-text); }
+.dialog-step-status.is-warning .dialog-step-dot { background: var(--am-warning-icon); }
+.dialog-step-status.is-neutral { color: var(--am-text-muted); }
+.dialog-step-status.is-success { color: var(--am-action-primary-strong); }
+.dialog-step-status.is-success .dialog-step-dot { background: var(--am-action-primary); }
+
 .dialog-warning-bar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  margin-bottom: 8px;
-}
-
-.dialog-info-bar {
-  border: 1px solid var(--am-border);
-  background: var(--am-surface-muted);
-  color: var(--am-text-muted);
-}
-
-.dialog-warning-bar {
   border: 1px solid var(--am-warning-border);
+  border-radius: 8px;
   background: var(--am-warning-surface);
   color: var(--am-warning-text);
+  font-size: 12px;
+  margin: 0;
 }
 
-.dialog-sub-note {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: var(--am-text-muted);
+.dialog-warning-bar > svg {
+  flex-shrink: 0;
 }
 
 .deployment-create-panel__heading {
@@ -2334,7 +2409,7 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   padding: 7px 10px;
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
 }
 
 .deployment-profile-summary span {

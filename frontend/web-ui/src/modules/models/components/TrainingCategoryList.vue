@@ -45,7 +45,7 @@ defineProps<{
   padding: 4px 8px;
   border: 1px solid var(--am-border);
   border-radius: 5px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
   color: var(--am-text);
   font-size: 13px;
   overflow-wrap: anywhere;
@@ -55,7 +55,7 @@ defineProps<{
   gap: 0;
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-sm);
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
 }
 .training-category-list--ordered > li {
   display: grid;

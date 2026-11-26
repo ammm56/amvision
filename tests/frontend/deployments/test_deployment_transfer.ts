@@ -243,4 +243,33 @@ describe('部署包页面流程', () => {
     expect(wrapper.emitted('chooseFile')).toHaveLength(1)
     wrapper.unmount()
   })
+
+  it('去重展示冲突问题、置顶资源映射并将运行配置折叠在 details 中', async () => {
+    vi.mocked(service.listTransfers).mockResolvedValue([{
+      ...structuredClone(operation),
+      state: 'needs_attention',
+      plan: {
+        ...operation.plan!,
+        reused: ['model'],
+        issues: [
+          { code: 'id_conflict', reason: '目标已有不同内容或不同归属的同 ID 资源', blocking: false },
+          { code: 'id_conflict', reason: '目标已有不同内容或不同归属的同 ID 资源', blocking: false },
+          { code: 'id_conflict', reason: '目标已有不同内容或不同归属的同 ID 资源', blocking: false },
+        ],
+      },
+    }])
+    const wrapper = mount(DeploymentTransferPanel, { props: { projectId: 'p' }, global: { stubs } })
+    await flushPromises()
+    ;(wrapper.vm as unknown as { beginImport(): void }).beginImport()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '继续导入')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.transfer-issues-callout li')).toHaveLength(1)
+    expect(wrapper.find('.transfer-issues-callout__count').text()).toBe('×3')
+    expect(wrapper.find('details.transfer-section').exists()).toBe(true)
+    expect(wrapper.find('details.transfer-section').attributes('open')).toBeUndefined()
+    expect(wrapper.find('.transfer-mapping').exists()).toBe(true)
+    wrapper.unmount()
+  })
 })

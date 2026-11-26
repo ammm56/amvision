@@ -91,7 +91,7 @@ h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .derivation-comparison :deep(table) { border-collapse: collapse; table-layout: fixed; }
 .derivation-comparison :deep(th), .derivation-comparison :deep(td) { border: 1px solid var(--am-border); padding: 5px 12px; text-align: center; }
 .derivation-comparison :deep(tbody th) { text-align: left; background: transparent; font-weight: 400; }
-.derivation-comparison :deep(thead th) { background: var(--am-surface-muted); font-weight: 500; }
+.derivation-comparison :deep(thead th) { background: var(--am-surface); font-weight: 500; }
 .derivation-comparison :deep(td.derivation-delta--positive) { color: var(--am-brand-primary); }
 .derivation-comparison :deep(td.derivation-delta--negative) { color: var(--am-danger-text); }
 .derivation-checks { display: grid; grid-template-columns: minmax(0, 1fr); }

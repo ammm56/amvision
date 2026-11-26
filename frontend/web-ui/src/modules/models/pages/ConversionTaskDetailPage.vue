@@ -772,7 +772,7 @@ async function deleteCurrentTask(): Promise<void> {
 .conversion-stage-timeline li:not(:last-child)::after { content:''; position:absolute; width:16px; left:100%; top:26px; border-top:1px dashed var(--am-border-strong); }
 .conversion-stage-timeline li.is-done:not(:last-child)::after { border-top:1px solid var(--am-brand-primary); }
 .conversion-stage-timeline li strong { color:var(--am-text); overflow-wrap:anywhere; }
-.conversion-stage-timeline__mark { grid-row:span 2; align-self:start; display:grid; place-items:center; width:27px; height:27px; border:1px solid var(--am-border); border-radius:50%; color:var(--am-text-muted); background:var(--am-surface-muted); }
+.conversion-stage-timeline__mark { grid-row:span 2; align-self:start; display:grid; place-items:center; width:27px; height:27px; border:1px solid var(--am-border); border-radius:50%; color:var(--am-text-muted); background:var(--am-surface); }
 .is-done .conversion-stage-timeline__mark { color:var(--am-brand-on-primary); background:var(--am-brand-primary); border-color:transparent; }
 .is-failed .conversion-stage-timeline__mark { color:var(--am-danger-text); background:var(--am-danger-surface); }
 .is-running .conversion-stage-timeline__mark { color:var(--am-success-text); background:var(--am-success-surface); }
@@ -783,7 +783,7 @@ async function deleteCurrentTask(): Promise<void> {
 .conversion-stage-timeline .is-done > span:last-child { color:var(--am-action-primary-strong); }
 .conversion-stage-timeline .is-failed > span:last-child { color:var(--am-danger-text); }
 .conversion-cancelled-result h3 { margin:0; }
-.conversion-cancelled-note { display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:6px; background:var(--am-surface-muted); }
+.conversion-cancelled-note { display:flex; align-items:center; gap:14px; padding:12px 14px; border:1px solid var(--am-border); border-radius:6px; background:var(--am-surface); }
 .conversion-cancelled-note svg { flex:none; color:var(--am-neutral-text); }
 .conversion-cancelled-note p { margin:3px 0 0; color:var(--am-text-muted); }
 @container (max-width: 785px) {

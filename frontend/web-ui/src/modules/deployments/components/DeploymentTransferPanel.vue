@@ -119,12 +119,27 @@
               <span v-if="opened.total_bytes || opened.upload_bytes">{{ bytes(opened.total_bytes || opened.upload_bytes || 0) }}</span>
             </div>
           </div>
-          <div v-if="opened.summary" class="summary-grid transfer-package-banner__grid">
-            <div><span>{{ tr('model') }}</span><strong>{{ opened.summary.model.model_name }}</strong></div>
-            <div><span>{{ tr('task') }}</span><strong>{{ modelTaskLabel(opened.summary.model.task_type, zh) }}</strong></div>
-            <div><span>{{ tr('backend') }}</span><strong>{{ formatDeploymentBackend(opened.summary.deployment.runtime_backend) }} · {{ opened.summary.inference.runtime_precision.toUpperCase() }}</strong></div>
-            <div><span>{{ tr('input') }}</span><strong>{{ opened.summary.inference.input_size.width }} × {{ opened.summary.inference.input_size.height }}</strong></div>
-            <div><span>{{ tr('categories') }}</span><strong>{{ opened.summary.category_count }}</strong></div>
+          <div v-if="opened.summary" class="transfer-package-banner__grid">
+            <div :title="opened.summary.model.model_name">
+              <span>{{ tr('model') }}</span>
+              <strong>{{ opened.summary.model.model_name }}</strong>
+            </div>
+            <div>
+              <span>{{ tr('task') }}</span>
+              <strong>{{ modelTaskLabel(opened.summary.model.task_type, zh) }}</strong>
+            </div>
+            <div>
+              <span>{{ tr('backend') }}</span>
+              <strong>{{ formatDeploymentBackend(opened.summary.deployment.runtime_backend) }} · {{ opened.summary.inference.runtime_precision.toUpperCase() }}</strong>
+            </div>
+            <div>
+              <span>{{ tr('input') }}</span>
+              <strong>{{ opened.summary.inference.input_size.width }} × {{ opened.summary.inference.input_size.height }}</strong>
+            </div>
+            <div>
+              <span>{{ tr('categories') }}</span>
+              <strong>{{ opened.summary.category_count }}</strong>
+            </div>
           </div>
         </div>
 
@@ -136,10 +151,10 @@
                 <span>{{ tr('name') }}</span>
                 <input v-model="options.display_name" maxlength="128" @input="dirty = true">
               </label>
-              <label class="field">
+              <div class="field">
                 <span>{{ tr('device') }}</span>
-                <SelectField :model-value="options.device_name || ''" :options="deviceOptions" @update:model-value="value => { options.device_name = String(value); dirty = true }" />
-              </label>
+                <SelectField floating :aria-label="tr('device')" :model-value="options.device_name || ''" :options="deviceOptions" @update:model-value="value => { options.device_name = String(value); dirty = true }" />
+              </div>
               <label class="field">
                 <span>{{ trOpt('callMode', '调用模式', 'Call mode') }}</span>
                 <input :value="callModeSyncLabel" readonly>
@@ -154,29 +169,15 @@
             </label>
           </section>
 
-          <section v-if="Object.keys(configuration).length" class="transfer-section transfer-section--expanded">
-            <div class="transfer-section__header">
-              <h4>{{ tr('configuration') }}</h4>
-              <Button variant="secondary" size="sm" :disabled="busy" @click="resetDeviceConfiguration">{{ tr('recommended') }}</Button>
-            </div>
-            <div class="configuration-content">
-              <p class="configuration-hint">{{ tr('preserve') }}</p>
-              <fieldset v-for="(fields, group) in configuration" :key="group" class="configuration-group">
-                <legend>{{ groupLabel(String(group)) }}</legend>
-                <div class="form-grid">
-                  <label v-for="(value, key) in fields" :key="key" :class="typeof value === 'boolean' ? 'configuration-toggle' : 'field'">
-                    <span>{{ fieldLabel(String(key)) }}</span>
-                    <input v-if="typeof value === 'boolean'" type="checkbox" :checked="value" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).checked)">
-                    <input v-else :value="Array.isArray(value) ? value.join(',') : value ?? ''" :readonly="key === 'kind' || key === 'instance_count'" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).value)">
-                  </label>
-                </div>
-              </fieldset>
-            </div>
-          </section>
-
-          <ul v-if="opened.plan?.issues.length" class="transfer-issues">
-            <li v-for="issue in opened.plan.issues" :key="issue.reason" class="transfer-error">{{ issue.reason }}</li>
-          </ul>
+          <div v-if="uniqueIssues.length" class="transfer-issues-callout" role="note">
+            <AlertCircle :size="15" class="transfer-issues-callout__icon" aria-hidden="true" />
+            <ul>
+              <li v-for="issue in uniqueIssues" :key="issue.reason">
+                <span>{{ issue.reason }}</span>
+                <em v-if="issue.count > 1" class="transfer-issues-callout__count">×{{ issue.count }}</em>
+              </li>
+            </ul>
+          </div>
         </template>
 
         <section v-if="opened.plan" class="transfer-step-block">
@@ -195,10 +196,10 @@
               <tbody>
                 <tr v-for="(value, key) in opened.plan.mapping" :key="key">
                   <th scope="row">
-                    {{ resourceLabel(String(key)) }}<small v-if="isReusedResource(String(key))">{{ tr('reuse') }}</small>
+                    {{ resourceLabel(String(key)) }}
                   </th>
-                  <td>{{ opened.plan.original[key] || '—' }}</td>
-                  <td>{{ value || '—' }}</td>
+                  <td :title="opened.plan.original[key] || '—'"><span class="transfer-mapping__cell">{{ opened.plan.original[key] || '—' }}</span></td>
+                  <td :title="value || '—'"><span class="transfer-mapping__cell">{{ value || '—' }}</span></td>
                   <td>
                     <span class="transfer-handling-pill" :class="{ 'is-reused': isReusedResource(String(key)) }">
                       {{ isReusedResource(String(key)) ? trOpt('handlingReuse', '复用', 'Reuse') : trOpt('handlingCreate', '新建', 'Create') }}
@@ -215,11 +216,28 @@
               </tbody>
             </table>
           </div>
-          <p class="transfer-mapping-note">
-            <Info :size="14" aria-hidden="true" />
-            <span>{{ trOpt('mappingReuseNote', '同名不能独立作为复用依据。', 'Identical names alone do not qualify for reuse.') }}</span>
-          </p>
         </section>
+
+        <details v-if="opened.state !== 'completed' && Object.keys(configuration).length" class="transfer-section">
+          <summary class="transfer-section__header">
+            <span>{{ tr('configuration') }}</span>
+          </summary>
+          <div class="configuration-content">
+            <div class="transfer-section__toolbar">
+              <Button variant="secondary" size="sm" :disabled="busy" @click="resetDeviceConfiguration">{{ tr('recommended') }}</Button>
+            </div>
+            <fieldset v-for="(fields, group) in configuration" :key="group" class="configuration-group">
+              <legend>{{ groupLabel(String(group)) }}</legend>
+              <div class="form-grid">
+                <label v-for="(value, key) in fields" :key="key" :class="typeof value === 'boolean' ? 'configuration-toggle' : 'field'">
+                  <span>{{ fieldLabel(String(key)) }}</span>
+                  <input v-if="typeof value === 'boolean'" type="checkbox" :checked="value" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).checked)">
+                  <input v-else :value="Array.isArray(value) ? value.join(',') : value ?? ''" :readonly="key === 'kind' || key === 'instance_count'" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).value)">
+                </label>
+              </div>
+            </fieldset>
+          </div>
+        </details>
 
         <LoadingPanel v-if="transferIsActive(opened.state)" compact :title="transferStateLabel(opened.state)" :description="opened.progress_bytes ? bytes(opened.progress_bytes) : tr('preparing')" />
       </div>
@@ -229,7 +247,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue'
-import { CheckCircle2, FileArchive, FileSearch, Info, PlusCircle } from '@lucide/vue'
+import { AlertCircle, CheckCircle2, FileArchive, FileSearch, PlusCircle } from '@lucide/vue'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import { buildDeploymentDeviceOptions } from '../deployment-device-support'
@@ -269,6 +287,15 @@ const options = ref<TransferOptions>({})
 const configuration = ref<Record<string, Record<string, unknown>>>({})
 const dirty = ref(false)
 const needsAnalysis = computed(() => dirty.value || opened.value?.state !== 'ready')
+const uniqueIssues = computed(() => {
+  const issues = opened.value?.plan?.issues ?? []
+  const counts = new Map<string, number>()
+  for (const issue of issues) {
+    if (!issue?.reason) continue
+    counts.set(issue.reason, (counts.get(issue.reason) ?? 0) + 1)
+  }
+  return Array.from(counts.entries()).map(([reason, count]) => ({ reason, count }))
+})
 const deviceOptions = computed(() => {
   const values = buildDeploymentDeviceOptions(props.devices, opened.value?.summary?.deployment.runtime_backend, { automaticDefault: tr('automatic'), openvinoAutoDefault: 'AUTO', openvinoGpu: 'GPU' }).filter(item => item.value)
   const source = options.value.device_name
@@ -452,7 +479,7 @@ defineExpose({ items, busy, upload, beginImport, openImportDialog, open, refresh
 .transfer-feedback > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .transfer-row > .ui-button, .transfer-feedback > .ui-button { flex-shrink: 0; }
 .transfer-form { display: grid; gap: 16px; }
-.transfer-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 10px 12px; list-style: none; border: 1px solid var(--am-border); border-radius: 8px; background: var(--am-surface-muted); font-size: 12px; }
+.transfer-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 10px 12px; list-style: none; border: 1px solid var(--am-border); border-radius: 8px; background: var(--am-surface); font-size: 12px; }
 .transfer-stepper li { display: flex; align-items: center; gap: 6px; color: var(--am-text-muted); }
 .transfer-stepper li span { display: grid; place-items: center; width: 20px; height: 20px; flex-shrink: 0; border-radius: 999px; border: 1px solid var(--am-border); background: var(--am-surface); font-weight: 700; }
 .transfer-stepper li.is-current { color: var(--am-action-primary-strong); }
@@ -470,7 +497,7 @@ defineExpose({ items, busy, upload, beginImport, openImportDialog, open, refresh
   padding: 12px 14px;
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
 }
 
 .transfer-package-card__info,
@@ -522,7 +549,8 @@ defineExpose({ items, busy, upload, beginImport, openImportDialog, open, refresh
 }
 
 .transfer-package-banner__grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) repeat(4, minmax(0, 1fr));
   gap: 8px 12px;
   padding: 10px 0 0;
   border-top: 1px solid var(--am-border);
@@ -531,31 +559,46 @@ defineExpose({ items, busy, upload, beginImport, openImportDialog, open, refresh
 .transfer-package-banner__grid > div {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .transfer-package-banner__grid span {
   font-size: 12px;
   color: var(--am-text-muted);
+  white-space: nowrap;
 }
 
 .transfer-package-banner__grid strong {
   font-size: 13px;
+  font-weight: 600;
   line-height: 1.4;
-  overflow-wrap: anywhere;
+  color: var(--am-text-strong, var(--am-text));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.transfer-section { border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); min-width: 0; }
+.transfer-section { border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); background: var(--am-surface); min-width: 0; }
 .transfer-section__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--am-text-strong);
+  list-style: none;
 }
-.transfer-section__header h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--am-text-strong); }
-.configuration-content { display: grid; gap: 14px; padding: 0 16px 16px; }
-.configuration-hint { margin: 0; color: var(--am-text-muted); font-size: 13px; line-height: 1.5; }
-.configuration-group { min-width: 0; margin: 0; padding: 14px 0 0; border: 0; border-top: 1px solid var(--am-border); }
+.transfer-section__header::-webkit-details-marker { display: none; }
+.transfer-section__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+.configuration-content { display: grid; gap: 12px; padding: 4px 14px 14px; border-top: 1px solid var(--am-border); }
+.configuration-group { min-width: 0; margin: 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--am-border); }
+.configuration-group:first-of-type { padding-top: 0; border-top: 0; }
 .configuration-group legend { padding: 0 8px 0 0; font-size: 13px; font-weight: 650; }
 .transfer-form .form-grid { align-items: start; gap: 14px; }
 .transfer-form .field { min-width: 0; }
@@ -563,17 +606,48 @@ defineExpose({ items, busy, upload, beginImport, openImportDialog, open, refresh
 .configuration-toggle { display: flex; align-items: center; justify-content: space-between; align-self: end; min-height: 40px; gap: 12px; font-size: 13px; font-weight: 650; }
 .configuration-toggle input { width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; margin: 0; }
 .transfer-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.transfer-issues { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.transfer-issues-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--am-warning-border);
+  border-radius: 8px;
+  background: var(--am-warning-surface);
+  color: var(--am-warning-text);
+  font-size: 12.5px;
+}
+.transfer-issues-callout__icon { flex-shrink: 0; margin-top: 2px; }
+.transfer-issues-callout ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.transfer-issues-callout li { display: flex; align-items: center; gap: 6px; }
+.transfer-issues-callout__count {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--am-warning-border);
+}
 
-.transfer-mapping { border: 1px solid var(--am-border); border-radius: 8px; overflow-x: auto; }
+.transfer-mapping { border: 1px solid var(--am-border); border-radius: 8px; overflow-x: auto; background: var(--am-surface); }
 .transfer-mapping table { width: 100%; min-width: 560px; table-layout: fixed; border-collapse: collapse; }
 .transfer-mapping th:nth-child(1) { width: 16%; }
-.transfer-mapping th:nth-child(2) { width: 23%; }
-.transfer-mapping th:nth-child(3) { width: 23%; }
+.transfer-mapping th:nth-child(2) { width: 22%; }
+.transfer-mapping th:nth-child(3) { width: 22%; }
 .transfer-mapping th:nth-child(4) { width: 14%; }
-.transfer-mapping th:nth-child(5) { width: 24%; }
-.transfer-mapping th, .transfer-mapping td { overflow-wrap: anywhere; vertical-align: middle; padding: 10px 12px; font-size: 13px; }
-.transfer-mapping small { display: block; margin-top: 2px; color: var(--am-text-muted); font-weight: 400; }
+.transfer-mapping th:nth-child(5) { width: 26%; }
+.transfer-mapping th { background: var(--am-surface); color: var(--am-text); font-size: 14px; font-weight: 600; padding: 10px 12px; }
+.transfer-mapping td { vertical-align: middle; padding: 10px 12px; font-size: 13px; }
+.transfer-mapping tbody th[scope="row"] { font-size: 13px; font-weight: 600; color: var(--am-text); padding: 10px 12px; }
+.transfer-mapping__cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--am-font-mono);
+  font-size: 12px;
+  color: var(--am-text-muted);
+}
 
 .transfer-handling-pill {
   display: inline-flex;
@@ -581,7 +655,7 @@ defineExpose({ items, busy, upload, beginImport, openImportDialog, open, refresh
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid var(--am-border);
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;

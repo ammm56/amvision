@@ -12,6 +12,7 @@ import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import DeploymentOperationsPage from '@/modules/deployments/pages/DeploymentOperationsPage.vue'
 import DeploymentCapabilitiesDrawer from '@/modules/deployments/components/DeploymentCapabilitiesDrawer.vue'
 import DeploymentStatusDrawer from '@/modules/deployments/components/DeploymentStatusDrawer.vue'
+import DeploymentInstanceTable from '@/modules/deployments/components/DeploymentInstanceTable.vue'
 import DeploymentTransferRecordsTab from '@/modules/deployments/components/DeploymentTransferRecordsTab.vue'
 import {
   createTaskDeployment,
@@ -811,10 +812,66 @@ describe('Deployment workspace P6 architecture & interactions', () => {
     await drawerTabs[2]!.trigger('click')
     expect(wrapper.text()).toContain('输出内容')
     expect(wrapper.text()).toContain('boxes（目标框）、classes（类别）、scores（置信度）')
+    expect(wrapper.findAll('.training-category-list > li').map(li => li.text())).toEqual(['ok', 'ng'])
+    expect(wrapper.text()).not.toContain('ok / ng')
+    expect(wrapper.text()).not.toContain('Trigger 入口在集成中配置')
+    expect(wrapper.text()).not.toContain('.NET 同步调用返回结果')
+    expect(wrapper.text()).not.toContain('工业同步调用保持立即执行')
+
+    await drawerTabs[3]!.trigger('click')
+    expect(wrapper.text()).not.toContain('重新检查只查询状态')
+    expect(wrapper.find('.drawer-empty-state__text').text()).toBe('暂无部署事件')
 
     await drawerTabs[4]!.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Runtime 运行中')
+    expect(wrapper.text()).not.toContain('该部署被以下对象引用')
+  })
+
+  it('renders concise empty references state, green info event badge, and direct copy-id icon in DeploymentStatusDrawer', async () => {
+    vi.mocked(listDeploymentReferences).mockResolvedValueOnce({ items: [], total: 0 })
+    const wrapper = mount(DeploymentStatusDrawer, {
+      props: {
+        open: true,
+        deployment: sampleDeployment,
+        status: runningStatus,
+        health: idleHealth,
+        cpuResourceSummary: null,
+        events: [
+          {
+            deployment_instance_id: 'deploy-1',
+            runtime_mode: 'sync',
+            sequence: 1,
+            created_at: '2026-11-26T10:00:00Z',
+            event_type: 'deployment.started',
+            message: 'ready',
+            payload: {},
+          },
+        ],
+        eventsLoading: false,
+        displayName: '连接器检测服务',
+        summaryLabel: '运行正常',
+        summaryTone: 'success',
+      },
+      global: {
+        plugins: [i18n, router],
+        stubs: { Teleport: true },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('button.drawer-inline-toggle').exists()).toBe(false)
+    expect(wrapper.find('button[data-deployment-action="copy-id"]').exists()).toBe(true)
+    expect(wrapper.find('.drawer-id-copy__tooltip').text()).toContain('deploy-1')
+    expect(wrapper.text()).not.toContain('正在执行不影响服务就绪状态')
+
+    const drawerTabs = wrapper.findAll('.local-tabs__tab')
+    await drawerTabs[3]!.trigger('click')
+    expect(wrapper.find('.drawer-event-level.is-info .drawer-event-badge').exists()).toBe(true)
+
+    await drawerTabs[4]!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.drawer-empty-state__text').text()).toBe('暂无引用')
   })
 
   it('opens Step 1 import wizard dialog from DeploymentOperationsPage import-wizard button', async () => {
@@ -830,5 +887,130 @@ describe('Deployment workspace P6 architecture & interactions', () => {
     expect(bodyText).toContain('导入部署实例')
     expect(bodyText).toContain('选择部署实例包')
     expect(bodyText).toContain('未运行检查')
+  })
+
+  it('renders compact Stop and left-aligned Reset confirmation dialogs without redundant footer hints when idle', async () => {
+    vi.mocked(listDeploymentReferences).mockResolvedValue({ items: [], total: 0 })
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n, router] },
+    })
+    await flushPromises()
+
+    wrapper.get('[data-deployment-id="deploy-1"]').findComponent(ResourceMenu).vm.$emit('action', 'stop')
+    await flushPromises()
+    expect(wrapper.text()).toContain('停止部署实例')
+    expect(wrapper.find('.deployment-dialog-card').text()).toContain('连接器检测服务')
+    expect(wrapper.text()).not.toContain('提交后以实际运行状态确认完成')
+    expect(wrapper.text()).not.toContain('现有引用不会被删除')
+    await wrapper.get('[data-confirm-cancel]').trigger('click')
+    await nextTick()
+
+    await wrapper.get('[data-deployment-id="deploy-1"] [data-deployment-action="status-details"]').trigger('click')
+    await flushPromises()
+    const diagTab = Array.from(document.body.querySelectorAll('.local-tabs__tab')).find(el => el.textContent?.trim() === '诊断') as HTMLElement
+    diagTab.click()
+    await nextTick()
+    const resetBtn = Array.from(document.body.querySelectorAll('button')).find(el => el.textContent?.includes('重置')) as HTMLElement
+    resetBtn.click()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('重置推理实例？')
+    expect(wrapper.findAll('.dialog-numbered-list--impact li')).toHaveLength(3)
+    expect(wrapper.findAll('.dialog-numbered-list--impact .dialog-step-badge')).toHaveLength(3)
+    expect(wrapper.findAll('.dialog-numbered-list--impact .dialog-step-text')).toHaveLength(3)
+  })
+
+  it('paginates deployments with PaginationControls and page-size selector', async () => {
+    const manyDeployments = Array.from({ length: 12 }, (_, index) => ({
+      ...sampleDeployment,
+      deployment_instance_id: `deploy-${index + 1}`,
+      display_name: `部署-${String(index + 1).padStart(2, '0')}`,
+    }))
+    const wrapper = mount(DeploymentInstanceTable, {
+      props: {
+        projectId: 'project-1',
+        deployments: manyDeployments,
+        runtimeMode: 'sync',
+        runtimeModeOptions: [{ label: '同步', value: 'sync' }],
+        runtimeSnapshots: {},
+        runningActions: {},
+        canWrite: true,
+        canManageTransfers: true,
+        loading: false,
+        exportFor: () => undefined,
+      },
+      global: { plugins: [i18n, router] },
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(12)
+    expect(wrapper.find('.pagination-controls').exists()).toBe(true)
+
+    const selectTrigger = wrapper.get('.deployment-list-pagination .ui-select__button')
+    await selectTrigger.trigger('click')
+    await nextTick()
+    const option5 = Array.from(document.body.querySelectorAll('.ui-select__option')).find(el => el.textContent?.includes('5 条/页')) as HTMLElement
+    expect(option5).toBeTruthy()
+    option5.click()
+    await nextTick()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(5)
+    expect(wrapper.find('tbody tr').text()).toContain('部署-01')
+
+    const nextButton = Array.from(wrapper.findAll('.pagination-controls__buttons button')).find(btn => btn.text().includes('下一页'))!
+    expect(nextButton.attributes('disabled')).toBeUndefined()
+    await nextButton.trigger('click')
+    await nextTick()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(5)
+    expect(wrapper.find('tbody tr').text()).toContain('部署-06')
+
+    const prevButton = Array.from(wrapper.findAll('.pagination-controls__buttons button')).find(btn => btn.text().includes('上一页'))!
+    await prevButton.trigger('click')
+    await nextTick()
+    expect(wrapper.find('tbody tr').text()).toContain('部署-01')
+  })
+
+  it('renders single-column KV card, backend-only badge, contract mapping, and view-deployment action in import record detail drawer', async () => {
+    const importedOp: DeploymentTransfer = {
+      operation_id: 'imp-done-1',
+      direction: 'import',
+      state: 'completed',
+      deployment_id: 'deploy-1',
+      file_name: 'yolo11-s-imported.amvision-deployment.zip',
+      total_bytes: 1024 * 1024 * 12,
+      created_at: '2026-11-26T10:00:00Z',
+      updated_at: '2026-11-26T10:05:00Z',
+      mapping: { model: 'model-1', deployment: 'deploy-1' },
+      summary: {
+        model: { model_name: 'YOLO11-s', task_type: 'detection', model_type: 'yolo11' },
+        deployment: { display_name: '连接器检测服务', runtime_backend: 'openvino', device_name: 'CPU' },
+        inference: { runtime_precision: 'fp32', input_size: { width: 640, height: 640 } },
+        category_count: 3,
+      },
+    }
+    const wrapper = mount(DeploymentTransferRecordsTab, {
+      props: {
+        projectId: 'project-1',
+        direction: 'import',
+        items: [importedOp],
+        deployments: [sampleDeployment],
+        versionLabelsById: { 'mv-1': { modelName: 'YOLO11-s', versionLabel: 'v2' } },
+      },
+      global: { plugins: [i18n, router] },
+    })
+    await flushPromises()
+
+    await wrapper.find('button.transfer-action-link').trigger('click')
+    await flushPromises()
+
+    expect(document.body.querySelector('.transfer-detail__kv-card')).toBeTruthy()
+    expect(document.body.querySelector('.transfer-detail__contract-strip')?.textContent).toContain('640 × 640')
+    expect(document.body.querySelector('.transfer-detail__mapping-table')?.textContent).toContain('deploy-1')
+    const viewDepBtn = document.body.querySelector('button[data-transfer-action="view-deployment"]') as HTMLButtonElement | null
+    expect(viewDepBtn).toBeTruthy()
+    viewDepBtn!.click()
+    await nextTick()
+    expect(wrapper.emitted('open-deployment')?.[0]).toEqual(['deploy-1'])
   })
 })

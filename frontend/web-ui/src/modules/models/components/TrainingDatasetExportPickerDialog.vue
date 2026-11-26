@@ -173,7 +173,7 @@ function applyExport(): void {
 .training-export-picker__categories h3 small { color:var(--am-text-muted); font-weight:500; }
 .training-export-picker__categories p { color:var(--am-text-muted); }
 .training-export-picker__category-list { display:flex; flex-wrap:wrap; gap:6px; min-width:0; padding:0; margin:0; list-style:none; }
-.training-export-picker__category-list li { max-width:100%; padding:4px 8px; border:1px solid var(--am-border); border-radius:5px; background:var(--am-surface-muted); color:var(--am-text); font-size:13px; overflow-wrap:anywhere; }
+.training-export-picker__category-list li { max-width:100%; padding:4px 8px; border:1px solid var(--am-border); border-radius:5px; background:var(--am-surface); color:var(--am-text); font-size:13px; overflow-wrap:anywhere; }
 .training-export-picker__hint { margin:0; padding:8px 10px; overflow-wrap:anywhere; }
 @media (max-width:960px) { .training-export-picker__list { max-height:260px; } }
 </style>

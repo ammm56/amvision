@@ -52,24 +52,26 @@
               @input="emit('update:displayName', ($event.target as HTMLInputElement).value)"
             />
           </label>
-          <label class="field">
+          <div class="field">
             <span>{{ t('deploymentWorkspace.wizard.fields.model') }} <em class="req">*</em></span>
             <SelectField
+              :aria-label="t('deploymentWorkspace.wizard.fields.model')"
               :model-value="wizardSelectedModelId"
               :options="modelDropdownOptions"
               :disabled="wizardModelsLoading || modelDropdownOptions.length === 0"
               @update:model-value="emit('select-wizard-model', String($event ?? ''))"
             />
-          </label>
-          <label class="field">
+          </div>
+          <div class="field">
             <span>{{ t('deploymentWorkspace.wizard.fields.version') }} <em class="req">*</em></span>
             <SelectField
+              :aria-label="t('deploymentWorkspace.wizard.fields.version')"
               :model-value="wizardSelectedVersionId"
               :options="versionDropdownOptions"
               :disabled="wizardDetailLoading || versionDropdownOptions.length === 0"
               @update:model-value="wizardSelectedVersionId = String($event ?? '')"
             />
-          </label>
+          </div>
         </div>
 
         <section class="deployment-wizard__group">
@@ -168,10 +170,6 @@
               <strong>{{ selectedOutputSummary }}</strong>
             </div>
           </div>
-          <div class="wizard-info-note">
-            <Info :size="15" aria-hidden="true" />
-            <span>{{ t('deploymentWorkspace.wizard.fields.runtimeEnvHint') }}</span>
-          </div>
         </section>
 
         <InlineMessage v-if="unavailableReason" tone="warning">{{ unavailableReason }}</InlineMessage>
@@ -204,10 +202,10 @@
         <section class="deployment-wizard__group">
           <h3>{{ t('deploymentWorkspace.wizard.groups.execution') }}</h3>
           <div class="form-grid deployment-create-grid">
-            <label class="field">
+            <div class="field">
               <span>{{ t('deploymentOps.fields.deviceName') }} <em class="req">*</em></span>
-              <SelectField :model-value="deviceName" :options="deploymentDeviceOptions" @update:model-value="emit('update:deviceName', String($event ?? ''))" />
-            </label>
+              <SelectField :aria-label="t('deploymentOps.fields.deviceName')" :model-value="deviceName" :options="deploymentDeviceOptions" @update:model-value="emit('update:deviceName', String($event ?? ''))" />
+            </div>
             <div class="field">
               <span>{{ t('deploymentWorkspace.filters.runtimeMode') }} <em class="req">*</em></span>
               <input :value="t('deploymentOps.runtimeModes.sync')" readonly />
@@ -223,14 +221,12 @@
                 @input="emit('update:instanceCount', Number(($event.target as HTMLInputElement).value))"
               />
               <span v-if="instanceCountError" class="deployment-field-error">{{ instanceCountError }}</span>
-              <span v-else class="deployment-field-hint">{{ t('deploymentWorkspace.wizard.fields.instanceCountHint') }}</span>
             </label>
             <div class="field deployment-wizard__checkbox-cell">
               <label class="wizard-check-row">
                 <input v-model="startAfterCreate" type="checkbox" :disabled="creating || !!createdDeployment" />
                 <span>{{ t('deploymentWorkspace.wizard.startAfterCreate') }}</span>
               </label>
-              <span class="deployment-field-hint">{{ t('deploymentWorkspace.wizard.startAfterCreateHint') }}</span>
             </div>
           </div>
         </section>
@@ -243,7 +239,6 @@
             <div class="field">
               <span>{{ t('deploymentOps.runtimeConfig.keepWarm') }}</span>
               <SelectField :model-value="keepWarmEnabled" :options="enabledDisabledOptions" @update:model-value="emit('update:keepWarmEnabled', $event)" />
-              <span class="deployment-field-hint">{{ t('deploymentWorkspace.wizard.fields.keepWarmHint') }}</span>
             </div>
             <label v-if="keepWarmEnabled === 'true'" class="field" :class="{ 'field--invalid': !!keepWarmIntervalError }">
               <span>{{ t('deploymentOps.runtimeConfig.keepWarmInterval') }}</span>
@@ -441,10 +436,6 @@
               <span class="wizard-check-item__detail">{{ check.detail }}</span>
             </div>
             <div class="wizard-checks-card__foot">
-              <span class="wizard-checks-card__hint">
-                <Info :size="14" aria-hidden="true" />
-                <span>{{ t('deploymentWorkspace.wizard.checkReviewHint') }}</span>
-              </span>
               <span>{{ t('deploymentWorkspace.wizard.checkTimeLabel') }}：{{ checkedAtLabel }}</span>
             </div>
           </div>
@@ -1006,10 +997,10 @@ const staticChecks = computed(() => {
 }
 
 .wizard-build-table th {
-  background: var(--am-table-header);
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--am-surface);
+  color: var(--am-text);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .wizard-build-table td {
@@ -1096,7 +1087,7 @@ const staticChecks = computed(() => {
   padding: 12px 14px;
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
 }
 
 .wizard-summary-strip--review {
@@ -1124,7 +1115,7 @@ const staticChecks = computed(() => {
   padding: 9px 12px;
   border: 1px solid var(--am-border);
   border-radius: 6px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
   color: var(--am-text-muted);
   font-size: 12px;
 }
@@ -1135,7 +1126,7 @@ const staticChecks = computed(() => {
   padding: 14px 16px;
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
 }
 
 .wizard-top-summary__project {
@@ -1248,10 +1239,11 @@ const staticChecks = computed(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   padding: 10px 16px;
-  background: var(--am-surface-muted);
+  border-top: 1px solid var(--am-border);
+  background: var(--am-surface);
   font-size: 12px;
   color: var(--am-text-muted);
 }

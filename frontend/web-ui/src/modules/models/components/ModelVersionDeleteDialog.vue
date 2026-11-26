@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
 .model-delete__intro strong { font-size:15px; }
 .model-delete__intro p,.model-delete__target p { margin:0; color:var(--am-text-muted); }
 .model-delete__version { overflow-wrap:anywhere; }
-.model-delete__target { display:grid; gap:9px; padding:13px 14px; border:1px solid var(--am-border); border-radius:var(--am-radius-sm); background:var(--am-surface-muted); }
+.model-delete__target { display:grid; gap:9px; padding:13px 14px; border:1px solid var(--am-border); border-radius:var(--am-radius-sm); background:var(--am-surface); }
 .model-delete__target dl { display:grid; gap:7px; margin:0; }
 .model-delete__target dl > div { display:grid; grid-template-columns:minmax(82px,104px) minmax(0,1fr); gap:8px; }
 .model-delete__target dd { margin:0; overflow-wrap:anywhere; }

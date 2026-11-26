@@ -70,26 +70,18 @@
       <EmptyState v-else :title="t('deploymentWorkspace.capabilities.unavailable')" />
     </section>
 
-    <div class="capabilities-notice-box" role="note">
-      <AlertCircle :size="16" class="capabilities-notice-box__icon" aria-hidden="true" />
-      <ul>
-        <li>{{ t('deploymentWorkspace.capabilities.noticeLocalOnly') }}</li>
-        <li>{{ t('deploymentWorkspace.capabilities.noticeModelCompat') }}</li>
-      </ul>
-    </div>
-
     <details class="capabilities-probe">
       <summary>{{ t('deploymentWorkspace.capabilities.querySection') }}</summary>
       <div class="capabilities-probe__body">
         <div class="capabilities-query">
-          <label class="field">
+          <div class="field">
             <span>{{ t('deploymentWorkspace.capabilities.backend') }}</span>
-            <SelectField :model-value="backend" :options="backendOptions" @update:model-value="setBackend" />
-          </label>
-          <label class="field">
+            <SelectField floating :aria-label="t('deploymentWorkspace.capabilities.backend')" :model-value="backend" :options="backendOptions" @update:model-value="setBackend" />
+          </div>
+          <div class="field">
             <span>{{ t('deploymentWorkspace.capabilities.device') }}</span>
-            <SelectField :model-value="device" :options="deviceOptions" @update:model-value="setDevice" />
-          </label>
+            <SelectField floating :aria-label="t('deploymentWorkspace.capabilities.device')" :model-value="device" :options="deviceOptions" @update:model-value="setDevice" />
+          </div>
           <Button size="sm" variant="secondary" :loading="loading" @click="inspect">
             {{ t('deploymentWorkspace.capabilities.queryAction') }}
           </Button>
@@ -199,7 +191,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlertCircle, RefreshCw } from '@lucide/vue'
+import { RefreshCw } from '@lucide/vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
@@ -520,10 +512,10 @@ async function inspect(): Promise<void> {
 
 .capabilities-table-wrap th,
 .capabilities-prop-table th {
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-  background: var(--am-table-header);
+  color: var(--am-text);
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--am-surface);
 }
 
 .capabilities-table-wrap td {
@@ -640,7 +632,7 @@ async function inspect(): Promise<void> {
   padding: 12px;
   border: 1px solid var(--am-border);
   border-radius: 6px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
 }
 
 .capabilities-result__status {
@@ -707,7 +699,8 @@ async function inspect(): Promise<void> {
 }
 
 .capabilities-bool-badge.is-false {
-  background: var(--am-surface-muted);
+  border: 1px solid var(--am-border);
+  background: var(--am-surface);
   color: var(--am-text-muted);
 }
 
@@ -734,7 +727,7 @@ async function inspect(): Promise<void> {
   padding: 2px 8px;
   border: 1px solid var(--am-border);
   border-radius: 999px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
   font-size: 12px;
   color: var(--am-text-muted);
 }

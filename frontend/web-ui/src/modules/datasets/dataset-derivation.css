@@ -75,4 +75,4 @@
   .derivation-range > div + div { padding-left: 12px; }
 }
 
-[data-theme='dark'] .dataset-operation--derive :is(.derivation-source-value, .derivation-range, .derivation-mapping th) { background: var(--am-surface-muted); }
+[data-theme='dark'] .dataset-operation--derive :is(.derivation-source-value, .derivation-range, .derivation-mapping th) { background: var(--am-surface); }

@@ -406,11 +406,10 @@ describe('DeploymentOperationsPage', () => {
     mount(DeploymentOperationsPage, { global: { plugins: [pinia, i18n, router] } })
     await flushPromises()
     expect(document.body.textContent).toContain('实例信息')
-    const identityToggle = document.body.querySelector('button.drawer-inline-toggle') as HTMLButtonElement | null
-    expect(identityToggle).toBeTruthy()
-    identityToggle!.click()
-    await nextTick()
-    expect(document.body.textContent).toContain(deployment.deployment_instance_id)
+    expect(document.body.querySelector('button.drawer-inline-toggle')).toBeNull()
+    const copyIdButton = document.body.querySelector('button[data-deployment-action="copy-id"]') as HTMLButtonElement | null
+    expect(copyIdButton).toBeTruthy()
+    expect(document.body.querySelector('.drawer-id-copy__tooltip')?.textContent).toContain(deployment.deployment_instance_id)
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', deployment.deployment_instance_id, 'sync', 'status')
     expect(vi.mocked(runTaskDeploymentStatusAction).mock.calls.every(call => call[3] === 'status')).toBe(true)
   })
@@ -701,14 +700,13 @@ describe('DeploymentOperationsPage', () => {
     await findDeploymentActionButton(wrapper, 'deployment-1', 'status-details').trigger('click')
     await flushPromises()
     expect(document.body.textContent).toContain('实例信息')
-    const identityToggle = document.body.querySelector('button.drawer-inline-toggle') as HTMLButtonElement | null
-    expect(identityToggle).toBeTruthy()
-    identityToggle!.click()
-    await nextTick()
-    const drawerText = document.body.textContent ?? ''
-    expect(drawerText).toContain('deployment-1')
-    expect(drawerText).not.toContain('model-version-1')
-    expect(drawerText).toContain('model-build-1')
+    expect(document.body.querySelector('button.drawer-inline-toggle')).toBeNull()
+    const copyIdButton = document.body.querySelector('button[data-deployment-action="copy-id"]') as HTMLButtonElement | null
+    expect(copyIdButton).toBeTruthy()
+    const idTooltipText = document.body.querySelector('.drawer-id-copy__tooltip')?.textContent ?? ''
+    expect(idTooltipText).toContain('deployment-1')
+    expect(idTooltipText).not.toContain('model-version-1')
+    expect(idTooltipText).toContain('model-build-1')
 
     await clickDrawerTab('接口')
     expect(document.body.textContent).toContain('640 × 640')

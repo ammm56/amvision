@@ -1,6 +1,7 @@
 <template>
   <div ref="rootElement" class="ui-multi-select" :class="{ 'is-open': open, 'is-disabled': disabled }">
     <button
+      ref="triggerElement"
       class="ui-multi-select__button"
       type="button"
       :disabled="disabled"
@@ -27,6 +28,7 @@
         :style="menuStyle"
         role="listbox"
         aria-multiselectable="true"
+        @click.prevent.stop
       >
         <button
           v-for="(option, index) in options"
@@ -86,6 +88,7 @@ const emit = defineEmits<{
 }>()
 
 const rootElement = ref<HTMLElement | null>(null)
+const triggerElement = ref<HTMLButtonElement | null>(null)
 const menuElement = ref<HTMLElement | null>(null)
 const open = ref(false)
 const activeIndex = ref(-1)
@@ -225,6 +228,9 @@ function handleDocumentPointerDown(event: PointerEvent): void {
   if (!(target instanceof Node)) return
   if (rootElement.value?.contains(target)) return
   if (menuElement.value?.contains(target)) return
+  // 若控件被 label 包裹，点击 label 文案会触发原生合成 click，放行避免关闭后立刻重开。
+  const ancestorLabel = rootElement.value?.closest('label')
+  if (ancestorLabel && ancestorLabel.contains(target) && ancestorLabel.control === triggerElement.value) return
   close()
 }
 

@@ -190,25 +190,28 @@
           </tbody>
         </table>
 
-        <footer class="deployment-card__footer">
-          <span class="deployment-card__total">
-            {{ t('deploymentWorkspace.footer.deploymentTotal', { count: filteredDeployments.length }) }}
-          </span>
-          <div class="deployment-card__pagination">
-            <div v-if="totalPages > 1" class="deployment-page-buttons">
-              <Button size="sm" variant="ghost" :disabled="currentPage <= 1" @click="currentPage -= 1">‹</Button>
-              <span class="deployment-page-indicator">{{ currentPage }} / {{ totalPages }}</span>
-              <Button size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="currentPage += 1">›</Button>
-            </div>
-            <SelectField
-              fit-options
-              floating
-              :model-value="pageSize"
-              :options="pageSizeOptions"
-              @update:model-value="setPageSize"
-            />
-          </div>
-        </footer>
+        <div v-if="filteredDeployments.length > 0" class="deployment-list-pagination">
+          <PaginationControls
+            numbered
+            :offset="(currentPage - 1) * pageSize"
+            :limit="pageSize"
+            :item-count="pagedDeployments.length"
+            :total-count="filteredDeployments.length"
+            :disabled="loading"
+            @previous="currentPage = Math.max(1, currentPage - 1)"
+            @next="currentPage = Math.min(totalPages, currentPage + 1)"
+            @go="currentPage = Math.floor($event / pageSize) + 1"
+          />
+          <SelectField
+            fit-options
+            floating
+            :model-value="pageSize"
+            :options="pageSizeOptions"
+            :disabled="loading"
+            :aria-label="t('deploymentWorkspace.footer.pageSize', { size: pageSize })"
+            @update:model-value="setPageSize"
+          />
+        </div>
       </div>
     </template>
   </section>
@@ -221,6 +224,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { Box, Download, Play, Plus, RefreshCw, Rocket, RotateCcw, Search, Square, Trash2, Upload, X, Zap } from '@lucide/vue'
 import { modelTaskLabel } from '@/modules/models/model-evaluation-types'
 import Button from '@/shared/ui/components/Button.vue'
+import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import DeploymentRuntimeBadge from './DeploymentRuntimeBadge.vue'
@@ -277,7 +281,7 @@ const statusFilter = ref('all')
 const pageSize = ref(20)
 const currentPage = ref(1)
 
-const pageSizeOptions = computed(() => [10, 20, 50].map(size => ({
+const pageSizeOptions = computed(() => [5, 10, 20, 50].map(size => ({
   label: t('deploymentWorkspace.footer.pageSize', { size }),
   value: size,
 })))
@@ -401,6 +405,10 @@ const totalPages = computed(() => Math.max(1, Math.ceil(filteredDeployments.valu
 const pagedDeployments = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   return filteredDeployments.value.slice(start, start + pageSize.value)
+})
+
+watch([searchQuery, taskFilter, statusFilter], () => {
+  currentPage.value = 1
 })
 
 watch([filteredDeployments, pageSize], () => {
@@ -635,10 +643,10 @@ async function runRowMenuAction(item: TaskDeploymentInstance, action: string): P
 }
 
 .deployment-table th {
-  background: var(--am-table-header);
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--am-surface);
+  color: var(--am-text);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .deployment-table td {
@@ -735,36 +743,25 @@ async function runRowMenuAction(item: TaskDeploymentInstance, action: string): P
   white-space: nowrap;
 }
 
-.deployment-card__footer {
+.deployment-list-pagination {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 8px 12px;
+  padding: 0 14px;
+  border-top: 1px solid var(--am-border);
 }
 
-.deployment-card__total {
-  font-size: 13px;
-  color: var(--am-text-muted);
+.deployment-list-pagination :deep(.pagination-controls) {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding-inline: 0;
+  background: transparent;
 }
 
-.deployment-card__pagination {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.deployment-page-buttons {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.deployment-page-indicator {
-  font-size: 12px;
-  color: var(--am-text-muted);
-  font-variant-numeric: tabular-nums;
+.deployment-list-pagination > .ui-select {
+  flex: none;
 }
 
 @media (max-width: 1200px) {

@@ -210,7 +210,7 @@ function moveSelected(row: EditableDisplay, direction: -1 | 1): void {
 .app-mode-dialog__title > span, .app-mode-dialog__outputs > strong { font-size: 13px; font-weight: 700; }
 .app-mode-dialog input[type='text'] { min-width: 0; width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--am-border-strong); border-radius: var(--am-radius-md); background: var(--am-input); color: var(--am-text); }
 .app-mode-dialog__outputs, .app-mode-dialog__row-list { display: grid; gap: 12px; min-width: 0; }
-.app-mode-dialog__outputs > p { margin: 0; padding: 12px; border-radius: var(--am-radius-md); background: var(--am-surface-muted); color: var(--am-text-muted); }
+.app-mode-dialog__outputs > p { margin: 0; padding: 12px; border: 1px solid var(--am-border); border-radius: var(--am-radius-md); background: var(--am-surface); color: var(--am-text-muted); }
 .app-mode-dialog__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--am-border); border-radius: var(--am-radius-md); background: var(--am-surface); }
 .app-mode-dialog__row--invalid { border-color: var(--am-danger-border); background: var(--am-danger-surface); }
 .app-mode-dialog__identity { min-width: 0; }

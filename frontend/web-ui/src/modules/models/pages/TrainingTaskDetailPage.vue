@@ -1700,14 +1700,14 @@ function formatPlainValue(value: unknown): string {
 
 <style scoped>
 .training-stop-icon { color:var(--am-warning-icon); }
-.training-stop-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:0; padding:12px; border-radius:var(--am-radius-sm); background:var(--am-surface-muted); }
+.training-stop-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:0; padding:12px; border:1px solid var(--am-border); border-radius:var(--am-radius-sm); background:var(--am-surface); }
 .training-stop-summary > div + div { padding-inline-start:12px; border-inline-start:1px solid var(--am-border); }
 .training-stop-summary dt { color:var(--am-text-muted); }
 .training-stop-summary dd { margin:4px 0 0; overflow-wrap:anywhere; }
 .training-resume-summary { display:grid; grid-template-columns: minmax(95px, auto) minmax(0, 1fr); gap:8px 14px; margin:0; }
 .training-resume-summary dt { color:var(--am-text-muted); }
 .training-resume-summary dd { margin:0; overflow-wrap:anywhere; }
-.training-cancelled-note { display:flex; align-items:flex-start; gap:8px; margin:0; padding:11px; border-radius:6px; background:var(--am-surface-muted); }
+.training-cancelled-note { display:flex; align-items:flex-start; gap:8px; margin:0; padding:11px; border:1px solid var(--am-border); border-radius:6px; background:var(--am-surface); }
 .training-cancelled-note svg,.training-resume__warning svg { flex:none; }
 .training-detail-title { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; min-width:0; }
 .training-detail-title h1 { overflow-wrap:anywhere; }

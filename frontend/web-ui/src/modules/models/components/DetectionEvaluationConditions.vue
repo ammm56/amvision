@@ -128,7 +128,7 @@ const groups = computed<ConditionGroup[]>(() => {
   gap:8px;
   padding:10px 14px;
   border-radius:7px;
-  background:var(--am-surface-muted);
+  background:var(--am-surface);
   font-weight:600;
   cursor:pointer;
   list-style:none;

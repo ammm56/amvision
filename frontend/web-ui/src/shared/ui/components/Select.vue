@@ -31,7 +31,7 @@
       <ChevronDown :size="16" />
     </button>
     <Teleport to="body" :disabled="!floating">
-    <div v-if="open" ref="menuElement" :id="menuId" class="ui-select__menu" :class="{ 'ui-select__menu--floating': floating }" :style="floating ? menuStyle : undefined" role="listbox" :aria-label="ariaLabel">
+    <div v-if="open" ref="menuElement" :id="menuId" class="ui-select__menu" :class="{ 'ui-select__menu--floating': floating }" :style="floating ? menuStyle : undefined" role="listbox" :aria-label="ariaLabel" @click.prevent.stop>
       <button
         v-for="(option, index) in options"
         :key="optionKey(option.value)"
@@ -152,13 +152,25 @@ function openMenu(direction: 1 | -1 = 1): void {
     const below = window.innerHeight - rect.bottom - 12
     const above = rect.top - 12
     const upwards = below < Math.min(280, props.options.length * 40 + 14) && above > below
-    const width = Math.min(rect.width, window.innerWidth - 16)
+    const minWidth = Math.min(rect.width, window.innerWidth - 16)
     menuStyle.value = {
-      left: `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`,
-      width: `${width}px`, maxHeight: `${Math.max(40, Math.min(280, upwards ? above : below))}px`,
+      left: `${Math.max(8, Math.min(rect.left, window.innerWidth - minWidth - 8))}px`,
+      minWidth: `${minWidth}px`,
+      width: 'max-content',
+      maxWidth: `${Math.min(360, window.innerWidth - 16)}px`,
+      maxHeight: `${Math.max(40, Math.min(280, upwards ? above : below))}px`,
       top: upwards ? 'auto' : `${rect.bottom + 4}px`,
       bottom: upwards ? `${window.innerHeight - rect.top + 4}px` : 'auto',
     }
+    void nextTick(() => {
+      if (!open.value || !menuElement.value || !triggerElement.value) return
+      const triggerRect = triggerElement.value.getBoundingClientRect()
+      const menuRect = menuElement.value.getBoundingClientRect()
+      menuStyle.value = {
+        ...menuStyle.value,
+        left: `${Math.max(8, Math.min(triggerRect.left, window.innerWidth - menuRect.width - 8))}px`,
+      }
+    })
     window.addEventListener('scroll', handleViewportChange, true)
     window.addEventListener('resize', close)
   }
@@ -235,20 +247,40 @@ function handleDocumentPointerDown(event: PointerEvent): void {
   if (!(target instanceof Node)) return
   if (rootElement.value?.contains(target)) return
   if (menuElement.value?.contains(target)) return
+  // 若控件被 label 包裹，点击 label 文案会触发原生合成 click，放行避免关闭后立刻重开。
+  const ancestorLabel = rootElement.value?.closest('label')
+  if (ancestorLabel && ancestorLabel.contains(target) && ancestorLabel.control === triggerElement.value) return
   close()
 }
 
 function handleViewportChange(event: Event): void {
-  // 菜单自身滚动保持打开；父弹窗或页面滚动时关闭，避免菜单脱离控件。
-  if (event.target instanceof Node && menuElement.value?.contains(event.target)) return
+  // 菜单自身滚动或与当前控件无关的容器滚动保持打开；父弹窗或页面滚动时关闭，避免菜单脱离控件。
+  const target = event.target
+  if (target instanceof Node) {
+    if (menuElement.value?.contains(target)) return
+    if (
+      target !== document
+      && target !== document.documentElement
+      && rootElement.value
+      && !target.contains(rootElement.value)
+    ) return
+  }
   close()
 }
 
 onBeforeUnmount(close)
 
-// 方法或任务切换后不能继续选择已经失效的菜单项。
+const optionsSignature = computed(() =>
+  props.options
+    .map(option => `${optionKey(option.value)}\u0000${option.label}\u0000${option.description ?? ''}\u0000${option.disabled ? '1' : '0'}`)
+    .join('\u0001'),
+)
+
+// 方法或任务切换后不能继续选择已经失效的菜单项，但轮询返回相同选项时不关闭下拉。
 watch(() => props.disabled, disabled => { if (disabled) close() })
-watch(() => props.options, () => { if (open.value) close() }, { deep: true })
+watch(optionsSignature, (next, previous) => {
+  if (open.value && next !== previous) close()
+})
 </script>
 
 <style scoped>
@@ -258,5 +290,6 @@ watch(() => props.options, () => { if (open.value) close() }, { deep: true })
 .ui-select__option:disabled { opacity: .5; cursor: not-allowed; }
 .ui-select__menu--floating { position: fixed; right: auto; box-sizing: border-box; z-index: calc(var(--am-z-modal) + 1); font-family: var(--am-font-sans); font-size: 13px; }
 .ui-select__menu--floating .ui-select__option { position: relative; padding-right: 30px; font: inherit; }
+.ui-select__menu--floating .ui-select__option > span { white-space: nowrap; }
 .ui-select__check { position: absolute; right: 8px; top: 10px; color: var(--am-action-primary); }
 </style>

@@ -15,6 +15,6 @@ defineProps<{ categories: string[]; zh: boolean }>()
 .package-class-table { max-height:230px; overflow:auto; }
 .package-class-table table { table-layout:fixed; }
 .package-class-table :is(th,td) { padding-block:6px; white-space:normal; overflow-wrap:anywhere; }
-.package-class-table thead th { position:sticky; top:0; background:var(--am-surface-muted); }
+.package-class-table thead th { position:sticky; top:0; background:var(--am-surface); }
 .package-class-table tr > :first-child { width:72px; font-variant-numeric:tabular-nums; }
 </style>

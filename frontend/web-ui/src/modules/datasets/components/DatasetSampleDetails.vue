@@ -108,7 +108,7 @@ function geometry(item: DatasetAnnotation) {
 .sample-details__coordinate-row > span { color:var(--am-text-muted); }
 .sample-details__coordinates { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
 .sample-details__coordinates > div { display:flex; align-items:center; gap:8px; font-size:14px; }
-.sample-details__coordinates > div > span { background:var(--am-surface-muted); padding:2px 5px; border-radius:3px; }
+.sample-details__coordinates > div > span { background:var(--am-surface); border:1px solid var(--am-border); padding:2px 5px; border-radius:3px; }
 .sample-details__coordinates span,.sample-details__coordinates > small { color:var(--am-text-muted); }
 .sample-details__coordinates > small { grid-column:1/-1; text-align:right; }
 .sample-details__geometry { margin-top:16px; padding-bottom:0; }

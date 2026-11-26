@@ -593,7 +593,7 @@ onBeforeUnmount(reset)
 .package-steps .is-failed span { color:var(--am-danger-text); background:var(--am-danger-surface); border-color:var(--am-danger-border); }
 .package-steps .is-failed { color:var(--am-danger-text); }
 .package-file { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 12px; border:1px solid var(--am-border); border-radius:6px; }
-.package-file__icon { display:grid; place-items:center; width:38px; height:38px; border-radius:6px; background:var(--am-surface-muted); color:var(--am-text-muted); }
+.package-file__icon { display:grid; place-items:center; width:38px; height:38px; border:1px solid var(--am-border); border-radius:6px; background:var(--am-surface); color:var(--am-text-muted); }
 .package-file__identity { flex:1 1 155px; min-width:0; }
 .package-file__metadata { display:flex; flex-wrap:wrap; gap:2px 14px; color:var(--am-text-muted); font-size:var(--am-type-caption); }
 .package-file strong, .package-content :is(dd,p,td) { overflow-wrap:anywhere; }

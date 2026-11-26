@@ -1115,7 +1115,7 @@ function selectFiltered() {
   background: color-mix(in srgb, var(--am-row-selected) 45%, var(--am-surface));
   border-color: var(--am-row-selected);
 }
-.dataset-task-label { padding:4px 8px; border-radius:var(--am-radius-sm); background:var(--am-surface-muted); color:var(--am-text-muted); font-size:13px; white-space:nowrap; }
+.dataset-task-label { padding:4px 8px; border:1px solid var(--am-border); border-radius:var(--am-radius-sm); background:var(--am-surface); color:var(--am-text-muted); font-size:13px; white-space:nowrap; }
 .dataset-table td > .dataset-task-label { display:inline-block; }
 .dataset-sample-list :deep(td > .dataset-sample-filename) { font-size:inherit; font-family:inherit; color:var(--am-text); }
 .dataset-table td > .dataset-annotation-status { display:inline-flex; align-items:center; gap:6px; font-size:13px; }

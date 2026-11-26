@@ -168,7 +168,7 @@ function download(): void {
 .comparison-table :is(th,td) { padding:8px 10px; border-inline-end:1px solid var(--am-border); border-block-end:1px solid var(--am-border); text-align:center; overflow-wrap:anywhere; white-space:normal; }
 .comparison-table :is(th,td):last-child { border-inline-end:0; }
 .comparison-table :is(tbody,tfoot):last-child tr:last-child > * { border-block-end:0; }
-.comparison-table :is(thead,tfoot) { background:var(--am-surface-muted); }
+.comparison-table :is(thead,tfoot) { background:var(--am-surface); }
 .comparison-table .is-baseline { background:var(--am-success-surface); }
 .comparison-table tbody th { font-weight:500; }
 .comparison-result { display:flex; align-items:flex-start; justify-content:space-between; gap:4px; text-align:start; }

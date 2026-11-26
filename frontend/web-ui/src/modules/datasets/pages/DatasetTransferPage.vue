@@ -1681,7 +1681,8 @@ function previousStep() {
   gap: 12px;
 }
 .transfer-summary {
-  background: var(--am-surface-muted, var(--am-bg));
+  background: var(--am-surface);
+  border: 1px solid var(--am-border);
   padding: 14px 16px;
   margin-bottom: 20px;
   flex-wrap: wrap;
@@ -1723,7 +1724,7 @@ function previousStep() {
   justify-content: center;
   text-align: center;
   border-style: dashed;
-  background: var(--am-surface-muted, var(--am-bg));
+  background: var(--am-surface);
 }
 .transfer-drop :deep(.file-picker__icon) {
   background: none;
@@ -1772,11 +1773,11 @@ function previousStep() {
   display: none;
 }
 .transfer-drop :deep(.file-picker__dropzone) {
-  background: var(--am-surface-muted, var(--am-bg));
+  background: var(--am-surface);
   border: 1px dashed var(--am-border);
 }
 .transfer-summary {
-  background: var(--am-surface-muted, var(--am-bg));
+  background: var(--am-surface);
   margin-bottom: 15px;
 }
 .transfer-choices input,
@@ -1805,11 +1806,11 @@ function previousStep() {
   min-height: clamp(155px, 24vh, 260px);
 }
 .transfer-workspace .resource-table thead {
-  background: var(--am-surface-subtle, var(--am-bg));
+  background: var(--am-surface);
 }
 .transfer-summary,
 .transfer-drop :deep(.file-picker__dropzone) {
-  background: color-mix(in srgb, var(--am-text) 4%, var(--am-surface));
+  background: var(--am-surface);
 }
 .dataset-wizard .split-percent, .dataset-wizard .split-seed { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; }
 .split-percent input { width: 80px; text-align: right; }

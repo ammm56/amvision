@@ -13,6 +13,32 @@
           <span>{{ summaryLabel }}</span>
         </span>
         <span class="drawer-mode-chip">{{ modeLabel }}</span>
+        <div class="drawer-id-copy">
+          <button
+            type="button"
+            class="drawer-id-copy__btn"
+            data-deployment-action="copy-id"
+            :aria-label="`${t('deploymentWorkspace.actions.copyId')}: ${deployment.deployment_instance_id}`"
+            @click="copyText(deployment.deployment_instance_id, 'id')"
+          >
+            <Check v-if="copiedKey === 'id'" :size="14" class="is-copied" aria-hidden="true" />
+            <Copy v-else :size="14" aria-hidden="true" />
+          </button>
+          <div class="drawer-id-copy__tooltip" role="tooltip">
+            <div>
+              <span>{{ t('deploymentOps.fields.deploymentId') }}</span>
+              <code>{{ deployment.deployment_instance_id }}</code>
+            </div>
+            <div v-if="deployment.model_build_id">
+              <span>{{ t('deploymentOps.fields.modelBuildId') }}</span>
+              <code>{{ deployment.model_build_id }}</code>
+            </div>
+            <div v-if="deployment.runtime_profile_id">
+              <span>{{ t('deploymentOps.fields.runtimeProfileId') }}</span>
+              <code>{{ deployment.runtime_profile_id }}</code>
+            </div>
+          </div>
+        </div>
       </div>
 
       <TabList
@@ -26,34 +52,7 @@
       <!-- 1. 概览 -->
       <div v-if="activeTab === 'overview'" class="deployment-status-drawer__panel">
         <section class="deployment-status-drawer__section">
-          <div class="drawer-section-head">
-            <h3>{{ t('deploymentOps.instanceDetailsTitle') }}</h3>
-            <button type="button" class="drawer-inline-toggle" @click="identityExpanded = !identityExpanded">
-              <span>{{ t('deploymentWorkspace.drawer.identityInfo') }}</span>
-              <ChevronUp v-if="identityExpanded" :size="14" />
-              <ChevronDown v-else :size="14" />
-            </button>
-          </div>
-
-          <dl v-if="identityExpanded" class="drawer-identity-box">
-            <div>
-              <dt>{{ t('deploymentOps.fields.deploymentId') }}</dt>
-              <dd class="deployment-status-drawer__copy-row">
-                <code class="drawer-mono-id">{{ deployment.deployment_instance_id }}</code>
-                <Button size="sm" variant="ghost" @click="copyText(deployment.deployment_instance_id, 'id')">
-                  <Copy :size="13" />{{ copiedKey === 'id' ? t('deploymentWorkspace.actions.copied') : t('deploymentWorkspace.actions.copyId') }}
-                </Button>
-              </dd>
-            </div>
-            <div>
-              <dt>{{ t('deploymentOps.fields.modelBuildId') }}</dt>
-              <dd><code class="drawer-mono-id">{{ deployment.model_build_id || '—' }}</code></dd>
-            </div>
-            <div>
-              <dt>{{ t('deploymentOps.fields.runtimeProfileId') }}</dt>
-              <dd><code class="drawer-mono-id">{{ deployment.runtime_profile_id || '—' }}</code></dd>
-            </div>
-          </dl>
+          <h3>{{ t('deploymentOps.instanceDetailsTitle') }}</h3>
 
           <dl class="drawer-kv-list">
             <div>
@@ -149,10 +148,6 @@
             </div>
           </div>
 
-          <div class="drawer-info-strip">
-            <Info :size="15" aria-hidden="true" />
-            <span>{{ isStopped ? t('deploymentWorkspace.drawer.stoppedNote') : t('deploymentWorkspace.drawer.busyStatusNote') }}</span>
-          </div>
           <InlineMessage v-if="capacity.isFull" tone="info">{{ t('deploymentWorkspace.capacity.busyNote') }}</InlineMessage>
         </section>
 
@@ -266,12 +261,6 @@
               <li v-for="warning in sanitizedConfigWarnings" :key="warning">{{ warning }}</li>
             </ul>
           </div>
-
-          <div class="drawer-info-strip">
-            <Info :size="15" aria-hidden="true" />
-            <span>{{ t('deploymentWorkspace.drawer.threadSeparateNote') }}</span>
-          </div>
-          <InlineMessage tone="info">{{ t('deploymentWorkspace.drawer.readonlyNotice') }}</InlineMessage>
         </section>
 
         <div v-if="health" class="runtime-configuration-diagnostics">
@@ -288,18 +277,6 @@
 
       <!-- 3. 接口 -->
       <div v-else-if="activeTab === 'interface'" class="deployment-status-drawer__panel">
-        <details class="drawer-accordion">
-          <summary>{{ t('deploymentWorkspace.drawer.identityInfo') }}</summary>
-          <div class="drawer-accordion__body">
-            <div class="deployment-status-drawer__copy-row">
-              <code class="drawer-mono-id">{{ deployment.deployment_instance_id }}</code>
-              <Button size="sm" variant="ghost" @click="copyText(deployment.deployment_instance_id, 'id')">
-                <Copy :size="13" />{{ copiedKey === 'id' ? t('deploymentWorkspace.actions.copied') : t('deploymentWorkspace.actions.copyId') }}
-              </Button>
-            </div>
-          </div>
-        </details>
-
         <section class="deployment-status-drawer__section">
           <h3>{{ t('deploymentWorkspace.drawer.contractTitle') }}</h3>
           <dl class="drawer-boxed-kv">
@@ -311,7 +288,6 @@
               <dt>{{ t('deploymentOps.fields.inputSize') }}</dt>
               <dd>
                 <strong>{{ inputSizeLabel }}</strong>
-                <small class="drawer-sub-note">{{ t('deploymentWorkspace.drawer.syncContractNotice') }}</small>
               </dd>
             </div>
             <div>
@@ -332,10 +308,10 @@
               </dd>
             </div>
           </dl>
-          <details v-if="deployment.labels.length" class="deployment-labels-disclosure">
-            <summary>{{ t('deploymentWorkspace.drawer.classesList') }} ({{ deployment.labels.length }})</summary>
-            <p>{{ deployment.labels.join(' / ') }}</p>
-          </details>
+          <div v-if="deployment.labels.length" class="drawer-labels-block">
+            <h4 class="drawer-sub-heading">{{ t('deploymentWorkspace.drawer.classesList') }} ({{ deployment.labels.length }})</h4>
+            <TrainingCategoryList :categories="deployment.labels" :label="t('deploymentWorkspace.drawer.classesList')" />
+          </div>
         </section>
 
         <section class="deployment-status-drawer__section">
@@ -368,12 +344,10 @@
               </tbody>
             </table>
           </div>
-          <span class="drawer-sub-note">{{ t('deploymentWorkspace.drawer.triggerConfigHint') }}</span>
         </section>
 
         <section class="deployment-status-drawer__section">
           <h3>{{ t('deploymentWorkspace.drawer.sdkTitle') }}</h3>
-          <p class="drawer-sub-note">{{ t('deploymentWorkspace.drawer.sdkDescription') }}</p>
           <div class="drawer-example-actions">
             <span>{{ t('deploymentWorkspace.drawer.examplesLabel') }}</span>
             <Button size="sm" variant="secondary" @click="showInterfaceSpec = !showInterfaceSpec">
@@ -408,7 +382,6 @@
               <span>{{ lastUpdatedTimestamp ? formatSystemDateTime(lastUpdatedTimestamp) : '—' }}</span>
             </div>
           </div>
-          <span class="drawer-sub-note">{{ t('deploymentWorkspace.drawer.recheckReadonlyHint') }}</span>
         </section>
 
         <section class="deployment-status-drawer__section">
@@ -425,11 +398,10 @@
           </div>
 
           <InlineMessage v-if="eventsLoading" :message="t('deploymentOps.messages.eventsLoading')" />
-          <EmptyState
-            v-else-if="sortedEvents.length === 0"
-            :title="t('deploymentOps.emptyEventsTitle')"
-            :description="t('deploymentOps.emptyEventsDescription')"
-          />
+          <div v-else-if="sortedEvents.length === 0" class="drawer-empty-state">
+            <Activity :size="26" class="drawer-empty-state__icon" aria-hidden="true" />
+            <span class="drawer-empty-state__text">{{ t('deploymentOps.emptyEventsTitle') }}</span>
+          </div>
           <div v-else class="drawer-table-card">
             <table>
               <colgroup>
@@ -494,10 +466,6 @@
       <div v-else-if="activeTab === 'references'" class="deployment-status-drawer__panel">
         <section class="deployment-status-drawer__section">
           <h3>{{ t('deploymentWorkspace.drawer.referencesTitle') }}</h3>
-          <div class="drawer-info-strip">
-            <Info :size="15" aria-hidden="true" />
-            <span>{{ t('deploymentWorkspace.drawer.referencesHint') }}</span>
-          </div>
 
           <label v-if="references.length > 0" class="drawer-ref-search">
             <Search :size="14" aria-hidden="true" />
@@ -512,7 +480,10 @@
             <InlineError :message="t('deploymentWorkspace.drawer.referencesError')" />
             <Button size="sm" variant="secondary" @click="loadReferences">{{ t('deploymentWorkspace.actions.retry') }}</Button>
           </div>
-          <EmptyState v-else-if="filteredReferences.length === 0" :title="t('deploymentWorkspace.drawer.referencesEmpty')" />
+          <div v-else-if="filteredReferences.length === 0" class="drawer-empty-state">
+            <Link2 :size="26" class="drawer-empty-state__icon" aria-hidden="true" />
+            <span class="drawer-empty-state__text">{{ t('deploymentWorkspace.drawer.referencesEmpty') }}</span>
+          </div>
           <div v-else class="drawer-table-card">
             <table>
               <colgroup>
@@ -618,14 +589,14 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import {
+  Activity,
   AlertCircle,
+  Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Copy,
   ExternalLink,
   FileText,
-  Info,
+  Link2,
   MinusCircle,
   Play,
   RefreshCw,
@@ -637,12 +608,12 @@ import {
   Zap,
 } from '@lucide/vue'
 import { useCatalogVersionLabel } from '@/modules/models/composables/useCatalogVersionLabel'
+import TrainingCategoryList from '@/modules/models/components/TrainingCategoryList.vue'
 import { modelTaskLabel } from '@/modules/models/model-evaluation-types'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
@@ -704,7 +675,6 @@ const { t, te, locale } = useI18n()
 const zh = computed(() => locale.value.startsWith('zh'))
 const activeTab = ref<DeploymentStatusDrawerTab>('overview')
 const copiedKey = ref('')
-const identityExpanded = ref(false)
 const showInterfaceSpec = ref(false)
 const referenceQuery = ref('')
 const references = ref<DeploymentReferenceItem[]>([])
@@ -759,7 +729,6 @@ function setActiveTab(value: string): void {
 
 watch(() => [props.open, props.deployment?.deployment_instance_id, props.initialTab] as const, ([open, , initialTab]) => {
   copiedKey.value = ''
-  identityExpanded.value = false
   showInterfaceSpec.value = false
   referenceQuery.value = ''
   references.value = []
@@ -1052,20 +1021,97 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
   padding: 2px 8px;
   border: 1px solid var(--am-border);
   border-radius: 4px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
   font-size: 12px;
   color: var(--am-text-muted);
+}
+
+.drawer-id-copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.drawer-id-copy__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--am-border);
+  border-radius: 6px;
+  background: var(--am-surface);
+  color: var(--am-text-muted);
+  cursor: pointer;
+}
+
+.drawer-id-copy__btn:hover,
+.drawer-id-copy__btn:focus-visible {
+  border-color: var(--am-border-strong);
+  color: var(--am-text);
+}
+
+.drawer-id-copy__btn .is-copied {
+  color: var(--am-action-primary);
+}
+
+.drawer-id-copy__tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+  min-width: 260px;
+  max-width: min(460px, calc(100vw - 80px));
+  padding: 8px 10px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface);
+  box-shadow: var(--am-shadow-floating);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.drawer-id-copy:hover .drawer-id-copy__tooltip,
+.drawer-id-copy:focus-within .drawer-id-copy__tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.drawer-id-copy__tooltip > div {
+  display: grid;
+  gap: 2px;
+}
+
+.drawer-id-copy__tooltip span {
+  font-size: 11px;
+  color: var(--am-text-muted);
+}
+
+.drawer-id-copy__tooltip code {
+  font-family: var(--am-font-mono);
+  font-size: 12px;
+  color: var(--am-text-strong, var(--am-text));
+  overflow-wrap: anywhere;
 }
 
 .deployment-status-drawer__panel {
   display: grid;
   gap: 16px;
   padding-top: 16px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .deployment-status-drawer__section {
   display: grid;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .deployment-status-drawer__section h3 {
@@ -1086,49 +1132,6 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
   font-size: 12px;
   color: var(--am-text-muted);
   margin: 0;
-}
-
-.drawer-inline-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--am-text-muted);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.drawer-inline-toggle:hover {
-  color: var(--am-text);
-}
-
-.drawer-identity-box {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface-muted);
-  font-size: 12px;
-}
-
-.drawer-identity-box > div {
-  display: grid;
-  gap: 2px;
-}
-
-.drawer-identity-box dt {
-  color: var(--am-text-muted);
-}
-
-.drawer-identity-box dd {
-  margin: 0;
-  font-weight: 500;
-  overflow-wrap: anywhere;
 }
 
 .drawer-mono-id {
@@ -1273,46 +1276,11 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
 .drawer-stats-grid strong.is-success { color: var(--am-action-primary-strong); }
 .drawer-stats-grid strong.is-danger { color: var(--am-danger-text); }
 
-.drawer-info-strip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid var(--am-border);
-  border-radius: 6px;
-  background: var(--am-surface-muted);
-  color: var(--am-text-muted);
-  font-size: 12px;
-}
-
-.drawer-warning-strip {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--am-warning-border);
-  border-radius: 6px;
-  background: var(--am-warning-surface);
-  color: var(--am-warning-text);
-  font-size: 12.5px;
-}
-
-.drawer-warning-strip__icon {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.drawer-warning-strip ul {
-  margin: 0;
-  padding-left: 16px;
-  display: grid;
-  gap: 3px;
-}
-
 .drawer-table-card {
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .drawer-table-card table {
@@ -1337,10 +1305,10 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
 }
 
 .drawer-table-card th {
-  background: var(--am-table-header);
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--am-surface);
+  color: var(--am-text);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .drawer-table-card td {
@@ -1403,13 +1371,22 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
 }
 
 .drawer-code-preview {
+  max-width: 100%;
+  box-sizing: border-box;
   margin: 0;
   padding: 12px;
   border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
+  font-family: var(--am-font-mono);
   font-size: 12px;
-  overflow-x: auto;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 320px;
 }
 
 .drawer-time-cell {
@@ -1444,7 +1421,7 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
   font-weight: 700;
   line-height: 1;
   color: #fff;
-  background: var(--am-info-icon, #2563eb);
+  background: var(--am-action-primary);
   flex-shrink: 0;
 }
 
@@ -1574,6 +1551,13 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
 .runtime-configuration-diagnostics {
   display: grid;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.runtime-configuration-diagnostics details {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .runtime-configuration-diagnostics summary {
@@ -1583,12 +1567,22 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
 }
 
 .runtime-configuration-diagnostics pre {
+  max-width: 100%;
+  box-sizing: border-box;
   margin: 6px 0 0;
   padding: 10px;
-  overflow: auto;
   border: 1px solid var(--am-border);
   border-radius: 6px;
   background: var(--am-surface);
+  font-family: var(--am-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 320px;
 }
 
 .is-config-changed td:last-child {
@@ -1596,10 +1590,40 @@ function formatRuntimeConfiguration(value: Record<string, unknown>): string {
   color: var(--am-action-primary-strong);
 }
 
-.deployment-labels-disclosure summary {
-  cursor: pointer;
-  font-weight: 600;
+.drawer-labels-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drawer-sub-heading {
+  margin: 0;
   font-size: 13px;
+  font-weight: 600;
+  color: var(--am-text);
+}
+
+.drawer-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface);
+  color: var(--am-text-muted);
+  text-align: center;
+}
+
+.drawer-empty-state__icon {
+  color: var(--am-text-muted);
+  opacity: 0.72;
+}
+
+.drawer-empty-state__text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--am-text-muted);
 }
 
 @media (max-width: 720px) {

@@ -132,4 +132,94 @@ describe('Select', () => {
     expect(wrapper.emitted('update:modelValue')).toEqual([['dark']])
     expect(wrapper.find('.ui-select__menu').exists()).toBe(false)
   })
+
+  it('stays open when options are recreated with identical entries and closes when entries actually change', async () => {
+    const wrapper = mount(Select, {
+      props: {
+        modelValue: 'CPU',
+        options: [
+          { value: 'CPU', label: 'OpenVINO CPU' },
+          { value: 'AUTO', label: 'AUTO' },
+        ],
+      },
+    })
+    const trigger = wrapper.get('.ui-select__button')
+    await trigger.trigger('click')
+    expect(wrapper.find('[role=listbox]').exists()).toBe(true)
+
+    await wrapper.setProps({
+      options: [
+        { value: 'CPU', label: 'OpenVINO CPU' },
+        { value: 'AUTO', label: 'AUTO' },
+      ],
+    })
+    expect(wrapper.find('[role=listbox]').exists()).toBe(true)
+
+    await wrapper.setProps({
+      options: [
+        { value: 'CPU', label: 'OpenVINO CPU' },
+        { value: 'GPU', label: 'OpenVINO GPU' },
+      ],
+    })
+    expect(wrapper.find('[role=listbox]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not close on menu clicks or label clicks when wrapped in a label element', async () => {
+    const Host = {
+      components: { Select },
+      data() {
+        return {
+          value: 'a',
+          options: [
+            { value: 'a', label: 'Option A' },
+            { value: 'b', label: 'Option B', disabled: true },
+          ],
+        }
+      },
+      template: '<label class="field"><span class="field-caption">Device</span><Select v-model="value" :options="options" /></label>',
+    }
+    const wrapper = mount(Host, { attachTo: document.body })
+    const trigger = wrapper.get('.ui-select__button')
+    await trigger.trigger('click')
+    expect(wrapper.find('[role=listbox]').exists()).toBe(true)
+
+    // Clicking disabled option or menu container must not bubble to label and close the menu.
+    await wrapper.findAll('[role=option]')[1]!.trigger('click')
+    await wrapper.get('[role=listbox]').trigger('click')
+    expect(wrapper.find('[role=listbox]').exists()).toBe(true)
+
+    // Clicking the enclosing label caption while open cleanly toggles it closed via native label->button click.
+    const caption = wrapper.get('.field-caption').element
+    caption.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    caption.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[role=listbox]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('ignores unrelated container scrolls while open and closes when an ancestor container scrolls', async () => {
+    const Host = {
+      components: { Select },
+      data() {
+        return {
+          value: 'CPU',
+          options: [{ value: 'CPU', label: 'CPU' }, { value: 'GPU', label: 'GPU' }],
+        }
+      },
+      template: '<div><div class="sibling-scroll"></div><div class="ancestor-scroll"><Select floating v-model="value" :options="options" /></div></div>',
+    }
+    const wrapper = mount(Host, { attachTo: document.body })
+    await wrapper.get('.ui-select__button').trigger('click')
+    expect(document.body.querySelector('.ui-select__menu--floating')).not.toBeNull()
+
+    wrapper.get('.sibling-scroll').element.dispatchEvent(new Event('scroll', { bubbles: false }))
+    await wrapper.vm.$nextTick()
+    expect(document.body.querySelector('.ui-select__menu--floating')).not.toBeNull()
+
+    wrapper.get('.ancestor-scroll').element.dispatchEvent(new Event('scroll', { bubbles: false }))
+    await wrapper.vm.$nextTick()
+    expect(document.body.querySelector('.ui-select__menu--floating')).toBeNull()
+    wrapper.unmount()
+  })
 })

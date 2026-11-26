@@ -181,7 +181,7 @@ watch([poseExport, poseRetry], async ([selected], _, onCleanup) => {
   padding: 7px 10px;
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-sm);
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
   overflow-wrap: anywhere;
 }
 .training-task-rules__classes:not(.is-empty) { padding: 0; border: 0; background: transparent; }

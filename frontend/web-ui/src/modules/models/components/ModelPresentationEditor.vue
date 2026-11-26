@@ -234,7 +234,7 @@ function acceptLatest(keepDraft: boolean): void {
 .model-editor dl > div { display:grid; grid-template-columns:minmax(90px, 112px) minmax(0, 1fr); align-items:center; gap:8px; }
 .model-editor dt { color:var(--am-text); }
 .model-editor dd { margin:0; overflow-wrap:anywhere; }
-.model-editor__identity dd { padding:10px 12px; background:var(--am-surface-muted); border:1px solid var(--am-border); border-radius:var(--am-radius-sm); color:var(--am-text-muted); }
+.model-editor__identity dd { padding:10px 12px; background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-sm); color:var(--am-text-muted); }
 .model-editor__hint { display:flex; gap:7px; align-items:flex-start; margin:-10px 0 0; padding-inline-start:120px; color:var(--am-text-muted); }
 .model-editor__hint svg { flex:none; margin-top:2px; }
 .model-editor__time { padding-top:18px; border-top:1px solid var(--am-border); }

@@ -40,11 +40,6 @@
       </div>
     </div>
 
-    <p v-if="direction === 'export' && allDirectionRows.length > 0" class="deployment-records-subhint">
-      <Info :size="14" aria-hidden="true" />
-      <span>{{ t('deploymentWorkspace.transfers.exportHint') }}</span>
-    </p>
-
     <EmptyState
       v-if="allDirectionRows.length === 0"
       :title="direction === 'import' ? t('deploymentWorkspace.transfers.importsEmptyTitle') : t('deploymentWorkspace.transfers.exportsEmptyTitle')"
@@ -186,25 +181,28 @@
         </tbody>
       </table>
 
-      <footer class="deployment-card__footer">
-        <span class="deployment-card__total">
-          {{ t('deploymentWorkspace.footer.recordTotal', { count: rows.length }) }}
-        </span>
-        <div class="deployment-card__pagination">
-          <div v-if="totalPages > 1" class="deployment-page-buttons">
-            <Button size="sm" variant="ghost" :disabled="currentPage <= 1" @click="currentPage -= 1">‹</Button>
-            <span class="deployment-page-indicator">{{ currentPage }} / {{ totalPages }}</span>
-            <Button size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="currentPage += 1">›</Button>
-          </div>
-          <SelectField
-            fit-options
-            floating
-            :model-value="pageSize"
-            :options="pageSizeOptions"
-            @update:model-value="setPageSize"
-          />
-        </div>
-      </footer>
+      <div v-if="rows.length > 0" class="deployment-list-pagination">
+        <PaginationControls
+          numbered
+          :offset="(currentPage - 1) * pageSize"
+          :limit="pageSize"
+          :item-count="pagedRows.length"
+          :total-count="rows.length"
+          :disabled="refreshing"
+          @previous="currentPage = Math.max(1, currentPage - 1)"
+          @next="currentPage = Math.min(totalPages, currentPage + 1)"
+          @go="currentPage = Math.floor($event / pageSize) + 1"
+        />
+        <SelectField
+          fit-options
+          floating
+          :model-value="pageSize"
+          :options="pageSizeOptions"
+          :disabled="refreshing"
+          :aria-label="t('deploymentWorkspace.footer.pageSize', { size: pageSize })"
+          @update:model-value="setPageSize"
+        />
+      </div>
     </div>
 
     <SideDrawer
@@ -224,7 +222,11 @@
               <MinusCircle v-else :size="16" />
               <strong>{{ transferStateLabel(detailItem.state) }}</strong>
             </span>
-            <p v-if="direction === 'export'" class="transfer-detail__hero-sub">{{ zipStateLabel(detailItem) }}</p>
+            <p class="transfer-detail__hero-sub">
+              <template v-if="direction === 'export'">{{ zipStateLabel(detailItem) }} · </template>
+              <span>{{ sizeText(detailItem) }}</span>
+              <template v-if="detailItem.created_at"> · {{ formatSystemDateTime(detailItem.created_at) }}</template>
+            </p>
           </div>
 
           <InlineMessage v-if="direction === 'export' && detailItem.state === 'completed' && detailItem.zip_state && detailItem.zip_state !== 'available'" tone="warning">
@@ -234,9 +236,15 @@
 
           <section class="transfer-detail__section">
             <h3>{{ t('deploymentWorkspace.transfers.basicInfoTitle') }}</h3>
-            <dl class="transfer-detail__meta-grid">
-              <div><dt>{{ t('deploymentWorkspace.columns.fileName') }}</dt><dd>{{ recordTitle(detailItem) }}</dd></div>
-              <div><dt>{{ t('deploymentWorkspace.columns.size') }}</dt><dd>{{ sizeText(detailItem) }}</dd></div>
+            <dl class="transfer-detail__kv-card">
+              <div>
+                <dt>{{ t('deploymentWorkspace.columns.fileName') }}</dt>
+                <dd :title="recordTitle(detailItem)">{{ recordTitle(detailItem) }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('deploymentWorkspace.columns.size') }}</dt>
+                <dd>{{ sizeText(detailItem) }}</dd>
+              </div>
               <div>
                 <dt>{{ direction === 'export' ? t('deploymentWorkspace.columns.sourceDeployment') : t('deploymentWorkspace.columns.targetDeployment') }}</dt>
                 <dd>{{ deploymentTitleForRecord(detailItem) }}</dd>
@@ -244,7 +252,7 @@
               <div v-if="detailVersionInfo">
                 <dt>{{ t('deploymentWorkspace.columns.modelVersion') }}</dt>
                 <dd class="transfer-detail__version-dd">
-                  <span>{{ detailVersionInfo.modelName }}</span>
+                  <span class="transfer-detail__ellipsis">{{ detailVersionInfo.modelName }}</span>
                   <template v-if="detailVersionInfo.versionLabel">
                     <span class="transfer-detail__version-sep" aria-hidden="true">·</span>
                     <span class="transfer-version-chip">{{ detailVersionInfo.versionLabel }}</span>
@@ -259,20 +267,66 @@
                     :backend="detailItem.summary.deployment.runtime_backend"
                     :device="detailItem.summary.deployment.device_name"
                     :precision="detailItem.summary.inference.runtime_precision"
+                    backend-only
                   />
-                  <span>{{ runtimeText(detailItem) }}</span>
+                  <span class="transfer-detail__ellipsis">{{ runtimeText(detailItem) }}</span>
                 </dd>
               </div>
-              <div><dt>{{ t('deploymentWorkspace.columns.createdAt') }}</dt><dd>{{ detailItem.created_at ? formatSystemDateTime(detailItem.created_at) : '—' }}</dd></div>
-              <div><dt>{{ t('deploymentWorkspace.columns.updatedAt') }}</dt><dd>{{ detailItem.updated_at ? formatSystemDateTime(detailItem.updated_at) : '—' }}</dd></div>
-              <div v-if="direction === 'export'"><dt>{{ t('deploymentWorkspace.columns.fileStatus') }}</dt><dd>{{ zipStateLabel(detailItem) }}</dd></div>
-              <div v-if="detailItem.summary"><dt>{{ t('deploymentWorkspace.columns.taskType') }}</dt><dd>{{ modelTaskLabel(detailItem.summary.model.task_type, zh) }}</dd></div>
+              <div>
+                <dt>{{ t('deploymentWorkspace.columns.createdAt') }}</dt>
+                <dd>{{ detailItem.created_at ? formatSystemDateTime(detailItem.created_at) : '—' }}</dd>
+              </div>
+              <div>
+                <dt>{{ zh ? '更新时间' : 'Updated at' }}</dt>
+                <dd>{{ detailItem.updated_at ? formatSystemDateTime(detailItem.updated_at) : '—' }}</dd>
+              </div>
+              <div v-if="direction === 'export'">
+                <dt>{{ t('deploymentWorkspace.columns.fileStatus') }}</dt>
+                <dd>{{ zipStateLabel(detailItem) }}</dd>
+              </div>
+              <div v-if="direction === 'export' && detailItem.summary">
+                <dt>{{ t('deploymentWorkspace.columns.taskType') }}</dt>
+                <dd>{{ modelTaskLabel(detailItem.summary.model.task_type, zh) }}</dd>
+              </div>
             </dl>
+          </section>
+
+          <section v-if="direction === 'import' && (detailItem.summary || detailMappingEntries.length)" class="transfer-detail__section">
+            <h3>{{ zh ? '契约与映射' : 'Contract & mapping' }}</h3>
+            <div v-if="detailItem.summary" class="transfer-detail__contract-strip">
+              <div>
+                <span>{{ t('deploymentWorkspace.columns.taskType') }}</span>
+                <strong>{{ modelTaskLabel(detailItem.summary.model.task_type, zh) }}</strong>
+              </div>
+              <div>
+                <span>{{ t('deploymentOps.fields.inputSize') }}</span>
+                <strong>{{ detailItem.summary.inference.input_size.width }} × {{ detailItem.summary.inference.input_size.height }}</strong>
+              </div>
+              <div>
+                <span>{{ t('deploymentWorkspace.drawer.classesCount') }}</span>
+                <strong>{{ detailItem.summary.category_count }}</strong>
+              </div>
+            </div>
+            <div v-if="detailMappingEntries.length" class="transfer-detail__mapping-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{{ t('deploymentTransfer.mapping') }}</th>
+                    <th>{{ zh ? '映射标识' : 'Target ID' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="entry in detailMappingEntries" :key="entry.key">
+                    <td>{{ entry.label }}</td>
+                    <td :title="entry.value"><code>{{ entry.value }}</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section v-if="direction === 'export' && detailItem.state === 'completed'" class="transfer-detail__section">
             <h3>{{ t('deploymentWorkspace.transfers.fileContentsTitle') }}</h3>
-            <p class="transfer-detail__desc">{{ t('deploymentWorkspace.transfers.fileContentsDesc') }}</p>
             <ul class="transfer-detail__contents">
               <li>
                 <Check :size="15" aria-hidden="true" />
@@ -303,10 +357,6 @@
                 </div>
               </li>
             </ul>
-            <p class="transfer-detail__snapshot-note">
-              <Info :size="14" aria-hidden="true" />
-              <span>{{ t('deploymentWorkspace.transfers.exportSnapshotHint') }}</span>
-            </p>
           </section>
         </div>
       </template>
@@ -315,6 +365,15 @@
         <div class="transfer-detail__footer">
           <Button variant="secondary" size="sm" @click="detailItem = null">{{ t('common.close') }}</Button>
           <div class="transfer-detail__footer-right">
+            <Button
+              v-if="direction === 'import' && detailItem.state === 'completed' && detailItem.deployment_id"
+              variant="primary"
+              size="sm"
+              data-transfer-action="view-deployment"
+              @click="openImportedDeployment(detailItem.deployment_id)"
+            >
+              {{ zh ? '查看部署' : 'View deployment' }}
+            </Button>
             <Button
               v-if="direction === 'export' && detailItem.deployment_id && canWrite"
               variant="secondary"
@@ -345,9 +404,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, CheckCircle2, Clock, Download, Info, MinusCircle, RefreshCw, Search, X, XCircle } from '@lucide/vue'
+import { Check, CheckCircle2, Clock, Download, MinusCircle, RefreshCw, Search, X, XCircle } from '@lucide/vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -385,6 +445,7 @@ const emit = defineEmits<{
   refresh: []
   'begin-import': []
   'open-import': [item: DeploymentTransfer]
+  'open-deployment': [deploymentId: string]
   cancel: [item: DeploymentTransfer]
   dismiss: [item: DeploymentTransfer]
   updated: [item: DeploymentTransfer]
@@ -401,7 +462,7 @@ const fileStateFilter = ref('all')
 const pageSize = ref(20)
 const currentPage = ref(1)
 
-const pageSizeOptions = computed(() => [10, 20, 50].map(size => ({
+const pageSizeOptions = computed(() => [5, 10, 20, 50].map(size => ({
   label: t('deploymentWorkspace.footer.pageSize', { size }),
   value: size,
 })))
@@ -444,6 +505,10 @@ const pagedRows = computed(() => {
   return rows.value.slice(start, start + pageSize.value)
 })
 
+watch([searchQuery, stateFilter, fileStateFilter], () => {
+  currentPage.value = 1
+})
+
 watch([rows, pageSize], () => {
   if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
 })
@@ -481,6 +546,28 @@ function versionInfoForRecord(item: DeploymentTransfer): { modelName: string; ve
 }
 
 const detailVersionInfo = computed(() => (detailItem.value ? versionInfoForRecord(detailItem.value) : null))
+
+const detailMappingEntries = computed(() => {
+  const mapping = detailItem.value?.mapping || detailItem.value?.plan?.mapping || {}
+  const labels: Record<string, string> = {
+    model: t('deploymentTransfer.model'),
+    version: t('deploymentTransfer.modelVersion'),
+    build: t('deploymentTransfer.modelBuild'),
+    deployment: t('deploymentTransfer.deployment'),
+  }
+  return Object.entries(mapping)
+    .filter(([, value]) => Boolean(value))
+    .map(([key, value]) => ({
+      key,
+      label: labels[key] || key,
+      value: String(value),
+    }))
+})
+
+function openImportedDeployment(deploymentId: string): void {
+  detailItem.value = null
+  emit('open-deployment', deploymentId)
+}
 
 function deploymentTitleForRecord(item: DeploymentTransfer): string {
   const id = item.deployment_id
@@ -668,10 +755,10 @@ async function reexport(item: DeploymentTransfer): Promise<void> {
 .deployment-records-table td:last-child { padding-right: 16px; }
 
 .deployment-records-table th {
-  background: var(--am-table-header);
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--am-surface);
+  color: var(--am-text);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .deployment-records-table td {
@@ -758,65 +845,152 @@ async function reexport(item: DeploymentTransfer): Promise<void> {
 .transfer-action-link:hover { text-decoration: underline; }
 .transfer-action-link:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.deployment-card__footer {
+.deployment-list-pagination {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 20px;
+  gap: 8px 12px;
+  padding: 0 16px;
+  border-top: 1px solid var(--am-border);
 }
 
-.deployment-card__total { font-size: 13px; color: var(--am-text-muted); }
-.deployment-card__pagination { display: flex; align-items: center; gap: 10px; }
-.deployment-page-buttons { display: inline-flex; align-items: center; gap: 4px; }
-.deployment-page-indicator { font-size: 12px; color: var(--am-text-muted); }
+.deployment-list-pagination :deep(.pagination-controls) {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding-inline: 0;
+  background: transparent;
+}
+
+.deployment-list-pagination > .ui-select {
+  flex: none;
+}
 
 :global(.transfer-detail-drawer.side-drawer) {
   width: min(620px, calc(100vw - 36px));
 }
 
-.transfer-detail { display: grid; gap: 18px; }
-.transfer-detail__hero { display: grid; gap: 4px; }
+:global(.transfer-detail-drawer .side-drawer__header h2) {
+  font-size: 16px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.transfer-detail { display: grid; gap: 18px; min-width: 0; }
+.transfer-detail__hero {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--am-border);
+}
 .transfer-detail__hero-sub { margin: 0; font-size: 13px; color: var(--am-text-muted); }
 
-.transfer-detail__section { display: grid; gap: 10px; }
+.transfer-detail__section { display: grid; gap: 10px; min-width: 0; }
 .transfer-detail__section h3 { margin: 0; font-size: 14px; font-weight: 700; }
 .transfer-detail__desc { margin: 0; font-size: 13px; color: var(--am-text-muted); }
 
-.transfer-detail__meta-grid {
+.transfer-detail__kv-card {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 16px;
+  gap: 10px;
   margin: 0;
-  font-size: 13px;
+  padding: 14px 16px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface);
+  font-size: 14px;
 }
 
-.transfer-detail__meta-grid > div {
+.transfer-detail__kv-card > div {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
 }
 
-.transfer-detail__meta-grid dt { color: var(--am-text-muted); white-space: nowrap; }
-.transfer-detail__meta-grid dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.transfer-detail__kv-card dt { color: var(--am-text-muted); white-space: nowrap; font-size: 13px; }
+.transfer-detail__kv-card dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
 
 .transfer-detail__version-dd,
 .transfer-detail__runtime-dd {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.transfer-detail__ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .transfer-detail__version-sep {
   color: var(--am-text-muted);
+  flex-shrink: 0;
 }
 
 .transfer-version-chip {
   white-space: nowrap;
+  flex-shrink: 0;
 }
+
+.transfer-detail__contract-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface);
+}
+
+.transfer-detail__contract-strip > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.transfer-detail__contract-strip span {
+  font-size: 12px;
+  color: var(--am-text-muted);
+}
+
+.transfer-detail__contract-strip strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--am-text-strong, var(--am-text));
+}
+
+.transfer-detail__mapping-table {
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface);
+  overflow: hidden;
+}
+
+.transfer-detail__mapping-table table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.transfer-detail__mapping-table th,
+.transfer-detail__mapping-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--am-border);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-detail__mapping-table tr:last-child td { border-bottom: 0; }
+.transfer-detail__mapping-table th { width: 32%; background: var(--am-surface); color: var(--am-text); font-size: 13px; font-weight: 600; }
+.transfer-detail__mapping-table td { font-size: 13px; }
+.transfer-detail__mapping-table td code { font-family: var(--am-font-mono); font-size: 12px; color: var(--am-text-muted); }
 
 .transfer-detail__contents {
   margin: 0;
@@ -838,19 +1012,6 @@ async function reexport(item: DeploymentTransfer): Promise<void> {
 .transfer-detail__contents li > div { display: grid; gap: 2px; font-size: 13px; }
 .transfer-detail__contents span { font-size: 12px; color: var(--am-text-muted); }
 
-.transfer-detail__snapshot-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  padding: 9px 12px;
-  border: 1px solid var(--am-border);
-  border-radius: 6px;
-  background: var(--am-surface-muted);
-  font-size: 12px;
-  color: var(--am-text-muted);
-}
-
 .transfer-detail__footer {
   display: flex;
   align-items: center;
@@ -866,6 +1027,7 @@ async function reexport(item: DeploymentTransfer): Promise<void> {
 }
 
 @media (max-width: 640px) {
-  .transfer-detail__meta-grid { grid-template-columns: 1fr; }
+  .transfer-detail__kv-card > div { grid-template-columns: 1fr; gap: 4px; }
+  .transfer-detail__contract-strip { grid-template-columns: 1fr; }
 }
 </style>

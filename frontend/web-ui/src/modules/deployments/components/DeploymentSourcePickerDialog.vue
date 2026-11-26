@@ -533,7 +533,7 @@ function readRecord(
 .deployment-model-scale:hover,
 .deployment-trained-model:hover {
   border-color: var(--am-border-strong);
-  background: var(--am-surface-muted);
+  background: var(--am-row-hover);
 }
 
 .deployment-model-family.is-selected,

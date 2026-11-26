@@ -364,7 +364,7 @@ watch([kind, taskId, revision], async ([type, id], _, onCleanup) => {
 .report-metrics dt { color:var(--am-text-muted); overflow-wrap:anywhere; }
 .report-metrics dd { margin:3px 0 0; font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
 .report-metrics > div + div { border-inline-start:1px solid var(--am-border); }
-.task-report .resource-table tfoot { background:var(--am-surface-muted); font-weight:600; }
+.task-report .resource-table tfoot { background:var(--am-surface); font-weight:600; }
 .report-class-results:is(details) { padding:12px 16px; }
 .pose-spec { display:grid; align-content:start; gap:12px; }
 .pose-spec h2, .pose-definition h3, .pose-spec p { margin:0; }

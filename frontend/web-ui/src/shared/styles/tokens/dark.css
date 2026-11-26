@@ -14,7 +14,7 @@
   --am-input: #141615;
   --am-sidebar: #101010;
   --am-sidebar-active: var(--am-action-soft);
-  --am-table-header: #1a1a1a;
+  --am-table-header: var(--am-surface);
   --am-hover-surface: #303030;
   --am-selected-hover-surface: color-mix(in srgb, var(--am-brand-primary) 17%, var(--am-surface));
   --am-row-hover: var(--am-hover-surface);

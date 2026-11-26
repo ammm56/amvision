@@ -229,7 +229,7 @@ button.tree-entry {
   border-radius: 4px;
 }
 button.tree-entry:hover {
-  background: var(--am-surface-muted);
+  background: var(--am-surface);
 }
 .turned {
   transform: rotate(90deg);

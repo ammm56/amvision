@@ -160,7 +160,7 @@ onBeforeUnmount(() => { active = false; generation++; sampleGeneration++ })
 .comparison-card > .dataset-table { margin: 0; width: 100%; }
 .comparison-card :deep(table) { table-layout: fixed; min-width: 0; }
 .comparison-card :deep(th), .comparison-card :deep(td) { padding: 10px 14px; }
-.comparison-card :deep(th) { background: color-mix(in srgb, var(--am-surface-muted) 50%, var(--am-surface)); color: var(--am-text-muted); font-weight: 500; }
+.comparison-card :deep(th) { background: var(--am-surface); color: var(--am-text-muted); font-weight: 500; }
 .comparison-breakdowns :deep(th), .comparison-breakdowns :deep(td) { padding-block: 6px; }
 .comparison-changes :deep(th:first-child) { width: 30%; }
 .comparison-changes :deep(th:last-child) { width: 120px; }
