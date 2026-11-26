@@ -1,9 +1,28 @@
 <template>
   <div class="additional-evaluations">
-    <header>
-      <h2 v-if="creating">{{ zh ? '创建评估' : 'Create evaluation' }}</h2>
-      <div v-else class="additional-evaluations__actions">
-        <Button :loading="loading" @click="revision++">{{ zh ? '刷新' : 'Refresh' }}</Button>
+    <header v-if="creating">
+      <h2>{{ zh ? '创建评估' : 'Create evaluation' }}</h2>
+    </header>
+    <header v-else class="evaluation-list-tools">
+      <label class="evaluation-list-search">
+        <Search :size="16" aria-hidden="true" />
+        <input
+          v-model.trim="searchQuery"
+          type="search"
+          :aria-label="zh ? '搜索评估任务' : 'Search evaluation tasks'"
+          :placeholder="zh ? '搜索评估任务' : 'Search evaluation tasks'"
+        />
+      </label>
+      <div class="evaluation-list-filters">
+        <div class="evaluation-filter-item evaluation-filter-item--task">
+          <span>{{ zh ? '任务类型' : 'Task type' }}</span>
+          <slot name="task-type" />
+        </div>
+      </div>
+      <div class="evaluation-toolbar__end">
+        <Button :loading="loading" @click="revision++">
+          <RefreshCw v-if="!loading" :size="16" />{{ zh ? '刷新' : 'Refresh' }}
+        </Button>
       </div>
     </header>
     <InlineError :message="error" />
@@ -11,15 +30,27 @@
       <table>
         <thead><tr><th scope="col">{{ zh ? '任务名称' : 'Task name' }}</th><th scope="col">{{ zh ? '状态' : 'Status' }}</th><th scope="col">{{ headline.label }}</th><th scope="col">{{ zh ? '样本' : 'Samples' }}</th><th scope="col">{{ zh ? '创建时间' : 'Created' }}</th><th scope="col">{{ zh ? '操作' : 'Actions' }}</th></tr></thead>
         <tbody>
-          <tr v-for="task in tasks" :key="task.task_id">
-            <td>{{ taskName(task) }}</td><td><TaskStateBadge :state="task.state" /></td>
-            <td>{{ task[headline.key]?.toFixed(3) ?? '—' }}</td><td>{{ task.sample_count ?? '—' }}</td>
+          <tr v-for="task in visibleTasks" :key="task.task_id">
+            <td :title="taskName(task)"><span class="task-table__text">{{ taskName(task) }}</span></td>
+            <td><TaskStateBadge :state="task.state" appearance="icon" /></td>
+            <td>{{ task[headline.key]?.toFixed(3) ?? '—' }}</td>
+            <td>{{ task.sample_count ?? '—' }}</td>
             <td>{{ formatSystemDateTime(task.created_at, 'minutes') }}</td>
             <td><ButtonLink size="sm" variant="ghost" class="ui-button--row-view" :to="`/models/${kind}/evaluation-tasks/${encodeURIComponent(task.task_id)}`">{{ zh ? '查看' : 'View' }}</ButtonLink></td>
           </tr>
-          <tr v-if="!tasks.length && !error"><td colspan="6" role="status">{{ loading ? (zh ? '加载中…' : 'Loading…') : (zh ? '暂无评估任务' : 'No evaluation tasks') }}</td></tr>
+          <tr v-if="!visibleTasks.length && !error"><td colspan="6" role="status">{{ loading ? (zh ? '加载中…' : 'Loading…') : tasks.length ? (zh ? '没有符合筛选条件的评估任务' : 'No matching evaluation tasks') : (zh ? '暂无评估任务' : 'No evaluation tasks') }}</td></tr>
         </tbody>
       </table>
+      <ModelListPagination
+        :page="currentPage"
+        :page-size="pageSize"
+        :item-count="visibleTasks.length"
+        :total="filteredTasks.length"
+        :zh="zh"
+        :loading="loading"
+        @page="page = $event"
+        @page-size="pageSize = $event; page = 1"
+      />
     </div>
     <form v-else class="resource-section evaluation-form" @submit.prevent="submit">
       <template v-if="dense">
@@ -46,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import { RefreshCw, Search } from '@lucide/vue'
 import { modelDisplayName, modelVersionDisplayName, readCatalogVersionNames } from '../model-display-name'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -58,6 +90,7 @@ import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import Select from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import ModelListPagination from './ModelListPagination.vue'
 import { evaluationDatasetExportOptions, isEligibleEvaluationExport, type EvaluationDatasetVersion } from '../evaluation-dataset-exports'
 import { classificationEvaluationTitle, evaluationHeadline, evaluationModelVersionId, usesDefaultClassificationEvaluationName } from '../model-evaluation-types'
 import { listDeploymentSourceModels, type DeploymentSourceModelSummary } from '../services/model.service'
@@ -68,6 +101,21 @@ const emit = defineEmits<{ focusMode: [active: boolean] }>()
 const route = useRoute()
 const router = useRouter()
 const tasks = ref<ModelEvaluationRecord[]>([])
+const searchQuery = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const filteredTasks = computed(() => {
+  const term = searchQuery.value.trim().toLocaleLowerCase()
+  if (!term) return tasks.value
+  return tasks.value.filter(task => (
+    taskName(task).toLocaleLowerCase().includes(term)
+    || task.task_id.toLocaleLowerCase().includes(term)
+  ))
+})
+const pageCount = computed(() => Math.max(1, Math.ceil(filteredTasks.value.length / pageSize.value)))
+const currentPage = computed(() => Math.min(page.value, pageCount.value))
+const visibleTasks = computed(() => filteredTasks.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+watch([searchQuery, () => props.kind], () => { page.value = 1 })
 const modelVersionNames = shallowRef(new Map<string, string>())
 const revision = ref(0)
 const loading = ref(false)
@@ -211,13 +259,27 @@ defineExpose({ openCreate: () => { if (props.canWrite) creating.value = true } }
 
 <style scoped>
 .additional-evaluations, .evaluation-form { display:grid; gap:14px; min-width:0; }
-.additional-evaluations header, .additional-evaluations header > div, .evaluation-form footer { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
-.additional-evaluations__actions { margin-inline-start:auto; }
+.evaluation-list-tools { display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px; min-width:0; }
+.evaluation-list-search { flex:1 1 200px; max-width:280px; margin-inline-end:auto; display:flex; align-items:center; gap:8px; min-width:0; padding:0 12px; border:1px solid var(--am-border); border-radius:var(--am-radius-md); background:var(--am-surface); color:var(--am-text-muted); }
+.evaluation-list-search input { width:100%; min-width:0; min-height:36px; border:0; background:none; color:var(--am-text); }
+.evaluation-list-search:focus-within { outline:1px solid var(--am-brand-primary); }
+.evaluation-list-filters { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; min-width:0; }
+.evaluation-filter-item { display:inline-flex; align-items:center; gap:8px; min-width:0; }
+.evaluation-filter-item > span { color:var(--am-text-muted); white-space:nowrap; font-size:13px; }
+.evaluation-filter-item--task :deep(.ui-select) { width:136px; }
+.additional-evaluations header > div, .evaluation-form footer { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
 .additional-evaluations h2, .evaluation-form p { margin:0; }
 .evaluation-form { max-width:860px; }
 .evaluation-form footer { justify-content:flex-end; }
 .task-table { overflow:auto; }
 .task-table table { width:100%; table-layout:fixed; }
-.task-table :is(td,th) { overflow-wrap:anywhere; }
-.task-table th:first-child { width:27%; }
+.task-table th { white-space:nowrap; }
+.task-table td { overflow-wrap:anywhere; }
+.task-table__text { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.task-table th:nth-child(1) { width:28%; }
+.task-table th:nth-child(2) { width:13%; }
+.task-table th:nth-child(3) { width:19%; }
+.task-table th:nth-child(4) { width:10%; }
+.task-table th:nth-child(5) { width:18%; }
+.task-table th:nth-child(6) { width:12%; }
 </style>

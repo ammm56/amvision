@@ -5,10 +5,11 @@
         <Select :model-value="kind" :options="evaluationTypeOptions(zh)" :aria-label="zh ? '评估任务类型' : 'Evaluation task type'" @update:model-value="changeKind" />
       </template>
     </DetectionEvaluationPanel>
-    <template v-else-if="supported">
-      <Select v-show="!focusMode" :model-value="kind" :options="evaluationTypeOptions(zh)" :aria-label="zh ? '评估任务类型' : 'Evaluation task type'" @update:model-value="changeKind" />
-      <AdditionalEvaluationPanel :key="kind" ref="additionalPanelRef" :project-id="projectId" :zh="zh" :can-write="canWrite" :kind="supported" @focus-mode="setFocusMode" />
-    </template>
+    <AdditionalEvaluationPanel v-else-if="supported" :key="kind" ref="additionalPanelRef" :project-id="projectId" :zh="zh" :can-write="canWrite" :kind="supported" @focus-mode="setFocusMode">
+      <template #task-type>
+        <Select :model-value="kind" :options="evaluationTypeOptions(zh)" :aria-label="zh ? '评估任务类型' : 'Evaluation task type'" @update:model-value="changeKind" />
+      </template>
+    </AdditionalEvaluationPanel>
   </section>
 </template>
 
@@ -53,5 +54,4 @@ defineExpose({ openCreate })
 
 <style scoped>
 .model-evaluations { display:grid; gap:16px; min-width:0; }
-.model-evaluations > .ui-select { width:min(100%, 250px); }
 </style>

@@ -129,10 +129,15 @@
           <tr v-for="item in visibleImports" :key="item.operation_id">
             <td :title="item.result?.model_version_id || item.file_name">
               <strong>{{ item.plan?.name || item.model?.model_name || item.file_name || '—' }}</strong>
-              <small v-if="item.result?.model_version_id">{{ versionNames?.get(item.result.model_version_id) || '—' }}</small>
+              <small v-if="item.result?.model_version_id && versionNames?.get(item.result.model_version_id)">{{ versionNames.get(item.result.model_version_id) }}</small>
             </td>
             <td>{{ zh ? '模型包导入' : 'Model package' }}<small v-if="item.file_name" :title="item.file_name">{{ item.file_name }}</small></td>
-            <td><StatusBadge :tone="importTone(item)" with-dot>{{ packageStatus(item.state, zh) }}</StatusBadge></td>
+            <td>
+              <span class="package-state-icon" :class="`package-state-icon--${importTone(item)}`">
+                <component :is="importStateIcon(item)" :size="16" :stroke-width="2" class="package-state-icon__symbol" :class="{ 'status-disc': importTone(item) === 'success' || importTone(item) === 'danger', 'package-state-icon__symbol--loading': packagePending(item.state) }" aria-hidden="true" />
+                <span>{{ packageStatus(item.state, zh) }}</span>
+              </span>
+            </td>
             <td>{{ formatSystemDateTime(item.created_at, 'minutes') }}</td>
             <td><Button size="sm" variant="ghost" class="ui-button--row-view" @click="openRecord(item)">{{ zh ? '详情' : 'Details' }}</Button></td>
           </tr>
@@ -175,7 +180,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Check, FileArchive, RefreshCw, Upload, X } from '@lucide/vue'
+import { Check, CircleAlert, CircleCheck, CircleMinus, CircleX, FileArchive, LoaderCircle, RefreshCw, Upload, X } from '@lucide/vue'
 import ModelPackageRegistrationFailure from './ModelPackageRegistrationFailure.vue'
 import ModelPackageExportHistory from './ModelPackageExportHistory.vue'
 import ModelPackageExportResult from './ModelPackageExportResult.vue'
@@ -215,6 +220,12 @@ function importTone(item: ModelPackageRecord): StatusBadgeTone {
   if (item.state === 'failed') return 'danger'
   if (item.state === 'needs_attention') return 'warning'
   return packagePending(item.state) ? 'info' : 'neutral'
+}
+function importStateIcon(item: ModelPackageRecord) {
+  if (item.state === 'completed') return CircleCheck
+  if (item.state === 'failed') return CircleX
+  if (item.state === 'needs_attention') return CircleAlert
+  return packagePending(item.state) ? LoaderCircle : CircleMinus
 }
 const exports = computed(() => items.value.filter(row => row.direction === 'export'))
 const current = ref<ModelPackageRecord | null>(null)
@@ -579,6 +590,14 @@ onBeforeUnmount(reset)
 .package-toolbar, .package-actions, .package-actions__end, .package-modes { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .package-records .package-toolbar { justify-content:space-between; margin-bottom:14px; }
 .package-records__actions { display:flex; flex-wrap:wrap; gap:10px; }
+.package-state-icon { display:inline-flex; align-items:center; gap:7px; color:var(--am-text); white-space:nowrap; }
+.package-state-icon__symbol { flex:0 0 16px; color:var(--am-text-muted); }
+.package-state-icon--success .package-state-icon__symbol { fill:var(--am-brand-primary); color:#fff; }
+.package-state-icon--danger .package-state-icon__symbol { fill:#dc2626; color:#fff; }
+.package-state-icon--warning .package-state-icon__symbol { color:var(--am-warning-icon); }
+.package-state-icon__symbol--loading { animation:package-state-spin 1s linear infinite; }
+@keyframes package-state-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .package-state-icon__symbol--loading { animation:none; } }
 .package-read-error { display:flex; flex-wrap:wrap; gap:8px; align-items:center; min-width:0; overflow-wrap:anywhere; }
 .package-records small { display:block; max-width:100%; overflow:hidden; color:var(--am-text-muted); text-overflow:ellipsis; white-space:nowrap; }
 .package-records__drawer-footer { display:flex; justify-content:flex-end; inline-size:100%; flex-wrap:wrap; gap:10px; }

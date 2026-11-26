@@ -101,7 +101,40 @@
         <ModelPackageExport v-else-if="exportView && activeVersion" :project-id="projectId" :name="displayName(detail)" :task-type="detail.task_type" :version="activeVersion" :builds="versionBuilds" :zh="zh" @back="exportView = false" />
         <ModelBuildDetail v-else-if="artifactView && activeVersion" ref="artifactDetail" drawer :build="selectedBuild" :version="activeVersion" :model-id="detail.model_id" :project-id="projectId" :model-name="displayName(detail)" />
         <template v-else>
-        <h2 class="model-detail__name">{{ displayName(detail) }}</h2>
+        <div class="model-detail__heading-row">
+          <h2 class="model-detail__name">{{ displayName(detail) }}</h2>
+          <TooltipProvider :delay-duration="150">
+            <TooltipRoot>
+              <TooltipTrigger as-child>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  icon-only
+                  class="model-detail__copy-btn"
+                  data-model-action="copy-id"
+                  :aria-label="`${zh ? '复制 ID' : 'Copy ID'}: ${activeVersion?.model_version_id || detail.model_id}`"
+                  @click="copyModelDetailId(activeVersion?.model_version_id || detail.model_id)"
+                >
+                  <Check v-if="copiedDetailId" :size="14" class="is-copied" aria-hidden="true" />
+                  <Copy v-else :size="14" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipPortal>
+                <TooltipContent class="model-detail-id-tooltip" side="bottom" align="end" :side-offset="6" :collision-padding="12">
+                  <div>
+                    <span>{{ zh ? '模型 ID' : 'Model ID' }}</span>
+                    <code>{{ detail.model_id }}</code>
+                  </div>
+                  <div v-if="activeVersion?.model_version_id">
+                    <span>{{ zh ? '版本 ID' : 'Version ID' }}</span>
+                    <code>{{ activeVersion.model_version_id }}</code>
+                  </div>
+                </TooltipContent>
+              </TooltipPortal>
+            </TooltipRoot>
+          </TooltipProvider>
+        </div>
         <div v-if="detail.versions.length" class="model-detail__version"><span>{{ zh ? '版本' : 'Version' }}</span>
           <Select :model-value="selectedVersionId" :options="versionOptions" :aria-label="zh ? '版本' : 'Version'" @update:model-value="selectedVersionId = typeof $event === 'string' ? $event : ''" />
         </div>
@@ -176,9 +209,9 @@
           <p v-if="checkpointDownloadError" class="model-detail__action-error" role="alert">{{ zh ? '下载失败，请重试。' : 'Download failed. Try again.' }}</p>
         </section>
         <div class="model-detail__disclosures">
-          <details class="model-detail__disclosure"><summary>{{ zh ? '输入输出与类别' : 'Inputs, outputs and classes' }}</summary><p>{{ categoryNames.length ? categoryNames.join(' / ') : (zh ? '暂无类别信息' : 'No class information') }}</p></details>
+          <details class="model-detail__disclosure"><summary><span>{{ zh ? '输入输出与类别' : 'Inputs, outputs and classes' }}</span><ChevronRight :size="16" class="model-detail__chevron" aria-hidden="true" /></summary><p>{{ categoryNames.length ? categoryNames.join(' / ') : (zh ? '暂无类别信息' : 'No class information') }}</p></details>
           <button class="model-detail__files" type="button" data-artifact="" :disabled="!activeVersion?.files.length" @click="originalFilesView = true">
-            {{ zh ? '文件与校验' : 'Files and validation' }}<ChevronRight :size="15" aria-hidden="true" />
+            {{ zh ? '文件与校验' : 'Files and validation' }}<ChevronRight :size="16" aria-hidden="true" />
           </button>
           <button v-if="activeVersion" ref="referencesButton" class="model-detail__references" type="button" @click="referenceView = true">{{ zh ? '关联引用' : 'References' }} <span v-if="referenceLoading">…</span><span v-else-if="referenceError">{{ zh ? '（读取失败）' : '(unavailable)' }}</span><span v-else>（{{ referenceOverallTotal }}）</span><ChevronRight :size="16" /></button>
         </div>
@@ -218,7 +251,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ProjectSwitcher from '@/modules/projects/components/ProjectSwitcher.vue'
-import { ArrowLeft, ChevronRight, CircleAlert, CircleCheck, CircleHelp, CirclePlay, CircleStop, Database, Download, Eye, FileText, List, LockKeyhole, Package, Pencil, Plus, RefreshCw, Rocket, Search, Trash2, Upload, WifiOff } from '@lucide/vue'
+import { ArrowLeft, Check, ChevronRight, CircleAlert, CircleCheck, CircleHelp, CirclePlay, CircleStop, Copy, Database, Download, Eye, FileText, List, LockKeyhole, Package, Pencil, Plus, RefreshCw, Rocket, Search, Trash2, Upload, WifiOff } from '@lucide/vue'
+import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from 'reka-ui'
 import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import Select from '@/shared/ui/components/Select.vue'
@@ -483,7 +517,18 @@ async function load(): Promise<void> {
   }
 }
 function clearFilters(): void { search.value = ''; taskType.value = ''; page.value = 1 }
-function closeCatalogDetail(): void { selected.value = null; editing.value = null; detail.value = null; detailSerial++ }
+const copiedDetailId = ref(false)
+let copyTimer: ReturnType<typeof setTimeout> | undefined
+async function copyModelDetailId(id: string): Promise<void> {
+  if (!id) return
+  try {
+    await navigator.clipboard.writeText(id)
+    copiedDetailId.value = true
+    clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => { copiedDetailId.value = false }, 1600)
+  } catch { /* ignore clipboard denial */ }
+}
+function closeCatalogDetail(): void { selected.value = null; editing.value = null; detail.value = null; detailSerial++; copiedDetailId.value = false }
 async function allowNavigation(): Promise<boolean> {
   const allowed = await (presentationEditor.value?.allowNavigation?.() ?? true)
   if (allowed) editing.value = null
@@ -757,7 +802,10 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 @media (max-width:1120px) {
   .model-catalog__filter :deep(.ui-select) { width:112px; }
 }
-.model-detail__name { margin:0 0 18px; font-size:20px; }
+.model-detail__heading-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 18px; }
+.model-detail__name { margin:0; font-size:20px; min-width:0; overflow-wrap:anywhere; }
+.model-detail__copy-btn { flex:none; color:var(--am-text-muted); }
+.model-detail__copy-btn .is-copied { color:var(--am-action-primary); }
 .model-detail__version { display:flex; align-items:center; gap:12px; color:var(--am-text-muted); }
 .model-detail__version :deep(.ui-select) { min-width:136px; max-width:100%; }
 .model-detail__meta { display:flex; flex-wrap:wrap; gap:8px 16px; margin:0; padding:16px 0; border-bottom:1px solid var(--am-border); }
@@ -816,8 +864,12 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 .model-detail__table .ui-button { min-height:28px; padding-inline:4px; gap:4px; }
 .model-artifact__success { color:var(--am-success-text); }
 .model-detail__disclosures { display:grid; gap:10px; min-width:0; }
-.model-detail__disclosure { min-width:0; padding:12px; border:1px solid var(--am-border); border-radius:5px; overflow-wrap:anywhere; }
-.model-detail__disclosure summary { cursor:pointer; }
+.model-detail__disclosure { min-width:0; border:1px solid var(--am-border); border-radius:5px; overflow-wrap:anywhere; }
+.model-detail__disclosure summary { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px; cursor:pointer; list-style:none; }
+.model-detail__disclosure summary::-webkit-details-marker { display:none; }
+.model-detail__chevron { flex:none; color:var(--am-text-muted); transition:transform 140ms ease; }
+.model-detail__disclosure[open] .model-detail__chevron { transform:rotate(90deg); }
+.model-detail__disclosure p { margin:0; padding:0 12px 12px; }
 .model-detail__metric { display:flex; align-items:center; gap:20px; margin:0; padding:14px; border:1px solid var(--am-border); border-radius:5px; }
 .model-detail__metric > div { display:grid; flex:1; gap:6px; min-width:0; overflow-wrap:anywhere; }
 .model-detail__metric > div + div { border-inline-start:1px solid var(--am-border); padding-inline-start:20px; }
@@ -844,4 +896,34 @@ watch(() => [props.projectId, props.active, props.openModelId, props.openVersion
 .model-detail__artifact-actions { display:flex; align-items:center; flex-wrap:wrap; gap:3px; }
 .model-reference__pagination,.model-reference__pagination div { display:flex; align-items:center; gap:12px; }
 .model-reference__pagination { justify-content:space-between; padding:14px 0; }
+</style>
+
+<style>
+.model-detail-id-tooltip {
+  z-index: var(--am-z-tooltip);
+  display: grid;
+  gap: 6px;
+  min-width: 240px;
+  max-width: min(440px, calc(100vw - 80px));
+  padding: 8px 10px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface-raised, var(--am-surface));
+  box-shadow: var(--am-shadow-floating);
+  pointer-events: none;
+}
+.model-detail-id-tooltip > div {
+  display: grid;
+  gap: 2px;
+}
+.model-detail-id-tooltip span {
+  font-size: 11px;
+  color: var(--am-text-muted);
+}
+.model-detail-id-tooltip code {
+  font-family: var(--am-font-mono);
+  font-size: 12px;
+  color: var(--am-text-strong, var(--am-text));
+  overflow-wrap: anywhere;
+}
 </style>

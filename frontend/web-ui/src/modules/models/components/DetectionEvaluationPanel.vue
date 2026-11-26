@@ -1,17 +1,15 @@
 <template>
   <section class="evaluation-panel">
     <header v-show="!step && (!compareOpen || conflicts.length)" ref="listToolbar" class="evaluation-list-tools">
-      <div class="evaluation-toolbar">
-        <div class="evaluation-toolbar__end">
-          <Button :loading="loading" @click="load"><RefreshCw :size="16" />{{ zh ? '刷新' : 'Refresh' }}</Button>
-        </div>
-      </div>
-      <div class="evaluation-list-filters">
-        <label class="field"><span>{{ zh ? '任务类型' : 'Task type' }}</span><slot name="task-type" /></label>
-        <label class="field"><span>{{ zh ? '数据版本' : 'Dataset version' }}</span><Select v-model="filterDataset" floating :options="datasetFilters" :aria-label="zh ? '数据版本' : 'Dataset version'" /></label>
-        <label class="field"><span>{{ zh ? '数据划分' : 'Dataset split' }}</span><Select v-model="filterSplit" floating :options="splitFilters" :aria-label="zh ? '数据划分' : 'Dataset split'" /></label>
-      </div>
       <label class="evaluation-list-search"><Search :size="16" aria-hidden="true" /><input v-model.trim="filterQuery" type="search" :aria-label="zh ? '搜索模型版本' : 'Search model versions'" :placeholder="zh ? '搜索模型版本' : 'Search model versions'" /></label>
+      <div class="evaluation-list-filters">
+        <div class="evaluation-filter-item evaluation-filter-item--task"><span>{{ zh ? '任务类型' : 'Task type' }}</span><slot name="task-type" /></div>
+        <div class="evaluation-filter-item evaluation-filter-item--dataset"><span>{{ zh ? '数据版本' : 'Dataset version' }}</span><Select v-model="filterDataset" floating :options="datasetFilters" :aria-label="zh ? '数据版本' : 'Dataset version'" /></div>
+        <div class="evaluation-filter-item evaluation-filter-item--split"><span>{{ zh ? '数据划分' : 'Dataset split' }}</span><Select v-model="filterSplit" floating :options="splitFilters" :aria-label="zh ? '数据划分' : 'Dataset split'" /></div>
+      </div>
+      <div class="evaluation-toolbar__end">
+        <Button :loading="loading" @click="load"><RefreshCw v-if="!loading" :size="16" />{{ zh ? '刷新' : 'Refresh' }}</Button>
+      </div>
     </header>
     <InlineError :message="error" />
     <div v-show="!step && (!compareOpen || conflicts.length)" class="resource-table evaluation-table">
@@ -28,14 +26,12 @@
             <td><span class="evaluation-table__text" :title="taskDatasetLabel(row)">{{ taskDatasetLabel(row) }}</span><small>{{ [taskSplit(row), row.report_summary.sample_count == null ? '' : `${row.report_summary.sample_count} ${zh ? '张' : 'images'}`].filter(Boolean).join(' · ') || '—' }}</small></td>
             <td>{{ evaluationRuntime({ task: row, report: {} }) }}</td>
             <td><small>mAP50–95</small><strong>{{ evaluationMetric(row.state === 'succeeded' ? row.map50_95 : null) }}</strong></td>
-            <td><StatusBadge v-if="row.state === 'succeeded' && row.report_summary.coverage?.failed" tone="warning" with-dot>{{ zh ? '部分失败' : 'Partially evaluated' }}</StatusBadge><TaskStateBadge v-else :state="row.state" /><small>{{ formatSystemDateTime(row.created_at, 'minutes') }}</small></td>
+            <td><span v-if="row.state === 'succeeded' && row.report_summary.coverage?.failed" class="evaluation-partial-state"><CircleAlert :size="16" aria-hidden="true" /><span>{{ zh ? '部分失败' : 'Partially evaluated' }}</span></span><TaskStateBadge v-else :state="row.state" appearance="icon" /><small>{{ formatSystemDateTime(row.created_at, 'minutes') }}</small></td>
             <td><ButtonLink size="sm" variant="ghost" class="ui-button--row-view" :to="`/models/detection/evaluation-tasks/${encodeURIComponent(row.task_id)}`">{{ zh ? '查看' : 'View' }}</ButtonLink></td>
           </tr>
           <tr v-if="!pageTasks.length"><td colspan="7" role="status">{{ loading ? (zh ? '加载中' : 'Loading') : error ? (zh ? '评估列表读取失败' : 'Could not load evaluations') : tasks.length ? (zh ? '没有符合筛选条件的评估任务' : 'No matching evaluation tasks') : (zh ? '暂无目标检测评估任务' : 'No detection evaluation tasks') }}</td></tr>
         </tbody>
       </table>
-    </div>
-    <div v-show="!step && (!compareOpen || conflicts.length)" class="evaluation-list-footer">
       <div v-if="selected.length > 0" class="evaluation-toolbar evaluation-selection">
         <span aria-live="polite">{{ zh ? `已选 ${selected.length} 项` : `${selected.length} selected` }}</span>
         <div>
@@ -217,12 +213,11 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Check, RefreshCw, Search, TriangleAlert } from '@lucide/vue'
+import { Check, CircleAlert, RefreshCw, Search, TriangleAlert } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDatasetExportDetail, listProjectDatasetExports, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
 import { getDatasetWorkspace, listDatasetRecordPage } from '@/modules/datasets/services/dataset-workspace.service'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -659,14 +654,20 @@ defineExpose({ openCreate: () => openWizard() })
 .evaluation-toolbar, .evaluation-toolbar > div { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .evaluation-toolbar { justify-content:space-between; }
 .evaluation-toolbar h2,.evaluation-form :is(h3,p) { margin:0; }
-.evaluation-toolbar__end { margin-inline-start:auto; }
-.evaluation-list-tools,.evaluation-list-footer { display:grid; gap:12px; min-width:0; }
-.evaluation-list-filters { display:grid; grid-template-columns: minmax(0,180px) minmax(0,320px) minmax(0,150px); gap:12px; }
-.evaluation-list-filters .field { margin:0; min-width:0; }
-.evaluation-list-search { display:flex; align-items:center; gap:8px; padding:0 12px; border:1px solid var(--am-border); border-radius:var(--am-radius-md); background:var(--am-surface); color:var(--am-text-muted); }
+.evaluation-list-tools { display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px; min-width:0; }
+.evaluation-list-search { flex:1 1 200px; max-width:280px; margin-inline-end:auto; display:flex; align-items:center; gap:8px; min-width:0; padding:0 12px; border:1px solid var(--am-border); border-radius:var(--am-radius-md); background:var(--am-surface); color:var(--am-text-muted); }
 .evaluation-list-search input { width:100%; min-width:0; min-height:36px; border:0; background:none; color:var(--am-text); }
 .evaluation-list-search:focus-within { outline:1px solid var(--am-brand-primary); }
-.evaluation-selection { padding:10px 12px; border-radius:var(--am-radius-md); background:var(--am-success-surface); }
+.evaluation-list-filters { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; min-width:0; }
+.evaluation-filter-item { display:inline-flex; align-items:center; gap:8px; min-width:0; }
+.evaluation-filter-item > span { color:var(--am-text-muted); white-space:nowrap; font-size:13px; }
+.evaluation-filter-item--task :deep(.ui-select) { width:136px; }
+.evaluation-filter-item--dataset :deep(.ui-select) { width:180px; }
+.evaluation-filter-item--split :deep(.ui-select) { width:104px; }
+.evaluation-toolbar__end { margin-inline-start:0; }
+.evaluation-partial-state { display:inline-flex; align-items:center; gap:7px; color:var(--am-warning-text); font-weight:500; white-space:nowrap; }
+.evaluation-partial-state svg { flex:0 0 16px; color:var(--am-warning-icon); }
+.evaluation-selection { margin:0; padding:10px 14px; border-top:1px solid var(--am-border); background:var(--am-success-surface); }
 .evaluation-table { overflow:auto; }
 .evaluation-table table { width:100%; table-layout:fixed; }
 .evaluation-table :is(td,th) { overflow-wrap:anywhere; }

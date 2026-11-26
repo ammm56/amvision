@@ -17,40 +17,42 @@
       <template #actions>
         <ButtonLink
           v-if="task"
+          size="sm"
           :to="`/tasks/${task.task_id}`"
         >
-          <Activity :size="16" />
+          <Activity :size="15" />
           {{ t('trainingDetail.actions.taskStatus') }}
         </ButtonLink>
         <Button
           v-if="task && canDeleteTask"
+          size="sm"
           variant="danger"
           :disabled="loading || actionRunning !== null || cancellingTraining"
           :loading="actionRunning === 'delete'"
           @click="openDeleteDialog"
         >
-          <Trash2 :size="16" />
+          <Trash2 :size="15" />
           {{ t('trainingDetail.actions.delete') }}
         </Button>
-        <Button v-if="task || !loading" variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
-          <RefreshCw :size="16" />
+        <Button v-if="task || !loading" size="sm" variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
+          <RefreshCw :size="15" />
           {{ t('common.refresh') }}
         </Button>
-        <Button v-if="cancelledTraining || failedTraining" type="button" :disabled="loading || actionRunning !== null" @click="checkResume">
-          <FileCheck :size="16" />
+        <Button v-if="cancelledTraining || failedTraining" size="sm" type="button" :disabled="loading || actionRunning !== null" @click="checkResume">
+          <FileCheck :size="15" />
           {{ zh ? '检查恢复条件' : 'Check recovery conditions' }}
         </Button>
-        <Button v-if="task?.state === 'succeeded' && task.model_version_id && !primaryVersionDeleted" variant="primary" :loading="linkedModelLoading" @click="openLinkedModel">
-          <Box :size="16" />{{ zh ? '查看模型版本' : 'View model version' }}
+        <Button v-if="task?.state === 'succeeded' && task.model_version_id && !primaryVersionDeleted" size="sm" variant="primary" :loading="linkedModelLoading" @click="openLinkedModel">
+          <Box :size="15" />{{ zh ? '查看模型版本' : 'View model version' }}
         </Button>
-        <ButtonLink v-if="evaluationLocation" :to="evaluationLocation"><Play :size="16" />{{ zh ? '创建评估' : 'Create evaluation' }}</ButtonLink>
-        <ButtonLink v-if="trainingCopyLocation" :variant="task?.state === 'succeeded' ? 'secondary' : 'primary'" :to="trainingCopyLocation">
-          <Play :size="16" />
+        <ButtonLink v-if="evaluationLocation" size="sm" :to="evaluationLocation"><Play :size="15" />{{ zh ? '创建评估' : 'Create evaluation' }}</ButtonLink>
+        <ButtonLink v-if="trainingCopyLocation" size="sm" :variant="task?.state === 'succeeded' ? 'secondary' : 'primary'" :to="trainingCopyLocation">
+          <Play :size="15" />
           {{ failedTraining ? (zh ? '调整参数重新训练' : 'Adjust parameters and retrain') : (zh ? '按此配置新建训练' : 'Create training with this configuration') }}
         </ButtonLink>
-        <Button v-if="visibleControlActions.includes('terminate')" class="training-terminate" variant="secondary"
+        <Button v-if="visibleControlActions.includes('terminate')" size="sm" class="training-terminate" variant="secondary"
           :disabled="loading || actionRunning !== null || cancellingTraining" :loading="actionRunning === 'terminate'" @click="runAction('terminate')">
-          <CircleStop :size="16" aria-hidden="true" />{{ zh ? '取消训练' : 'Cancel training' }}
+          <CircleStop :size="15" aria-hidden="true" />{{ zh ? '取消训练' : 'Cancel training' }}
         </Button>
       </template>
     </PageHeader>
@@ -1713,8 +1715,9 @@ function formatPlainValue(value: unknown): string {
 .training-detail-title h1 { overflow-wrap:anywhere; }
 .training-detail-back { justify-self:start; align-self:flex-start; margin-inline-start:-8px; margin-bottom:3px; }
 .training-detail :deep(.page-header) { align-items:flex-end; }
-.training-detail :deep(.page-actions) { max-width:60%; justify-content:flex-end; }
-.training-detail :deep(.page-header__heading) { flex:1; }
+.training-detail :deep(.page-actions) { max-width:none; flex:none; flex-wrap:nowrap; gap:8px; justify-content:flex-end; }
+.training-detail :deep(.page-actions > *) { white-space:nowrap; }
+.training-detail :deep(.page-header__heading) { flex:1 1 200px; min-width:0; }
 .training-terminate.ui-button--secondary { color:var(--am-danger-text); border-color:var(--am-danger-border); }
 .training-terminate.ui-button--secondary:hover:not(:disabled) { color:var(--am-danger-text); border-color:var(--am-danger-icon); background:var(--am-danger-surface); }
 .training-queue { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; }
@@ -1887,7 +1890,7 @@ function formatPlainValue(value: unknown): string {
 }
 @media (max-width: 1160px) {
   .training-detail :deep(.page-header) { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
-  .training-detail :deep(.page-actions) { width:100%; max-width:100%; justify-content:flex-end; }
+  .training-detail :deep(.page-actions) { width:100%; max-width:100%; flex-wrap:wrap; justify-content:flex-end; }
 }
 @media (max-width: 720px) {
   .training-cancelled-context { grid-template-columns:repeat(2,minmax(0,1fr)); }

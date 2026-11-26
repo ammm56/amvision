@@ -245,12 +245,14 @@ const contractEntries = computed(() => [
 dl.model-build-detail__information > div { grid-template-columns:minmax(90px,20%) minmax(0,1fr); }
 .model-build-detail dt,.model-build-detail dd { margin:0; padding:9px 12px; overflow-wrap:anywhere; }
 .model-build-detail dt { color:var(--am-text-muted); background:var(--am-surface); }
-.model-build-detail__io,.model-build-detail__contracts { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:12px; }
+.model-build-detail__io,.model-build-detail__contracts { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+.model-build-detail__contracts { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
 .model-build-detail__io section { padding:12px; border:1px solid var(--am-border); border-radius:5px; }
 .model-build-detail table { table-layout:fixed; width:100%; }
 .model-build-detail table :is(th,td) { padding:8px; overflow-wrap:anywhere; white-space:normal; }
 .model-build-detail table th { white-space:nowrap; }
-.model-build-detail__io section:first-child th:last-child { width:38%; }
+.model-build-detail__io section:first-child th:last-child { width:34%; }
+.model-build-detail__io section:first-child td:last-child { white-space:nowrap; font-variant-numeric:tabular-nums; }
 .model-build-detail__contracts th:first-child { width:25%; }
 @media (max-width: 600px) { .model-build-detail__io,.model-build-detail__contracts { grid-template-columns:1fr; } }
 </style>

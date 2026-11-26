@@ -690,7 +690,7 @@ async function runRowMenuAction(item: TaskDeploymentInstance, action: string): P
 
 .deployment-status-cell {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   justify-items: start;
 }
 
@@ -718,14 +718,14 @@ async function runRowMenuAction(item: TaskDeploymentInstance, action: string): P
 .deployment-instance-card__states {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 
 .deployment-status-indicator__block {
   display: block;
-  width: 7px;
-  height: 3px;
-  border-radius: 1.5px;
+  width: 15px;
+  height: 5px;
+  border-radius: 2.5px;
   background: var(--am-neutral-icon);
 }
 

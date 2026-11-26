@@ -1,6 +1,6 @@
 <template>
   <span v-if="appearance === 'icon'" class="task-state-icon" :class="`task-state-icon--${statusTone}`" :title="statusLabel">
-    <component :is="stateIcon" :size="20" :stroke-width="2" class="task-state-icon__symbol" :class="{ 'status-disc': statusTone === 'success' || statusTone === 'danger', 'task-state-icon__symbol--loading': canonicalState === 'running' }" aria-hidden="true" />
+    <component :is="stateIcon" :size="16" :stroke-width="2" class="task-state-icon__symbol" :class="{ 'status-disc': statusTone === 'success' || statusTone === 'danger', 'task-state-icon__symbol--loading': canonicalState === 'running' }" aria-hidden="true" />
     <span class="task-state-icon__label">{{ statusLabel }}</span>
   </span>
   <StatusBadge v-else :tone="statusTone">
@@ -48,7 +48,7 @@ const statusLabel = computed(() => {
 
 <style scoped>
 .task-state-icon { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-width: 0; color: var(--am-text); font-size: inherit; font-weight: 400; white-space: nowrap; }
-.task-state-icon__symbol { flex: 0 0 20px; color: var(--am-text-muted); }
+.task-state-icon__symbol { flex: 0 0 16px; color: var(--am-text-muted); }
 .task-state-icon .task-state-icon__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit; color: inherit; }
 .task-state-icon--success .task-state-icon__symbol { fill: var(--am-brand-primary); color: #fff; }
 .task-state-icon--danger .task-state-icon__symbol { fill: #dc2626; color: #fff; }
