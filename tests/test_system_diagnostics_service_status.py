@@ -205,3 +205,119 @@ def test_local_message_diagnostics_separates_mailbox_event_and_retained_queue(
         "published-inference-gateway",
         "local-buffer-broker-control",
     ]
+
+
+def test_build_device_diagnostics_includes_host_and_cpu_summary() -> None:
+    """验证设备摘要包含 host 与 cpu 字段，且在当前平台下返回可读信息。"""
+
+    devices = diagnostics.build_device_diagnostics()
+
+    assert "host" in devices
+    assert "cpu" in devices
+    host = devices["host"]
+    assert isinstance(host, dict)
+    assert host["system"]
+    assert host["os_platform"]
+    assert host["os_name"]
+    assert host["os_name"] != "Win32"
+    assert host["hostname"]
+    assert host["machine"]
+
+    cpu = devices["cpu"]
+    assert cpu["available"] is True
+    assert cpu["logical_cores"] is None or cpu["logical_cores"] >= 1
+    assert cpu["physical_cores"] is None or cpu["physical_cores"] >= 1
+
+
+def test_host_summary_normalizes_windows_11_linux_and_macos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Windows 11 build 归一、Linux PRETTY_NAME 与 macOS 版本格式化。"""
+
+    import builtins
+    import sys
+
+    class _FakeKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    fake_values = {
+        "ProductName": ("Windows 10 Pro", 1),
+        "DisplayVersion": ("24H2", 1),
+        "CurrentBuildNumber": ("26100", 1),
+    }
+
+    fake_winreg = SimpleNamespace(
+        HKEY_LOCAL_MACHINE=object(),
+        OpenKey=lambda _root, _path: _FakeKey(),
+        QueryValueEx=lambda _key, name: (
+            fake_values[name]
+            if name in fake_values
+            else (_ for _ in ()).throw(OSError("missing"))
+        ),
+    )
+
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg)
+    monkeypatch.setattr(diagnostics.platform_module, "system", lambda: "Windows")
+    monkeypatch.setattr(diagnostics.platform_module, "machine", lambda: "AMD64")
+    monkeypatch.setattr(diagnostics.socket, "gethostname", lambda: "win-box")
+    win_host = diagnostics._build_host_summary()
+    assert win_host == {
+        "system": "Windows",
+        "os_platform": "Windows x64",
+        "os_name": "Windows 11 Pro 24H2 (Build 26100)",
+        "hostname": "win-box",
+        "machine": "AMD64",
+    }
+
+    fake_values["CurrentBuildNumber"] = ("19045", 1)
+    assert (
+        diagnostics._build_host_summary()["os_name"]
+        == "Windows 10 Pro 24H2 (Build 19045)"
+    )
+
+    monkeypatch.setattr(diagnostics.platform_module, "system", lambda: "Linux")
+    monkeypatch.setattr(diagnostics.platform_module, "machine", lambda: "x86_64")
+    monkeypatch.setattr(
+        diagnostics.platform_module,
+        "freedesktop_os_release",
+        lambda: {"PRETTY_NAME": "Ubuntu 24.04 LTS"},
+        raising=False,
+    )
+    linux_host = diagnostics._build_host_summary()
+    assert linux_host["os_platform"] == "Linux x64"
+    assert linux_host["os_name"] == "Ubuntu 24.04 LTS"
+
+    monkeypatch.setattr(
+        diagnostics.platform_module,
+        "freedesktop_os_release",
+        lambda: (_ for _ in ()).throw(OSError("no os-release")),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        diagnostics.platform_module,
+        "platform",
+        lambda: "Linux-6.8.0-x86_64",
+    )
+    assert diagnostics._build_host_summary()["os_name"] == "Linux-6.8.0-x86_64"
+
+    monkeypatch.setattr(diagnostics.platform_module, "system", lambda: "Darwin")
+    monkeypatch.setattr(diagnostics.platform_module, "machine", lambda: "arm64")
+    monkeypatch.setattr(
+        diagnostics.platform_module,
+        "mac_ver",
+        lambda: ("15.1", ("", "", ""), "arm64"),
+    )
+    mac_host = diagnostics._build_host_summary()
+    assert mac_host["os_platform"] == "macOS arm64"
+    assert mac_host["os_name"] == "macOS 15.1"
+
+    real_import = builtins.__import__
+    monkeypatch.setattr(diagnostics.util, "find_spec", lambda _name: None)
+    cpu = diagnostics._build_cpu_summary()
+    assert cpu["available"] is True
+    assert cpu["physical_cores"] is None
+    assert callable(real_import)

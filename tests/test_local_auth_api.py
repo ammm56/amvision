@@ -413,6 +413,11 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
         payload["capabilities"]["training_export_formats_by_task_and_model_type"]
         == build_supported_dataset_export_formats_by_task_and_model_type()
     )
+    assert payload["devices"]["host"]["system"]
+    assert payload["devices"]["host"]["os_platform"]
+    assert payload["devices"]["host"]["os_name"]
+    assert payload["devices"]["host"]["hostname"]
+    assert payload["devices"]["cpu"]["available"] is True
 
 
 def test_default_local_auth_initializer_skips_non_empty_user_table(

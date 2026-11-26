@@ -229,6 +229,11 @@ def test_diagnostics_route_requires_auth_read_and_returns_system_summary(
     assert payload["about"]["license"] == "PolyForm Noncommercial License 1.0.0"
     assert payload["about"]["license_spdx"] == "PolyForm-Noncommercial-1.0.0"
     assert payload["system"]["working_directory"]
+    assert payload["devices"]["host"]["system"]
+    assert payload["devices"]["host"]["os_platform"]
+    assert payload["devices"]["host"]["os_name"]
+    assert payload["devices"]["host"]["hostname"]
+    assert payload["devices"]["cpu"]["available"] is True
     assert payload["python_runtime"]["executable"]
     assert payload["services"]["database"]["status"] == "ok"
     assert payload["services"]["zeromq"]["status"] == "available"

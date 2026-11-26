@@ -84,3 +84,101 @@ def test_dismiss_failed_import_persists_and_preserves_receipt(tmp_path):
             assert client.get(f"{base}/{op_id}", headers=headers).status_code == 200
     finally:
         context.session_factory.engine.dispose()
+
+
+def test_export_zip_state_and_deployment_references(tmp_path):
+    """导出结果公开 zip_state，且只读引用接口准确返回引用该部署的 Workflow Runtime。"""
+    import json
+    from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
+    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+    from tests.api_test_support import issue_test_user_token
+
+    context = create_api_test_context(tmp_path, database_name="ref-api.db", enable_local_buffer_broker=False)
+    svc = ModelDeploymentTransferService(context.session_factory, context.dataset_storage)
+    package = sample_package()
+    package.deployment.runtime_configuration = serialize_deployment_runtime_configuration(build_default_runtime_configuration(runtime_backend="pytorch", device_name="cpu"))
+    source = tmp_path / "weights.pt"
+    source.write_bytes(b"model")
+    archive = tmp_path / "sample.zip"
+    write_package(archive, package, {"weights": source})
+    headers = build_test_headers(scopes="models:read models:write")
+    read_headers = build_test_headers(scopes="models:read")
+    base = "/api/v1/projects/project-1/model-deployment-transfers"
+    try:
+        with context.client as client:
+            with archive.open("rb") as handle:
+                up = client.post(f"{base}/imports", headers=headers, files={"file": ("sample.zip", handle, "application/zip")})
+            assert up.status_code == 202
+            op_id = up.json()["operation_id"]
+            svc.run(op_id)
+            analyzed = client.get(f"{base}/{op_id}", headers=headers).json()
+            client.post(f"{base}/imports/{op_id}/commit", headers=headers, json={"analysis_revision": analyzed["analysis_revision"], "idempotency_key": "ref-test"})
+            svc.run(op_id)
+
+            exp = client.post(f"{base}/exports", headers=headers, json={"deployment_instance_id": "deployment-1"})
+            assert exp.status_code == 202
+            export_id = exp.json()["operation_id"]
+            svc.run(export_id)
+            exported = client.get(f"{base}/{export_id}", headers=headers)
+            assert exported.status_code == 200
+            assert exported.json()["state"] == "completed"
+            assert exported.json()["zip_state"] == "available"
+
+            zip_path = context.dataset_storage.resolve(f"{svc.root(svc.get(export_id))}/package.zip")
+            zip_path.unlink()
+            missing = client.get(f"{base}/{export_id}", headers=headers)
+            assert missing.status_code == 200
+            assert missing.json()["state"] == "completed"
+            assert missing.json()["zip_state"] == "missing"
+
+            empty_refs = client.get(f"{base}/deployment/deployment-1/references", headers=read_headers)
+            assert empty_refs.status_code == 200
+            assert empty_refs.json() == {"items": [], "total": 0}
+
+            manifest_key = "projects/project-1/apps/app-1/deps.json"
+            manifest_path = context.dataset_storage.resolve(manifest_key)
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(json.dumps({"deployments": ["deployment-1"]}), encoding="utf-8")
+            with context.session_factory.create_session() as session:
+                unit = SqlAlchemyUnitOfWork(session)
+                unit.workflow_runtime.save_workflow_app_runtime(
+                    WorkflowAppRuntime(
+                        workflow_runtime_id="wf-rt-1",
+                        project_id="project-1",
+                        application_id="app-1",
+                        display_name="视觉检测产线",
+                        application_snapshot_object_key="projects/project-1/apps/app-1/app.json",
+                        template_snapshot_object_key="projects/project-1/apps/app-1/tpl.json",
+                        desired_state="stopped",
+                        observed_state="stopped",
+                        metadata={"dependency_manifest_object_key": manifest_key},
+                    )
+                )
+                unit.commit()
+
+            refs = client.get(f"{base}/deployment/deployment-1/references", headers=read_headers)
+            assert refs.status_code == 200, refs.text
+            assert refs.json() == {
+                "items": [{
+                    "workflow_runtime_id": "wf-rt-1",
+                    "application_id": "app-1",
+                    "display_name": "视觉检测产线",
+                    "desired_state": "stopped",
+                    "observed_state": "stopped",
+                    "relation": "direct",
+                }],
+                "total": 1,
+            }
+            assert client.get("/api/v1/projects/project-other/model-deployment-transfers/deployment/deployment-1/references", headers=read_headers).json() == {"items": [], "total": 0}
+            scoped_token = issue_test_user_token(
+                context.session_factory,
+                username="project1-reader",
+                scopes=("models:read",),
+                project_ids=("project-1",),
+            )
+            assert client.get(
+                "/api/v1/projects/project-other/model-deployment-transfers/deployment/deployment-1/references",
+                headers={"Authorization": f"Bearer {scoped_token}"},
+            ).status_code == 403
+    finally:
+        context.session_factory.engine.dispose()

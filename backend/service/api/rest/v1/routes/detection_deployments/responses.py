@@ -33,6 +33,12 @@ class DetectionDeploymentInstanceResponse(BaseModel):
     model_version_id: str = Field(description="绑定的 ModelVersion id")
     model_build_id: str | None = Field(default=None, description="绑定的 ModelBuild id")
     model_name: str = Field(description="模型名")
+    model_display_name: str | None = Field(
+        default=None, description="关联 Model 的展示名称"
+    )
+    model_version_number: int | None = Field(
+        default=None, description="关联 ModelVersion 的版本序号"
+    )
     model_scale: str = Field(description="模型 scale")
     task_type: str = Field(description="任务类型")
     source_kind: str = Field(description="ModelVersion 来源类型")
@@ -191,6 +197,8 @@ def build_detection_deployment_instance_response(
         model_version_id=view.model_version_id,
         model_build_id=view.model_build_id,
         model_name=view.model_name,
+        model_display_name=view.model_display_name,
+        model_version_number=view.model_version_number,
         model_scale=view.model_scale,
         task_type=view.task_type,
         source_kind=view.source_kind,

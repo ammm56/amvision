@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from uuid import uuid4
+
+from sqlalchemy import select
 
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -58,6 +60,10 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
+)
+from backend.service.infrastructure.persistence.model_orm import (
+    ModelRecord,
+    ModelVersionRecord,
 )
 
 
@@ -122,6 +128,8 @@ class DeploymentInstanceView:
     - updated_at：最后更新时间。
     - created_by：创建主体 id。
     - metadata：附加元数据。
+    - model_display_name：关联 Model 的展示名称；未设置时回退到模型名。
+    - model_version_number：关联 ModelVersion 的稳定显示序号；版本已删除或未知时为空。
     """
 
     deployment_instance_id: str
@@ -147,6 +155,8 @@ class DeploymentInstanceView:
     updated_at: str
     created_by: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+    model_display_name: str | None = None
+    model_version_number: int | None = None
 
 
 class SqlAlchemyDeploymentInstanceService:
@@ -227,18 +237,49 @@ class SqlAlchemyDeploymentInstanceService:
                         )
                     )
                 unit_of_work.commit()
+                display_names_by_model_id, version_numbers_by_id = (
+                    self._load_model_presentation_maps(
+                        unit_of_work, (deployment_instance,)
+                    )
+                )
 
-        return self._build_view(deployment_instance, runtime_target)
+        return self._build_view(
+            deployment_instance,
+            runtime_target,
+            model_display_name=display_names_by_model_id.get(
+                deployment_instance.model_id
+            ),
+            model_version_number=version_numbers_by_id.get(
+                deployment_instance.model_version_id
+            ),
+        )
 
     def get_deployment_instance(
         self, deployment_instance_id: str
     ) -> DeploymentInstanceView:
         """按 id 读取 DeploymentInstance。"""
 
-        deployment_instance = self._require_deployment_instance(deployment_instance_id)
+        with self._open_unit_of_work() as unit_of_work:
+            deployment_instance = unit_of_work.deployments.get_deployment_instance(
+                deployment_instance_id
+            )
+            if deployment_instance is None:
+                raise ResourceNotFoundError(
+                    "找不到指定的 DeploymentInstance",
+                    details={"deployment_instance_id": deployment_instance_id},
+                )
+            display_names_by_model_id, version_numbers_by_id = (
+                self._load_model_presentation_maps(unit_of_work, (deployment_instance,))
+            )
         return self._build_view(
             deployment_instance,
             self._resolve_target_from_instance(deployment_instance),
+            model_display_name=display_names_by_model_id.get(
+                deployment_instance.model_id
+            ),
+            model_version_number=version_numbers_by_id.get(
+                deployment_instance.model_version_id
+            ),
         )
 
     def get_visible_deployment_instance(
@@ -256,14 +297,23 @@ class SqlAlchemyDeploymentInstanceService:
                     visible_project_ids,
                 )
             )
-        if deployment_instance is None:
-            raise ResourceNotFoundError(
-                "找不到指定的 DeploymentInstance",
-                details={"deployment_instance_id": deployment_instance_id},
+            if deployment_instance is None:
+                raise ResourceNotFoundError(
+                    "找不到指定的 DeploymentInstance",
+                    details={"deployment_instance_id": deployment_instance_id},
+                )
+            display_names_by_model_id, version_numbers_by_id = (
+                self._load_model_presentation_maps(unit_of_work, (deployment_instance,))
             )
         return self._build_view(
             deployment_instance,
             self._resolve_target_from_instance(deployment_instance),
+            model_display_name=display_names_by_model_id.get(
+                deployment_instance.model_id
+            ),
+            model_version_number=version_numbers_by_id.get(
+                deployment_instance.model_version_id
+            ),
         )
 
     def list_deployment_instances(
@@ -286,28 +336,40 @@ class SqlAlchemyDeploymentInstanceService:
             deployment_instances = unit_of_work.deployments.list_deployment_instances(
                 project_id
             )
-
-        matched = []
-        for deployment_instance in deployment_instances:
-            if (
-                model_version_id is not None
-                and deployment_instance.model_version_id != model_version_id
-            ):
-                continue
-            if (
-                model_build_id is not None
-                and deployment_instance.model_build_id != model_build_id
-            ):
-                continue
-            if status is not None and deployment_instance.status != status:
-                continue
-            matched.append(
-                self._build_view(
-                    deployment_instance,
-                    self._resolve_target_from_instance(deployment_instance),
-                )
+            filtered_instances: list[DeploymentInstance] = []
+            for deployment_instance in deployment_instances:
+                if (
+                    model_version_id is not None
+                    and deployment_instance.model_version_id != model_version_id
+                ):
+                    continue
+                if (
+                    model_build_id is not None
+                    and deployment_instance.model_build_id != model_build_id
+                ):
+                    continue
+                if status is not None and deployment_instance.status != status:
+                    continue
+                filtered_instances.append(deployment_instance)
+            selected_instances = filtered_instances[:limit]
+            display_names_by_model_id, version_numbers_by_id = (
+                self._load_model_presentation_maps(unit_of_work, selected_instances)
             )
-        return tuple(matched[:limit])
+
+        matched = [
+            self._build_view(
+                deployment_instance,
+                self._resolve_target_from_instance(deployment_instance),
+                model_display_name=display_names_by_model_id.get(
+                    deployment_instance.model_id
+                ),
+                model_version_number=version_numbers_by_id.get(
+                    deployment_instance.model_version_id
+                ),
+            )
+            for deployment_instance in selected_instances
+        ]
+        return tuple(matched)
 
     def delete_deployment_instance(self, deployment_instance_id: str) -> bool:
         """按 id 删除 DeploymentInstance。
@@ -483,12 +545,74 @@ class SqlAlchemyDeploymentInstanceService:
         return normalized_metadata
 
     @staticmethod
+    def _load_model_presentation_maps(
+        unit_of_work: SqlAlchemyUnitOfWork,
+        deployment_instances: Sequence[DeploymentInstance],
+    ) -> tuple[dict[str, str], dict[str, int]]:
+        """批量读取部署关联模型的展示名称与版本序号，避免列表查询出现 N+1。"""
+
+        model_ids = sorted(
+            {
+                item.model_id.strip()
+                for item in deployment_instances
+                if isinstance(item.model_id, str) and item.model_id.strip()
+            }
+        )
+        version_ids = sorted(
+            {
+                item.model_version_id.strip()
+                for item in deployment_instances
+                if isinstance(item.model_version_id, str)
+                and item.model_version_id.strip()
+            }
+        )
+        display_names_by_model_id: dict[str, str] = {}
+        version_numbers_by_id: dict[str, int] = {}
+
+        chunk_size = 500
+        for index in range(0, len(model_ids), chunk_size):
+            batch_ids = model_ids[index : index + chunk_size]
+            rows = unit_of_work.session.execute(
+                select(ModelRecord.model_id, ModelRecord.metadata_json).where(
+                    ModelRecord.model_id.in_(batch_ids)
+                )
+            ).all()
+            for model_id, metadata_json in rows:
+                if not isinstance(metadata_json, dict):
+                    continue
+                display_name = metadata_json.get("display_name")
+                if isinstance(display_name, str) and display_name.strip():
+                    display_names_by_model_id[model_id] = display_name.strip()
+
+        for index in range(0, len(version_ids), chunk_size):
+            batch_ids = version_ids[index : index + chunk_size]
+            rows = unit_of_work.session.execute(
+                select(
+                    ModelVersionRecord.model_version_id,
+                    ModelVersionRecord.version_number,
+                ).where(ModelVersionRecord.model_version_id.in_(batch_ids))
+            ).all()
+            for model_version_id, version_number in rows:
+                if isinstance(version_number, int):
+                    version_numbers_by_id[model_version_id] = version_number
+
+        return display_names_by_model_id, version_numbers_by_id
+
+    @staticmethod
     def _build_view(
         deployment_instance: DeploymentInstance,
         runtime_target: RuntimeTargetSnapshot,
+        *,
+        model_display_name: str | None = None,
+        model_version_number: int | None = None,
     ) -> DeploymentInstanceView:
         """把 DeploymentInstance 转换为公开视图。"""
 
+        resolved_model_display_name = (
+            model_display_name.strip()
+            if isinstance(model_display_name, str) and model_display_name.strip()
+            else runtime_target.model_name
+        )
         return DeploymentInstanceView(
             deployment_instance_id=deployment_instance.deployment_instance_id,
             project_id=deployment_instance.project_id,
@@ -521,6 +645,8 @@ class SqlAlchemyDeploymentInstanceService:
                 runtime_target=runtime_target,
                 runtime_configuration=deployment_instance.runtime_configuration,
             ),
+            model_display_name=resolved_model_display_name,
+            model_version_number=model_version_number,
         )
 
     @contextmanager

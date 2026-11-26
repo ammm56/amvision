@@ -24,6 +24,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 router = APIRouter(prefix="/projects/{project_id}/model-deployment-transfers", tags=["model-deployment-transfers"])
 Principal = Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))]
+ReadPrincipal = Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))]
 Factory = Annotated[SessionFactory, Depends(get_session_factory)]
 Storage = Annotated[LocalDatasetStorage, Depends(get_dataset_storage)]
 
@@ -40,25 +41,60 @@ def service(project_id, principal, factory, storage):
     return ModelDeploymentTransferService(factory, storage)
 
 
-def public(op: dict) -> dict:
-    """隐藏恢复路径及内部 actor；公开模型摘要和可操作分析。"""
-    result = {k: op[k] for k in ("operation_id", "project_id", "direction", "state", "created_at", "updated_at", "progress_bytes", "total_bytes", "display_name", "error", "analysis_revision", "plan", "mapping", "deployment_id") if k in op}
+def public(op: dict, svc: ModelDeploymentTransferService | None = None) -> dict:
+    """隐藏恢复路径及内部 actor；公开模型摘要、可操作分析与导出文件状态。"""
+    keys = (
+        "operation_id",
+        "project_id",
+        "direction",
+        "state",
+        "created_at",
+        "updated_at",
+        "progress_bytes",
+        "total_bytes",
+        "display_name",
+        "error",
+        "analysis_revision",
+        "plan",
+        "mapping",
+        "deployment_id",
+        "file_name",
+        "upload_bytes",
+        "uploaded_at",
+        "file_cleaned_at",
+    )
+    result = {k: op[k] for k in keys if k in op}
+    if svc is not None and op.get("direction") == "export":
+        result["zip_state"] = svc.export_zip_state(op)
     if op.get("manifest"):
         manifest = op["manifest"]
         result["summary"] = {"model": manifest["model"], "deployment": manifest["deployment"], "inference": {k: manifest["inference"].get(k) for k in ("runtime_precision", "input_size")}, "category_count": len(manifest["inference"]["labels"])}
     return result
 
 
+def _manifest_contains_id(payload: object, target_id: str) -> bool:
+    """递归检查依赖清单中是否包含指定 DeploymentInstance id。"""
+    if isinstance(payload, str):
+        return payload == target_id
+    if isinstance(payload, dict):
+        return any(_manifest_contains_id(value, target_id) for value in payload.values())
+    if isinstance(payload, list):
+        return any(_manifest_contains_id(item, target_id) for item in payload)
+    return False
+
+
 @router.post("/exports", status_code=202)
 def export(project_id: str, body: ExportRequest, principal: Principal, factory: Factory, storage: Storage) -> dict:
     """异步导出，不读取大模型到请求线程。"""
-    return public(service(project_id, principal, factory, storage).create(project_id, "export", deployment_id=body.deployment_instance_id, actor=principal.principal_id))
+    svc = service(project_id, principal, factory, storage)
+    return public(svc.create(project_id, "export", deployment_id=body.deployment_instance_id, actor=principal.principal_id), svc)
 
 
 @router.get("")
 def list_operations(project_id: str, principal: Principal, factory: Factory, storage: Storage) -> list[dict]:
     """页面刷新后回读未完成和短期结果。"""
-    return [public(op) for op in service(project_id, principal, factory, storage).list(project_id) if not op.get("dismissed") and not op.get("standalone")]
+    svc = service(project_id, principal, factory, storage)
+    return [public(op, svc) for op in svc.list(project_id) if not op.get("dismissed") and not op.get("standalone")]
 
 
 @router.get("/deployment/{deployment_id}/deletion-preview")
@@ -69,10 +105,55 @@ def deletion_preview(project_id: str, deployment_id: str, principal: Principal, 
     return ResourceDeletionService(session_factory=factory, dataset_storage=storage).preview(kind="deployment", resource_id=deployment_id, project_id=project_id)
 
 
+@router.get("/deployment/{deployment_id}/references")
+def list_deployment_references(
+    project_id: str,
+    deployment_id: str,
+    principal: ReadPrincipal,
+    factory: Factory,
+    storage: Storage,
+) -> dict:
+    """只读查询引用指定 DeploymentInstance 的 Workflow App Runtime 列表。"""
+    svc = service(project_id, principal, factory, storage)
+    items: list[dict[str, object]] = []
+    with svc.unit() as unit:
+        runtimes = unit.workflow_runtime.list_workflow_app_runtimes(project_id=project_id)
+        for runtime in runtimes:
+            manifest_key = runtime.metadata.get("dependency_manifest_object_key")
+            if not isinstance(manifest_key, str) or not manifest_key.strip():
+                revision_id = runtime.active_revision_id or runtime.desired_revision_id
+                revision = unit.workflow_runtime.get_workflow_runtime_revision(revision_id) if revision_id else None
+                version = (
+                    unit.workflow_runtime.get_workflow_app_version(revision.workflow_app_version_id)
+                    if revision is not None
+                    else None
+                )
+                manifest_key = version.dependency_manifest_object_key if version is not None else None
+            if not isinstance(manifest_key, str) or not manifest_key.strip():
+                continue
+            try:
+                manifest = storage.read_json(manifest_key)
+            except Exception:
+                continue
+            if _manifest_contains_id(manifest, deployment_id):
+                items.append(
+                    {
+                        "workflow_runtime_id": runtime.workflow_runtime_id,
+                        "application_id": runtime.application_id,
+                        "display_name": runtime.display_name,
+                        "desired_state": runtime.desired_state,
+                        "observed_state": runtime.observed_state,
+                        "relation": "direct",
+                    }
+                )
+    return {"items": items, "total": len(items)}
+
+
 @router.get("/{operation_id}")
 def get_operation(project_id: str, operation_id: str, principal: Principal, factory: Factory, storage: Storage) -> dict:
     """按真实阶段显示结果。"""
-    return public(service(project_id, principal, factory, storage).get(operation_id, project_id, standalone=False))
+    svc = service(project_id, principal, factory, storage)
+    return public(svc.get(operation_id, project_id, standalone=False), svc)
 
 
 @router.get("/assets/list")
@@ -152,7 +233,7 @@ async def upload(project_id: str, file: UploadFile, principal: Principal, factor
     """逐块接收上传；解压和完整性计算交给 Worker。"""
     svc = service(project_id, principal, factory, storage)
     op = await run_in_threadpool(svc.create, project_id, "import", actor=principal.principal_id)
-    return public(await receive_package(svc, op, file))
+    return public(await receive_package(svc, op, file), svc)
 
 
 async def receive_package(svc: ModelDeploymentTransferService, op: dict, file: UploadFile) -> dict:
@@ -183,13 +264,12 @@ async def receive_package(svc: ModelDeploymentTransferService, op: dict, file: U
             await file.close()
 
 
-
 @router.post("/imports/{operation_id}/analyze", status_code=202)
 def analyze(project_id: str, operation_id: str, body: ImportOptions, principal: Principal, factory: Factory, storage: Storage) -> dict:
     """更改现场配置后重新分析。"""
     svc = service(project_id, principal, factory, storage)
     svc.get(operation_id, project_id, standalone=False)
-    return public(svc.analyze(operation_id, body))
+    return public(svc.analyze(operation_id, body), svc)
 
 
 @router.post("/imports/{operation_id}/commit", status_code=202)
@@ -197,7 +277,7 @@ def commit(project_id: str, operation_id: str, body: ImportOptions, principal: P
     """提交已分析配置的幂等导入。"""
     svc = service(project_id, principal, factory, storage)
     svc.get(operation_id, project_id, standalone=False)
-    return public(svc.commit(operation_id, body))
+    return public(svc.commit(operation_id, body), svc)
 
 
 @router.post("/{operation_id}/cancel")
@@ -205,7 +285,7 @@ def cancel(project_id: str, operation_id: str, principal: Principal, factory: Fa
     """协作取消未提交操作。"""
     svc = service(project_id, principal, factory, storage)
     svc.get(operation_id, project_id, standalone=False)
-    return public(svc.cancel(operation_id))
+    return public(svc.cancel(operation_id), svc)
 
 
 @router.post("/{operation_id}/dismiss", status_code=204)

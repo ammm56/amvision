@@ -51,6 +51,12 @@ class SegmentationDeploymentInstanceResponse(BaseModel):
     )
     model_build_id: str | None = Field(default=None, description="绑定的 ModelBuild id")
     model_name: str = Field(description="模型名")
+    model_display_name: str | None = Field(
+        default=None, description="关联 Model 的展示名称"
+    )
+    model_version_number: int | None = Field(
+        default=None, description="关联 ModelVersion 的版本序号"
+    )
     model_scale: str = Field(description="模型 scale")
     task_type: str = Field(description="任务类型")
     source_kind: str = Field(description="ModelVersion 来源类型")

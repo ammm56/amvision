@@ -12,6 +12,16 @@ from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )
+from backend.service.application.models.registry.yolo11_model_service import (
+    SqlAlchemyYolo11ModelService,
+)
+from backend.service.application.models.registry.model_service import (
+    TrainingOutputRegistration,
+)
+from backend.service.infrastructure.persistence.model_orm import (
+    ModelRecord,
+    ModelVersionRecord,
+)
 from backend.service.domain.files.detection_model_file_types import (
     YOLOV8_DETECTION_FILE_TYPES,
 )
@@ -125,6 +135,8 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
             assert payload["project_id"] == "project-1"
             assert payload["model_version_id"] == model_version_id
             assert payload["model_build_id"] is None
+            assert payload["model_display_name"] == "yolox-nano-deployment"
+            assert payload["model_version_number"] == 1
             assert payload["runtime_backend"] == "pytorch"
             assert payload["device_name"] == "cpu"
             assert payload["runtime_precision"] == "fp32"
@@ -141,6 +153,8 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
             list_payload = list_response.json()
             assert len(list_payload) == 1
             assert list_payload[0]["deployment_instance_id"] == deployment_instance_id
+            assert list_payload[0]["model_display_name"] == "yolox-nano-deployment"
+            assert list_payload[0]["model_version_number"] == 1
 
             for task_type in ("classification", "segmentation", "pose", "obb"):
                 cross_task_list_response = client.get(
@@ -158,6 +172,8 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
             detail_payload = detail_response.json()
             assert detail_payload["display_name"] == "yolox bolt deployment"
             assert detail_payload["model_name"] == "yolox-nano-deployment"
+            assert detail_payload["model_display_name"] == "yolox-nano-deployment"
+            assert detail_payload["model_version_number"] == 1
             assert detail_payload["status"] == "active"
             assert (
                 detail_payload["runtime_configuration"]["execution"]["instance_count"]
@@ -1150,3 +1166,161 @@ def _build_headers() -> dict[str, str]:
     """构建具备 deployment API 所需 scope 的测试请求头。"""
 
     return build_test_headers(scopes="models:read,models:write")
+
+
+def test_deployment_instances_expose_model_display_name_and_version_number_and_tolerate_deletions(
+    tmp_path: Path,
+) -> None:
+    """验证 detection 与 task deployment 返回模型展示名与版本序号，且在模型/版本被删除后安全降级。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    checkpoint_v1_uri = "projects/project-1/models/cls-chain/v1/best.pt"
+    checkpoint_v2_uri = "projects/project-1/models/cls-chain/v2/best.pt"
+    labels_uri = "projects/project-1/models/cls-chain/labels.txt"
+    dataset_storage.write_bytes(checkpoint_v1_uri, b"fake-cls-v1")
+    dataset_storage.write_bytes(checkpoint_v2_uri, b"fake-cls-v2")
+    dataset_storage.write_text(labels_uri, "ok\nng\n")
+
+    cls_service = SqlAlchemyYolo11ModelService(session_factory=session_factory)
+    cls_v1 = cls_service.register_training_output(
+        TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-cls-v1",
+            model_name="cls-tech-name",
+            model_scale="s",
+            task_type="classification",
+            dataset_version_id="ds-v1",
+            checkpoint_file_id="ckpt-cls-v1",
+            checkpoint_file_uri=checkpoint_v1_uri,
+            labels_file_id="labels-cls-1",
+            labels_file_uri=labels_uri,
+            metadata={
+                "category_names": ["ok", "ng"],
+                "input_size": {"width": 224, "height": 224},
+            },
+        )
+    )
+    cls_v2 = cls_service.register_training_output(
+        TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-cls-v2",
+            model_name="cls-tech-name",
+            model_scale="s",
+            task_type="classification",
+            dataset_version_id="ds-v2",
+            checkpoint_file_id="ckpt-cls-v2",
+            checkpoint_file_uri=checkpoint_v2_uri,
+            labels_file_id="labels-cls-1",
+            labels_file_uri=labels_uri,
+            metadata={
+                "category_names": ["ok", "ng"],
+                "input_size": {"width": 224, "height": 224},
+            },
+        )
+    )
+    cls_model_id = cls_service.get_model_version(cls_v2).model_id
+    cls_service.update_project_presentation(
+        project_id="project-1",
+        model_id=cls_model_id,
+        display_name="4570塑盒 YOLO11-s",
+        description="",
+        expected_revision=0,
+    )
+
+    det_v1 = _seed_yolov8_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    det_model_id = cls_service.get_model_version(det_v1).model_id
+    cls_service.update_project_presentation(
+        project_id="project-1",
+        model_id=det_model_id,
+        display_name="定位检测 YOLOv8-s",
+        description="",
+        expected_revision=0,
+    )
+
+    try:
+        with client:
+            cls_create_1 = client.post(
+                "/api/v1/models/classification/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolo11",
+                    "model_version_id": cls_v1,
+                    "display_name": "cls-deploy-1",
+                },
+            )
+            cls_create_2 = client.post(
+                "/api/v1/models/classification/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolo11",
+                    "model_version_id": cls_v2,
+                    "display_name": "cls-deploy-2",
+                },
+            )
+            det_create = client.post(
+                "/api/v1/models/detection/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolov8",
+                    "model_version_id": det_v1,
+                    "display_name": "det-deploy-1",
+                },
+            )
+            assert cls_create_1.status_code == 201
+            assert cls_create_2.status_code == 201
+            assert det_create.status_code == 201
+
+            assert cls_create_1.json()["model_display_name"] == "4570塑盒 YOLO11-s"
+            assert cls_create_1.json()["model_version_number"] == 1
+            assert cls_create_2.json()["model_display_name"] == "4570塑盒 YOLO11-s"
+            assert cls_create_2.json()["model_version_number"] == 2
+            assert det_create.json()["model_display_name"] == "定位检测 YOLOv8-s"
+            assert det_create.json()["model_version_number"] == 1
+
+            cls_list = client.get(
+                "/api/v1/models/classification/deployment-instances?project_id=project-1",
+                headers=_build_headers(),
+            )
+            assert cls_list.status_code == 200
+            cls_by_version = {
+                item["model_version_id"]: item for item in cls_list.json()
+            }
+            assert cls_by_version[cls_v1]["model_display_name"] == "4570塑盒 YOLO11-s"
+            assert cls_by_version[cls_v1]["model_version_number"] == 1
+            assert cls_by_version[cls_v2]["model_display_name"] == "4570塑盒 YOLO11-s"
+            assert cls_by_version[cls_v2]["model_version_number"] == 2
+
+            # 模拟关联 ModelVersion 与 Model 被删除后的历史部署实例查询降级。
+            with session_factory.create_session() as session:
+                session.delete(session.get(ModelVersionRecord, cls_v2))
+                session.delete(session.get(ModelRecord, det_model_id))
+                session.commit()
+
+            cls_detail_after_delete = client.get(
+                f"/api/v1/models/classification/deployment-instances/{cls_create_2.json()['deployment_instance_id']}",
+                headers=_build_headers(),
+            )
+            assert cls_detail_after_delete.status_code == 200
+            assert (
+                cls_detail_after_delete.json()["model_display_name"]
+                == "4570塑盒 YOLO11-s"
+            )
+            assert cls_detail_after_delete.json()["model_version_number"] is None
+
+            det_list_after_delete = client.get(
+                "/api/v1/models/detection/deployment-instances?project_id=project-1",
+                headers=_build_headers(),
+            )
+            assert det_list_after_delete.status_code == 200
+            assert det_list_after_delete.json()[0]["model_display_name"] == (
+                "yolov8-s-deployment"
+            )
+            assert det_list_after_delete.json()[0]["model_version_number"] is None
+    finally:
+        session_factory.engine.dispose()

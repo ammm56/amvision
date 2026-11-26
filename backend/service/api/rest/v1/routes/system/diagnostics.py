@@ -177,6 +177,8 @@ def build_device_diagnostics() -> dict[str, object]:
     torch_cuda_devices = _probe_torch_cuda_devices()
     gpu_devices = nvidia_smi_devices or torch_cuda_devices
     return {
+        "host": _build_host_summary(),
+        "cpu": _build_cpu_summary(),
         "gpu": {
             "available": bool(gpu_devices),
             "devices": gpu_devices,
@@ -611,6 +613,184 @@ def _build_openvino_summary() -> dict[str, object]:
         device == "NPU" or device.startswith("NPU.") for device in normalized_devices
     )
     return summary
+
+
+def _build_host_summary() -> dict[str, object]:
+    """构造本机操作系统与主机平台摘要。
+
+    返回：
+    - dict[str, object]：包含 system、os_platform、os_name、hostname 与 machine 的主机信息。
+    """
+
+    system = platform_module.system()
+    machine = platform_module.machine()
+    return {
+        "system": system,
+        "os_platform": _format_os_platform(system, machine),
+        "os_name": _resolve_host_os_name(system),
+        "hostname": socket.gethostname(),
+        "machine": machine,
+    }
+
+
+def _build_cpu_summary() -> dict[str, object]:
+    """构造本机 CPU 核心数摘要。
+
+    返回：
+    - dict[str, object]：CPU 可用性及物理/逻辑核心数摘要。
+    """
+
+    physical_cores: int | None = None
+    if util.find_spec("psutil") is not None:
+        try:
+            import psutil
+
+            physical_cores = psutil.cpu_count(logical=False)
+        except Exception:  # pragma: no cover - 平台探测异常时安全降级
+            physical_cores = None
+    return {
+        "available": True,
+        "physical_cores": physical_cores,
+        "logical_cores": os.cpu_count(),
+    }
+
+
+def _format_os_platform(system: str, machine: str) -> str:
+    """把系统名与 CPU 架构归一为人类可读的平台标识。
+
+    参数：
+    - system：platform.system() 返回的操作系统名称。
+    - machine：platform.machine() 返回的架构名称。
+
+    返回：
+    - str：例如 ``Windows x64``、``Linux x64`` 或 ``macOS arm64``。
+    """
+
+    platform_name = "macOS" if system == "Darwin" else (system.strip() or "Unknown")
+    machine_normalized = machine.strip().lower()
+    if machine_normalized in {"x86_64", "amd64"}:
+        arch = "x64"
+    elif machine_normalized in {"aarch64", "arm64"}:
+        arch = "arm64"
+    elif machine_normalized in {"x86", "i386", "i686"}:
+        arch = "x86"
+    else:
+        arch = machine.strip()
+    return f"{platform_name} {arch}".strip()
+
+
+def _resolve_host_os_name(system: str) -> str:
+    """读取详细的主机操作系统名称与版本。
+
+    参数：
+    - system：platform.system() 返回的操作系统名称。
+
+    返回：
+    - str：人类可读的详细操作系统名称。
+    """
+
+    if system == "Windows":
+        return _read_windows_os_name() or platform_module.platform()
+    if system == "Linux":
+        return _read_linux_os_name() or platform_module.platform()
+    if system == "Darwin":
+        mac_version = platform_module.mac_ver()[0].strip()
+        return f"macOS {mac_version}" if mac_version else "macOS"
+    return platform_module.platform()
+
+
+def _read_windows_os_name() -> str | None:
+    """从 Windows 注册表读取准确的 Windows 版本与 Build 信息。
+
+    返回：
+    - str | None：例如 ``Windows 11 Pro 24H2 (Build 26100)``；无法读取时返回 None。
+    """
+
+    try:
+        import winreg
+    except ImportError:
+        return None
+
+    key_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
+    except OSError:
+        return None
+
+    with key:
+        product_name = _read_registry_str(winreg, key, "ProductName")
+        display_version = _read_registry_str(winreg, key, "DisplayVersion")
+        release_id = _read_registry_str(winreg, key, "ReleaseId")
+        build_number_str = _read_registry_str(
+            winreg, key, "CurrentBuildNumber"
+        ) or _read_registry_str(winreg, key, "CurrentBuild")
+        ubr = _read_registry_int(winreg, key, "UBR")
+
+    build_number: int | None = None
+    if build_number_str and build_number_str.isdigit():
+        build_number = int(build_number_str)
+
+    # Windows 11 注册表的 ProductName 常仍为 "Windows 10 ..."，需按 build >= 22000 归一。
+    if product_name:
+        if build_number is not None and build_number >= 22000 and "Windows 10" in product_name:
+            product_name = product_name.replace("Windows 10", "Windows 11", 1)
+    elif build_number is not None:
+        product_name = "Windows 11" if build_number >= 22000 else "Windows 10"
+    else:
+        return None
+
+    parts = [product_name]
+    version_tag = display_version or release_id
+    if version_tag:
+        parts.append(version_tag)
+    if build_number_str:
+        build_label = (
+            f"{build_number_str}.{ubr}" if ubr is not None else build_number_str
+        )
+        parts.append(f"(Build {build_label})")
+    return " ".join(parts)
+
+
+def _read_registry_str(winreg: object, key: object, value_name: str) -> str | None:
+    """安全读取 Windows 注册表字符串值。"""
+
+    try:
+        value, _ = winreg.QueryValueEx(key, value_name)
+    except OSError:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, int):
+        return str(value)
+    return None
+
+
+def _read_registry_int(winreg: object, key: object, value_name: str) -> int | None:
+    """安全读取 Windows 注册表整数值。"""
+
+    try:
+        value, _ = winreg.QueryValueEx(key, value_name)
+    except OSError:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _read_linux_os_name() -> str | None:
+    """读取 Linux 发行版的 PRETTY_NAME。"""
+
+    try:
+        os_release = platform_module.freedesktop_os_release()
+    except (OSError, AttributeError):
+        return None
+    pretty_name = os_release.get("PRETTY_NAME")
+    if isinstance(pretty_name, str) and pretty_name.strip():
+        return pretty_name.strip()
+    return None
 
 
 def _build_memory_summary() -> dict[str, object]:

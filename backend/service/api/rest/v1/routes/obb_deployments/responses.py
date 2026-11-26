@@ -26,6 +26,8 @@ def build_obb_deployment_instance_response(
         model_version_id=instance.model_version_id,
         model_build_id=instance.model_build_id,
         model_name=instance.model_name,
+        model_display_name=instance.model_display_name,
+        model_version_number=instance.model_version_number,
         model_scale=instance.model_scale,
         task_type=instance.task_type,
         source_kind=instance.source_kind,
