@@ -171,8 +171,11 @@ export function useTrainingParameters(options: {
     if (!options.resolvedTrainingModelType.value) {
       return options.translate('modelOps.trainingParameters.advanced')
     }
+    const taskKey = `taskKinds.tasks.${options.selectedTaskType.value}`
+    const translatedTask = options.translate(taskKey)
+    const localizedTaskType = translatedTask === taskKey ? options.selectedTaskType.value : translatedTask
     return options.translate('modelOps.trainingParameters.advancedForModel', {
-      taskType: options.selectedTaskType.value,
+      taskType: localizedTaskType,
       modelType: options.resolvedTrainingModelType.value,
     })
   })

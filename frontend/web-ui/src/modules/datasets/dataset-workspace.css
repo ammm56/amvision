@@ -392,14 +392,14 @@
   width: 21%;
 }
 .dataset-catalog .catalog-col-task {
-  width: 10%;
+  width: 11%;
 }
 .dataset-catalog .catalog-col-version {
   width: 78px;
 }
 .dataset-catalog .catalog-col-samples { width: 14%; }
 .dataset-catalog .catalog-col-split {
-  width: 22%;
+  width: 21%;
 }
 .dataset-catalog .catalog-col-time {
   width: calc(33% - 178px);

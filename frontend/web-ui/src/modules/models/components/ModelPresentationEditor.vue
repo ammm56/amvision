@@ -11,7 +11,7 @@
         <textarea v-model="description" maxlength="2000" rows="5" :disabled="saving" />
       </label>
       <dl class="model-editor__identity">
-        <div><dt>{{ label('任务类型', 'Task type') }}</dt><dd>{{ model?.task_type || '—' }}</dd></div>
+        <div><dt>{{ label('任务类型', 'Task type') }}</dt><dd>{{ modelTaskLabel(model?.task_type, locale.startsWith('zh')) }}</dd></div>
         <div><dt>{{ label('模型系列', 'Architecture') }}</dt><dd>{{ architecture }}</dd></div>
       </dl>
       <p class="model-editor__hint"><CircleHelp :size="16" aria-hidden="true" />{{ label('修改展示信息不会改变模型版本和训练产物。', 'Display changes do not alter model versions or training outputs.') }}</p>
@@ -65,6 +65,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { modelDisplayName } from '../model-display-name'
+import { modelTaskLabel } from '../model-evaluation-types'
 import { getProjectModelCatalogDetail, updateProjectModelPresentation, type PlatformBaseModelSummary } from '../services/model.service'
 
 const props = defineProps<{ open: boolean; projectId: string; model: PlatformBaseModelSummary | null }>()

@@ -248,6 +248,7 @@ describe('ModelOperationsPage conversion flow', () => {
     expect(listDetectionEvaluations).toHaveBeenCalledWith('project-1', expect.any(AbortSignal))
     expect(wrapper.text()).toContain('暂无目标检测评估任务')
     expect(wrapper.findAll('button').some(button => button.isVisible() && button.text().includes('创建训练'))).toBe(false)
+    expect(wrapper.find('.model-ops-navigation__actions').text()).toContain('创建评估')
   })
 
   it.each(['version-trained', 'version-unavailable'])('only prefills the exact eligible classification version %s', async versionId => {
@@ -296,7 +297,8 @@ describe('ModelOperationsPage conversion flow', () => {
     await panel.findAll('button').find(button => button.text() === '取消')!.trigger('click')
     await flushPromises()
     expect(panel.find('h2').exists()).toBe(false)
-    expect(panel.findAll('button').some(button => button.text() === '创建评估')).toBe(true)
+    expect(panel.findAll('button').some(button => button.text() === '创建评估')).toBe(false)
+    expect(wrapper.find('.model-ops-navigation__actions').text()).toContain('创建评估')
   })
 
   it('keeps training inputs available when task history fails to load', async () => {

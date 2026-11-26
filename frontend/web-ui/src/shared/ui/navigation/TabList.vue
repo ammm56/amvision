@@ -1,5 +1,11 @@
 <template>
-  <div ref="tabListRef" class="local-tabs" role="tablist" :aria-label="label">
+  <div
+    ref="tabListRef"
+    class="local-tabs"
+    :class="{ 'local-tabs--underline': variant === 'underline' }"
+    role="tablist"
+    :aria-label="label"
+  >
     <button
       v-for="tab in tabs"
       :key="tab.id"
@@ -36,6 +42,7 @@ const props = defineProps<{
   modelValue: string
   tabs: readonly TabListItem[]
   label: string
+  variant?: 'soft' | 'underline'
 }>()
 
 const emit = defineEmits<{

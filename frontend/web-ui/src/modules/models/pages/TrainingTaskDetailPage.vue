@@ -125,7 +125,7 @@
         :class="{ 'training-overview-progress--running': task.state === 'running' }"
         :aria-label="t('trainingDetail.progressTitle')">
         <dl class="training-progress-facts">
-          <div><dt>{{ zh ? '已完成' : 'Completed' }}</dt><dd><strong>{{ completedTrainingEpoch ?? (task.state === 'running' ? 0 : '—') }}</strong><template v-if="totalTrainingEpochs"> / {{ totalTrainingEpochs }}</template> {{ zh ? '轮' : 'epochs' }}</dd></div>
+          <div><dt>{{ zh ? '已完成' : 'Completed' }}</dt><dd><strong :class="{ 'is-failed': failedTraining }">{{ completedTrainingEpoch ?? (task.state === 'running' || failedTraining ? 0 : '—') }}</strong><template v-if="totalTrainingEpochs"> / {{ totalTrainingEpochs }}</template> {{ zh ? '轮' : 'epochs' }}</dd></div>
           <div v-if="activeEpoch"><dt>{{ epochLabel }}</dt><dd>{{ activeEpoch }}</dd></div>
           <div v-if="batchText"><dt>{{ zh ? '当前批次' : 'Current batch' }}</dt><dd>{{ batchText }}</dd></div>
           <div v-if="failedTraining && task.started_at"><dt>{{ zh ? '开始时间' : 'Started at' }}</dt><dd>{{ formatSystemDateTime(task.started_at) }}</dd></div>
@@ -1734,6 +1734,7 @@ function formatPlainValue(value: unknown): string {
 .training-progress-facts dt,.training-progress-eta dt { color:var(--am-text-muted); }
 .training-progress-facts dd,.training-progress-eta dd { margin:0; font-variant-numeric:tabular-nums; }
 .training-progress-facts dd strong { color:var(--am-success-text); font-size:19px; }
+.training-progress-facts dd strong.is-failed { color:var(--am-danger-text); }
 .training-failed-note { display:flex; gap:10px; padding:13px 16px; border:1px solid var(--am-danger-border); background:var(--am-danger-surface); border-radius:var(--am-radius-md); color:var(--am-danger-text); overflow-wrap:anywhere; }
 .training-failed-note svg { flex:none; }
 .training-failed-note p { margin:6px 0 0; color:var(--am-text); }

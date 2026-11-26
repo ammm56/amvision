@@ -350,8 +350,8 @@ function buildDualAxisOption(input: {
     color: visual.palette,
     textStyle: { color: visual.text, fontFamily: workbenchFontFamily() },
     tooltip: { trigger: 'axis', ...visual.tooltip },
-    legend: { type: 'scroll', top: 0, left: 0, textStyle: { fontSize: 11, color: visual.text }, pageTextStyle: { color: visual.text } },
-    grid: { left: 60, right: 60, top: 48, bottom: 42 },
+    legend: { type: 'scroll', top: 0, left: 0, right: 44, textStyle: { fontSize: 11, color: visual.text }, pageTextStyle: { color: visual.text } },
+    grid: { left: 60, right: 60, top: 56, bottom: 42 },
     xAxis: {
       type: 'value',
       min: 1,

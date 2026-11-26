@@ -4,7 +4,6 @@
       <h2 v-if="creating">{{ zh ? '创建评估' : 'Create evaluation' }}</h2>
       <div v-else class="additional-evaluations__actions">
         <Button :loading="loading" @click="revision++">{{ zh ? '刷新' : 'Refresh' }}</Button>
-        <Button v-if="canWrite" variant="primary" @click="creating = true"><Plus :size="16" />{{ zh ? '创建评估' : 'Create evaluation' }}</Button>
       </div>
     </header>
     <InlineError :message="error" />
@@ -48,9 +47,8 @@
 
 <script setup lang="ts">
 import { modelDisplayName, modelVersionDisplayName, readCatalogVersionNames } from '../model-display-name'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus } from '@lucide/vue'
 import { listProjectDatasetExports, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
 import { listDatasetVersionPage } from '@/modules/datasets/services/dataset-workspace.service'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
@@ -66,6 +64,7 @@ import { listDeploymentSourceModels, type DeploymentSourceModelSummary } from '.
 import { createDenseEvaluation, createModelEvaluation, isDenseEvaluation, listModelEvaluations, type AdditionalEvaluationKind, type ModelEvaluationRecord } from '../services/model-evaluation.service'
 
 const props = defineProps<{ projectId: string; zh: boolean; canWrite: boolean; kind: AdditionalEvaluationKind }>()
+const emit = defineEmits<{ focusMode: [active: boolean] }>()
 const route = useRoute()
 const router = useRouter()
 const tasks = ref<ModelEvaluationRecord[]>([])
@@ -106,6 +105,8 @@ const mismatch = computed(() => {
     && JSON.stringify(labels) !== JSON.stringify(selectedExport.value.category_names)
 })
 const readyToSubmit = computed(() => dense.value ? Boolean(file.value) : Boolean(modelId.value && selectedExport.value && !mismatch.value))
+watch(creating, active => emit('focusMode', active))
+onBeforeUnmount(() => emit('focusMode', false))
 
 function taskName(task: ModelEvaluationRecord): string {
   if (props.kind !== 'classification') return task.display_name
@@ -205,6 +206,7 @@ async function submit(): Promise<void> {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { submitting.value = false }
 }
+defineExpose({ openCreate: () => { if (props.canWrite) creating.value = true } })
 </script>
 
 <style scoped>

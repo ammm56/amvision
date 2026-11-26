@@ -249,6 +249,7 @@ dl.model-build-detail__information > div { grid-template-columns:minmax(90px,20%
 .model-build-detail__io section { padding:12px; border:1px solid var(--am-border); border-radius:5px; }
 .model-build-detail table { table-layout:fixed; width:100%; }
 .model-build-detail table :is(th,td) { padding:8px; overflow-wrap:anywhere; white-space:normal; }
+.model-build-detail table th { white-space:nowrap; }
 .model-build-detail__io section:first-child th:last-child { width:38%; }
 .model-build-detail__contracts th:first-child { width:25%; }
 @media (max-width: 600px) { .model-build-detail__io,.model-build-detail__contracts { grid-template-columns:1fr; } }

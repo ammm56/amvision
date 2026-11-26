@@ -66,7 +66,7 @@ const labels = {
   classification: ['图像分类', 'Classification'],
   segmentation: ['实例分割', 'Instance segmentation'],
   'semantic-segmentation': ['语义分割', 'Semantic segmentation'],
-  pose: ['关键点检测', 'Keypoints'],
+  pose: ['姿态估计', 'Pose estimation'],
   obb: ['旋转框检测', 'Oriented boxes'],
   selectionLimit: [
     '手动最多选择 1000 张；更多样本请使用“选择全部筛选结果”。',

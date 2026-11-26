@@ -1,7 +1,19 @@
 <template>
-  <section class="page-stack">
-    <PageHeader :title="t('customNodes.title')">
-      <template #actions>
+  <section class="page-stack custom-node-catalog-page">
+    <div class="custom-node-catalog__navigation">
+      <TabList
+        class="custom-node-catalog__tabs"
+        variant="underline"
+        :model-value="activeTab"
+        :tabs="tabs"
+        :label="t('customNodes.title')"
+        @update:model-value="selectTab"
+      />
+      <div class="custom-node-catalog__nav-actions">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadCatalog">
+          <RefreshCw :size="16" />
+          {{ t('common.refresh') }}
+        </Button>
         <Button
           v-if="activeTab === 'packs'"
           variant="primary"
@@ -11,12 +23,8 @@
           <Upload :size="16" />
           {{ t('customNodes.actions.install') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadCatalog">
-          <RefreshCw :size="16" />
-          {{ t('common.refresh') }}
-        </Button>
-      </template>
-    </PageHeader>
+      </div>
+    </div>
 
     <input
       ref="installArchiveInput"
@@ -27,14 +35,6 @@
     />
 
     <InlineError :message="errorMessage" />
-
-    <TabList
-      class="custom-node-catalog__tabs"
-      :model-value="activeTab"
-      :tabs="tabs"
-      :label="t('customNodes.title')"
-      @update:model-value="selectTab"
-    />
 
     <section v-if="activeTab === 'nodes'" class="catalog-workbench">
       <div class="catalog-workbench__main">
@@ -459,7 +459,6 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import TabList from '@/shared/ui/navigation/TabList.vue'
 
 type SelectValue = string | number | boolean | null

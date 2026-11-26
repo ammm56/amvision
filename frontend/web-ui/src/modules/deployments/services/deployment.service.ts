@@ -79,6 +79,8 @@ export interface TaskDeploymentInstance {
   model_version_id: string
   model_build_id?: string | null
   model_name: string
+  model_display_name?: string | null
+  model_version_number?: number | null
   model_scale: string
   task_type: string
   source_kind: string
@@ -131,7 +133,15 @@ export interface TaskDeploymentRuntimeHealth extends TaskDeploymentProcessStatus
   healthy_instance_count: number
   warmed_instance_count: number
   pinned_output_total_bytes: number
-  instances: Array<{ instance_id: string; healthy: boolean; warmed: boolean; busy: boolean; last_error?: string | null }>
+  instances: Array<{
+    instance_id: string
+    healthy: boolean
+    warmed: boolean
+    busy: boolean
+    inference_count?: number
+    error_count?: number
+    last_error?: string | null
+  }>
   keep_warm: {
     enabled?: boolean
     activated?: boolean

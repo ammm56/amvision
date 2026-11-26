@@ -14,6 +14,13 @@ export interface DeploymentTransfer {
   operation_id: string
   direction: 'import' | 'export'
   state: string
+  created_at?: string
+  updated_at?: string
+  file_name?: string
+  upload_bytes?: number
+  uploaded_at?: string
+  file_cleaned_at?: string
+  zip_state?: 'available' | 'cleaned' | 'missing' | 'unavailable' | null
   display_name?: string
   error?: string
   analysis_revision?: string
@@ -38,6 +45,18 @@ export interface DeploymentTransfer {
     runtime_configuration: Record<string, unknown>
   }
 }
+export interface DeploymentReferenceItem {
+  workflow_runtime_id: string
+  application_id: string
+  display_name: string
+  desired_state: string
+  observed_state: string
+  relation: 'direct'
+}
+export interface DeploymentReferenceList {
+  items: DeploymentReferenceItem[]
+  total: number
+}
 const base = (project: string) => `/projects/${encodeURIComponent(project)}/model-deployment-transfers`
 export interface DeploymentDeletionPreview {
   revision: string
@@ -45,6 +64,7 @@ export interface DeploymentDeletionPreview {
   retained_models: { kind: string; resource_id: string; reason: string }[]
 }
 export const previewDeploymentDeletion = (project: string, id: string) => apiRequest<DeploymentDeletionPreview>(`${base(project)}/deployment/${encodeURIComponent(id)}/deletion-preview`)
+export const listDeploymentReferences = (project: string, id: string) => apiRequest<DeploymentReferenceList>(`${base(project)}/deployment/${encodeURIComponent(id)}/references`)
 export const listTransfers = (project: string) => apiRequest<DeploymentTransfer[]>(base(project))
 export const exportDeployment = (project: string, id: string) => apiRequest<DeploymentTransfer>(`${base(project)}/exports`, { method: 'POST', body: { deployment_instance_id: id } })
 export function uploadDeployment(project: string, file: File, signal?: AbortSignal) {

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { i18n, setI18nLocale } from '@/platform/i18n'
+import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import {
   getDeploymentSourceModelDetail,
   listDeploymentSourceModels,
@@ -404,7 +405,11 @@ describe('DeploymentOperationsPage', () => {
     await router.push({ path: '/deployments', query: { deployment: deployment.deployment_instance_id } })
     mount(DeploymentOperationsPage, { global: { plugins: [pinia, i18n, router] } })
     await flushPromises()
-    expect(document.body.textContent).toContain('状态信息')
+    expect(document.body.textContent).toContain('实例信息')
+    const identityToggle = document.body.querySelector('button.drawer-inline-toggle') as HTMLButtonElement | null
+    expect(identityToggle).toBeTruthy()
+    identityToggle!.click()
+    await nextTick()
     expect(document.body.textContent).toContain(deployment.deployment_instance_id)
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', deployment.deployment_instance_id, 'sync', 'status')
     expect(vi.mocked(runTaskDeploymentStatusAction).mock.calls.every(call => call[3] === 'status')).toBe(true)
@@ -430,9 +435,16 @@ describe('DeploymentOperationsPage', () => {
   })
 
   beforeEach(async () => {
+    document.body.innerHTML = ''
+    document.body.style.overflow = ''
     router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: '/deployments', component: DeploymentOperationsPage }],
+      routes: [
+        { path: '/deployments', component: DeploymentOperationsPage },
+        { path: '/inference', component: { template: '<div />' } },
+        { path: '/models', component: { template: '<div />' } },
+        { path: '/applications', component: { template: '<div />' } },
+      ],
     })
     await router.push('/deployments')
     setI18nLocale('zh-CN')
@@ -516,8 +528,6 @@ describe('DeploymentOperationsPage', () => {
 
   afterEach(() => {
     vi.clearAllMocks()
-    document.body.innerHTML = ''
-    document.body.style.overflow = ''
   })
 
   it('omits redundant section kicker labels from the deployment page', async () => {
@@ -528,14 +538,10 @@ describe('DeploymentOperationsPage', () => {
     })
     await flushPromises()
 
-    expect(wrapper.find('.page-header .page-kicker').exists()).toBe(false)
-    expect(wrapper.find('.deployment-create-panel > div .page-kicker').exists()).toBe(false)
-    expect(wrapper.find('.deployment-source-summary .page-kicker').exists()).toBe(false)
-    expect(wrapper.find('.deployment-instances-panel .page-kicker').exists()).toBe(false)
-    expect(wrapper.find('.deployment-runtime-panel .page-kicker').exists()).toBe(false)
-    expect(wrapper.find('.deployment-events-panel .page-kicker').exists()).toBe(false)
-    expect(wrapper.find('.deployment-runtime-panel .section-heading .page-description').exists()).toBe(false)
-    expect(wrapper.find('.deployment-events-panel .section-heading .page-description').exists()).toBe(false)
+    expect(wrapper.find('.page-kicker').exists()).toBe(false)
+    await wrapper.get('[data-deployment-action="create-wizard"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('.deployment-create-panel .page-kicker').exists()).toBe(false)
   })
 
   it('localizes runtime mode choices without changing their protocol values', async () => {
@@ -546,7 +552,7 @@ describe('DeploymentOperationsPage', () => {
     })
     await flushPromises()
 
-    const runtimeModeSelect = wrapper.find('.page-actions .ui-select')
+    const runtimeModeSelect = wrapper.find('[data-deployment-filter="runtime-mode"] .ui-select')
     expect(runtimeModeSelect.find('.ui-select__button').text()).toContain('同步')
 
     await runtimeModeSelect.find('.ui-select__button').trigger('click')
@@ -554,6 +560,38 @@ describe('DeploymentOperationsPage', () => {
     expect(runtimeModeSelect.findAll('.ui-select__option').map((item) => item.text())).toEqual([
       '同步',
       '异步',
+    ])
+
+    await runtimeModeSelect.findAll('.ui-select__option')[1]!.trigger('click')
+    await flushPromises()
+    expect(runTaskDeploymentStatusAction).toHaveBeenLastCalledWith('detection', 'deployment-1', 'async', 'status')
+
+    setI18nLocale('en-US')
+    await nextTick()
+    expect(runtimeModeSelect.find('.ui-select__button').text()).toContain('Asynchronous')
+    await runtimeModeSelect.find('.ui-select__button').trigger('click')
+    await nextTick()
+    expect(runtimeModeSelect.findAll('.ui-select__option').map((item) => item.text())).toEqual([
+      'Synchronous',
+      'Asynchronous',
+    ])
+
+    setI18nLocale('ja-JP')
+    await nextTick()
+    await runtimeModeSelect.find('.ui-select__button').trigger('click')
+    await nextTick()
+    expect(runtimeModeSelect.findAll('.ui-select__option').map((item) => item.text())).toEqual([
+      '同期',
+      '非同期',
+    ])
+
+    setI18nLocale('ko-KR')
+    await nextTick()
+    await runtimeModeSelect.find('.ui-select__button').trigger('click')
+    await nextTick()
+    expect(runtimeModeSelect.findAll('.ui-select__option').map((item) => item.text())).toEqual([
+      '동기',
+      '비동기',
     ])
   })
 
@@ -636,37 +674,62 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.text()).not.toContain('2048')
     expect(wrapper.text()).not.toContain('runtime.started')
     const deploymentCard = wrapper.find('[data-deployment-id="deployment-1"]')
+    expect(wrapper.text()).not.toContain('项目：')
+    const navActions = wrapper.get('.deployment-ops-navigation__actions')
+    expect(navActions.text()).toContain('设备能力')
+    expect(navActions.text()).toContain('导入部署实例')
+    expect(navActions.text()).toContain('新建部署')
     expect(deploymentCard.text()).not.toContain('deployment-1')
     expect(deploymentCard.text()).not.toContain('model-version-1')
     expect(deploymentCard.text()).not.toContain('model-build-1')
-    expect(deploymentCard.text()).toContain('tensorrt fp16 / cuda')
-    expect(deploymentCard.text()).toContain('640 x 640')
-    expect(deploymentCard.findAll('[data-deployment-action]').slice(-2).map((item) => item.attributes('data-deployment-action'))).toEqual([
-      'delete',
+    const modelCell = deploymentCard.get('.deployment-model-cell')
+    expect(modelCell.text()).toContain('barcode-detector')
+    expect(modelCell.text()).not.toContain('目标检测')
+    expect(modelCell.element.closest('td')?.getAttribute('title')).toBe('目标检测 · barcode-detector')
+    expect(deploymentCard.text()).not.toContain('· n')
+    const runtimeBadge = deploymentCard.get('.deployment-runtime-badge[role="img"]')
+    expect(runtimeBadge.attributes('aria-label')).toBe('TensorRT FP16 · CUDA')
+    expect(runtimeBadge.attributes('title')).toBe('TensorRT FP16 · CUDA')
+    expect(runtimeBadge.text()).toBe('')
+    expect(deploymentCard.findAll('[data-deployment-action]').map((item) => item.attributes('data-deployment-action'))).toEqual([
       'status-details',
     ])
+    expect(getRowMenuItem(wrapper, 'deployment-1', 'stop')).toBeTruthy()
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'status')
     expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'health')
 
     await findDeploymentActionButton(wrapper, 'deployment-1', 'status-details').trigger('click')
     await flushPromises()
+    expect(document.body.textContent).toContain('实例信息')
+    const identityToggle = document.body.querySelector('button.drawer-inline-toggle') as HTMLButtonElement | null
+    expect(identityToggle).toBeTruthy()
+    identityToggle!.click()
+    await nextTick()
     const drawerText = document.body.textContent ?? ''
-    expect(drawerText).toContain('状态信息')
     expect(drawerText).toContain('deployment-1')
     expect(drawerText).not.toContain('model-version-1')
     expect(drawerText).toContain('model-build-1')
-    expect(drawerText).toContain('2048')
-    expect(drawerText).toContain('runtime.started')
 
-    await clickButtonByText(wrapper, '预热')
+    await clickDrawerTab('接口')
+    expect(document.body.textContent).toContain('640 × 640')
+
+    await clickDrawerTab('诊断')
+    const diagText = document.body.textContent ?? ''
+    expect(diagText).toContain('2048')
+    expect(diagText).toContain('runtime.started')
+
+    await clickDocumentButton('预热')
     await flushPromises()
     expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'warmup')
 
-    await clickButtonByText(wrapper, '重置')
+    await clickDocumentButton('重置')
+    await flushPromises()
+    await clickButtonByText(wrapper, '确认重置')
     await flushPromises()
     expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'reset')
 
-    await clickButtonByText(wrapper, '停止')
+    await triggerRowMenuAction(wrapper, 'deployment-1', 'stop')
+    await clickButtonByText(wrapper, '确认停止')
     await flushPromises()
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'stop')
   })
@@ -684,6 +747,7 @@ describe('DeploymentOperationsPage', () => {
 
     await findDeploymentActionButton(wrapper, 'deployment-2', 'status-details').trigger('click')
     await flushPromises()
+    await clickDrawerTab('运行配置')
 
     const drawerText = document.body.textContent ?? ''
     expect(drawerText).toContain('当前部署线程容量 / 物理核心')
@@ -739,7 +803,10 @@ describe('DeploymentOperationsPage', () => {
     })
     await flushPromises()
 
-    await clickButtonByText(wrapper, '预热')
+    await findDeploymentActionButton(wrapper, 'deployment-1', 'status-details').trigger('click')
+    await flushPromises()
+    await clickDrawerTab('诊断')
+    await clickDocumentButton('预热')
     await flushPromises()
 
     expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith(
@@ -762,7 +829,8 @@ describe('DeploymentOperationsPage', () => {
 
     await findDeploymentActionButton(wrapper, 'deployment-1', 'status-details').trigger('click')
     await flushPromises()
-    const renderedEvents = [...document.querySelectorAll('.deployment-event-timeline li')]
+    await clickDrawerTab('诊断')
+    const renderedEvents = [...document.querySelectorAll('.drawer-table-card tbody tr')]
     expect(renderedEvents).toHaveLength(2)
     expect(renderedEvents[0]?.textContent).toContain('runtime.warmup.completed')
     expect(renderedEvents[1]?.textContent).toContain('runtime.started')
@@ -802,14 +870,15 @@ describe('DeploymentOperationsPage', () => {
 
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'status')
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'status')
-    expect(findDeploymentActionButton(wrapper, 'deployment-1', 'stop').attributes('disabled')).toBeUndefined()
-    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+    expect(getRowMenuItem(wrapper, 'deployment-1', 'stop')?.disabled).toBe(false)
+    expect(getRowMenuItem(wrapper, 'deployment-2', 'stop')?.disabled).toBe(false)
 
-    await findDeploymentActionButton(wrapper, 'deployment-1', 'stop').trigger('click')
+    await triggerRowMenuAction(wrapper, 'deployment-1', 'stop')
+    await clickButtonByText(wrapper, '确认停止')
     await nextTick()
 
-    expect(findDeploymentActionButton(wrapper, 'deployment-1', 'stop').attributes('disabled')).toBeDefined()
-    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+    expect(getRowMenuItem(wrapper, 'deployment-1', 'stop')?.disabled).toBe(true)
+    expect(getRowMenuItem(wrapper, 'deployment-2', 'stop')?.disabled).toBe(false)
 
     resolveStop({
       ...status,
@@ -822,7 +891,7 @@ describe('DeploymentOperationsPage', () => {
     })
     await flushPromises()
 
-    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+    expect(getRowMenuItem(wrapper, 'deployment-2', 'stop')?.disabled).toBe(false)
   })
 
   it('refreshes selected deployment runtime without flashing card state or disabling actions', async () => {
@@ -864,8 +933,8 @@ describe('DeploymentOperationsPage', () => {
 
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'status')
     expect(wrapper.text()).not.toContain('刷新中')
-    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
-    expect(findDeploymentActionButton(wrapper, 'deployment-1', 'stop').attributes('disabled')).toBeUndefined()
+    expect(getRowMenuItem(wrapper, 'deployment-2', 'stop')?.disabled).toBe(false)
+    expect(getRowMenuItem(wrapper, 'deployment-1', 'stop')?.disabled).toBe(false)
 
     resolveSelectedStatus({
       ...status,
@@ -878,7 +947,7 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
 
     expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'health')
-    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+    expect(getRowMenuItem(wrapper, 'deployment-2', 'stop')?.disabled).toBe(false)
   })
 
   it('keeps picker content stable while a new task type loads and replaces it atomically', async () => {
@@ -899,23 +968,23 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
+    await openSourcePickerFromWizard(wrapper)
 
-    expect(wrapper.text()).toContain('Detection model')
-    await clickButtonByText(wrapper, 'classification')
+    const pickerShell = wrapper.get('.model-picker-shell')
+    expect(pickerShell.text()).toContain('Detection model')
+    await clickButtonByText(wrapper, '图像分类')
     await nextTick()
 
     const pickerBody = wrapper.find('.model-picker-shell__body')
     expect(pickerBody.attributes('aria-busy')).toBe('true')
-    expect(wrapper.text()).toContain('Detection model')
+    expect(pickerBody.text()).toContain('Detection model')
 
     resolveClassificationModels([classificationSourceModel])
     await flushPromises()
 
     expect(pickerBody.attributes('aria-busy')).toBe('false')
-    expect(wrapper.text()).not.toContain('Detection model')
-    expect(wrapper.text()).toContain('Classification model')
+    expect(pickerBody.text()).not.toContain('Detection model')
+    expect(pickerBody.text()).toContain('Classification model')
   })
 
   it('renders guarded OpenVINO CPU controls with shared select components', async () => {
@@ -926,11 +995,7 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
-    await clickButtonByText(wrapper, '用于部署')
-    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
 
     const initialDeviceField = findFieldByText(wrapper, '设备')
     expect(initialDeviceField.find('.ui-select__button').text()).toContain('OpenVINO AUTO（默认）')
@@ -989,14 +1054,12 @@ describe('DeploymentOperationsPage', () => {
     setI18nLocale('ja-JP')
     await nextTick()
     expect(wrapper.text()).toContain('OpenVINO パフォーマンス戦略')
-    expect(wrapper.text()).toContain('デプロイ元を変更')
     expect(wrapper.text()).toContain('デバイスをアクティブに維持')
     expect(wrapper.text()).not.toContain('デバイス維持間隔（秒）')
 
     setI18nLocale('ko-KR')
     await nextTick()
     expect(wrapper.text()).toContain('OpenVINO 성능 전략')
-    expect(wrapper.text()).toContain('배포 소스 변경')
     expect(wrapper.text()).toContain('장치 활성 상태 유지')
     expect(wrapper.text()).not.toContain('장치 활성 유지 간격(초)')
   })
@@ -1009,25 +1072,25 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
-    await clickButtonByText(wrapper, '用于部署')
-    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
 
     const keepWarmField = findFieldByText(wrapper, '保持设备活跃')
     expect(keepWarmField.find('.ui-select__button').text()).toContain('禁用')
     expect(wrapper.text()).not.toContain('设备保活间隔（秒）')
 
-    await wrapper.find('.deployment-create-panel').trigger('submit')
-    await flushPromises()
+    await submitWizardFromConfig(wrapper)
     expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
       .runtimeConfiguration.lifecycle.keep_warm_enabled).toBe(false)
     expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
       .runtimeConfiguration.lifecycle.keep_warm_interval_seconds).toBe(0.1)
 
-    await keepWarmField.find('.ui-select__button').trigger('click')
+    await clickButtonByText(wrapper, '完成')
+    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
+    const keepWarmField2 = findFieldByText(wrapper, '保持设备活跃')
+    await keepWarmField2.find('.ui-select__button').trigger('click')
     await nextTick()
-    const enabledOption = keepWarmField.findAll('.ui-select__option')
+    const enabledOption = keepWarmField2.findAll('.ui-select__option')
       .find((item) => item.text().includes('启用'))
     expect(enabledOption, 'keep-warm enabled option exists').toBeTruthy()
     await enabledOption!.trigger('click')
@@ -1043,8 +1106,7 @@ describe('DeploymentOperationsPage', () => {
     expect((keepWarmIntervalInput.element as HTMLInputElement).value).toBe('0.1')
     await keepWarmIntervalInput.setValue('0.25')
 
-    await wrapper.find('.deployment-create-panel').trigger('submit')
-    await flushPromises()
+    await submitWizardFromConfig(wrapper)
 
     expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
       .runtimeConfiguration.lifecycle.keep_warm_enabled).toBe(true)
@@ -1060,15 +1122,29 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
-    await clickButtonByText(wrapper, '用于部署')
-    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
+    await clickButtonByText(wrapper, '上一步')
+    await nextTick()
 
-    const sourcePrecision = wrapper.findAll('.deployment-source-summary__grid > div')
+    const sourcePrecision = wrapper.findAll('.wizard-summary-strip > div')
       .find((item) => item.text().includes('模型文件精度'))
     expect(sourcePrecision, 'model artifact precision exists').toBeTruthy()
-    expect(sourcePrecision!.text()).toContain('fp32')
+    expect(sourcePrecision!.text()).toContain('FP32')
+
+    setI18nLocale('en-US')
+    await nextTick()
+    expect(wrapper.text()).toContain('Model Artifact Precision')
+    setI18nLocale('ja-JP')
+    await nextTick()
+    expect(wrapper.text()).toContain('モデルファイル精度')
+    setI18nLocale('ko-KR')
+    await nextTick()
+    expect(wrapper.text()).toContain('모델 파일 정밀도')
+    setI18nLocale('zh-CN')
+    await nextTick()
+
+    await clickButtonByText(wrapper, '下一步')
+    await nextTick()
 
     const deviceField = findFieldByText(wrapper, '设备')
     await deviceField.find('.ui-select__button').trigger('click')
@@ -1094,19 +1170,15 @@ describe('DeploymentOperationsPage', () => {
 
     setI18nLocale('en-US')
     await nextTick()
-    expect(wrapper.text()).toContain('Model Artifact Precision')
     expect(wrapper.text()).toContain('OpenVINO Inference Precision')
     setI18nLocale('ja-JP')
     await nextTick()
-    expect(wrapper.text()).toContain('モデルファイル精度')
     expect(wrapper.text()).toContain('OpenVINO 実行精度')
     setI18nLocale('ko-KR')
     await nextTick()
-    expect(wrapper.text()).toContain('모델 파일 정밀도')
     expect(wrapper.text()).toContain('OpenVINO 실행 정밀도')
 
-    await wrapper.find('.deployment-create-panel').trigger('submit')
-    await flushPromises()
+    await submitWizardFromConfig(wrapper)
 
     expect(createTaskDeployment).toHaveBeenCalledTimes(1)
     const createInput = vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
@@ -1125,10 +1197,7 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
-    await clickButtonByText(wrapper, '用于部署')
-    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
 
     const deviceField = findFieldByText(wrapper, '设备')
     await deviceField.find('.ui-select__button').trigger('click')
@@ -1165,8 +1234,7 @@ describe('DeploymentOperationsPage', () => {
     expect((tilesInput.element as HTMLInputElement).value).toBe('2')
 
     await findFieldByText(wrapper, 'NPU compilation mode params').find('input').setValue('optimization-level=1')
-    await wrapper.find('.deployment-create-panel').trigger('submit')
-    await flushPromises()
+    await submitWizardFromConfig(wrapper)
 
     expect(createTaskDeployment).toHaveBeenCalledTimes(1)
     const createInput = vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
@@ -1206,16 +1274,12 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
-    await clickButtonByText(wrapper, '用于部署')
-    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
 
     expect(wrapper.text()).not.toContain('TensorRT optimization profile')
     expect(wrapper.text()).not.toContain('TensorRT 输入范围')
 
-    await wrapper.find('.deployment-create-panel').trigger('submit')
-    await flushPromises()
+    await submitWizardFromConfig(wrapper)
     expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
       .runtimeConfiguration.backend_options).toMatchObject({
         kind: 'tensorrt',
@@ -1247,10 +1311,7 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
-    await clickButtonByText(wrapper, '用于部署')
-    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
 
     const rangeField = findFieldByText(wrapper, 'TensorRT 输入范围')
     expect(rangeField.text()).toContain('images')
@@ -1295,10 +1356,7 @@ describe('DeploymentOperationsPage', () => {
       global: { plugins: [pinia, i18n, router] },
     })
     await flushPromises()
-    await clickButtonByText(wrapper, '选择部署来源')
-    await flushPromises()
-    await clickButtonByText(wrapper, '用于部署')
-    await flushPromises()
+    await openWizardWithFirstBuild(wrapper)
 
     const profileField = findFieldByText(wrapper, 'TensorRT optimization profile')
     expect(profileField.find('input').exists()).toBe(false)
@@ -1310,8 +1368,7 @@ describe('DeploymentOperationsPage', () => {
     expect(profileOne, 'TensorRT profile 1 option exists').toBeTruthy()
     expect(profileOne!.text()).toContain('8 × 3 × 1280 × 1280')
     await profileOne!.trigger('click')
-    await wrapper.find('.deployment-create-panel').trigger('submit')
-    await flushPromises()
+    await submitWizardFromConfig(wrapper)
 
     expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
       .runtimeConfiguration.backend_options).toMatchObject({
@@ -1320,6 +1377,57 @@ describe('DeploymentOperationsPage', () => {
       })
   })
 })
+
+async function openSourcePickerFromWizard(wrapper: VueWrapper): Promise<void> {
+  await wrapper.get('[data-deployment-action="create-wizard"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[data-deployment-action="browse-source-picker"]').trigger('click')
+  await flushPromises()
+}
+
+async function openWizardWithFirstBuild(wrapper: VueWrapper): Promise<void> {
+  await openSourcePickerFromWizard(wrapper)
+  await clickButtonByText(wrapper, '用于部署')
+  await flushPromises()
+  await clickButtonByText(wrapper, '下一步')
+  await flushPromises()
+}
+
+async function submitWizardFromConfig(wrapper: VueWrapper): Promise<void> {
+  const continueButton = wrapper.findAll('button').find((item) => /检查配置|Check config|設定を確認|설정 확인|继续检查|Continue to review|確認へ進む|검토로 이동/i.test(item.text()))
+  if (continueButton) {
+    await continueButton.trigger('click')
+    await nextTick()
+  }
+  await wrapper.get('form.deployment-create-panel').trigger('submit')
+  await flushPromises()
+}
+
+function getRowMenuItem(wrapper: VueWrapper, deploymentId: string, actionId: string): { id: string; disabled?: boolean } | undefined {
+  const menu = wrapper.get(`[data-deployment-id="${deploymentId}"]`).findComponent(ResourceMenu)
+  const items = (menu.props('items') ?? []) as Array<{ id: string; disabled?: boolean }>
+  return items.find((item) => item.id === actionId)
+}
+
+async function triggerRowMenuAction(wrapper: VueWrapper, deploymentId: string, actionId: string): Promise<void> {
+  const menu = wrapper.get(`[data-deployment-id="${deploymentId}"]`).findComponent(ResourceMenu)
+  menu.vm.$emit('action', actionId)
+  await flushPromises()
+}
+
+async function clickDrawerTab(label: string): Promise<void> {
+  const tab = [...document.body.querySelectorAll('.local-tabs__tab')].find((item) => item.textContent?.includes(label)) as HTMLElement | undefined
+  expect(tab, `drawer tab ${label} exists`).toBeTruthy()
+  tab!.click()
+  await flushPromises()
+}
+
+async function clickDocumentButton(text: string): Promise<void> {
+  const button = [...document.body.querySelectorAll('button')].find((item) => item.textContent?.includes(text)) as HTMLElement | undefined
+  expect(button, `document button ${text} exists`).toBeTruthy()
+  button!.click()
+  await flushPromises()
+}
 
 async function clickButtonByText(wrapper: VueWrapper, text: string): Promise<void> {
   const button = wrapper.findAll('button').find((item) => item.text().includes(text))

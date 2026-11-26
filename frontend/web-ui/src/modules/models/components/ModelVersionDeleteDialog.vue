@@ -53,7 +53,7 @@
           <dl>
             <div><dt>{{ label('模型名称', 'Model') }}</dt><dd>{{ modelName }}</dd></div>
             <div><dt>{{ label('版本', 'Version') }}</dt><dd>{{ confirmationLabel }}</dd></div>
-            <div v-if="taskType"><dt>{{ label('任务类型', 'Task type') }}</dt><dd>{{ taskType }}</dd></div>
+            <div v-if="taskType"><dt>{{ label('任务类型', 'Task type') }}</dt><dd>{{ modelTaskLabel(taskType, locale.startsWith('zh')) }}</dd></div>
             <div><dt>{{ label('运行格式', 'Runtime formats') }}</dt><dd>{{ formats.join(' · ') || '—' }}</dd></div>
           </dl>
           <p>{{ label('未发现阻止删除的依赖。', 'No dependencies block deletion.') }}</p>
@@ -90,6 +90,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import { modelTaskLabel } from '../model-evaluation-types'
 import { listModelVersionReferences, type ModelDeploymentReference } from '../services/model.service'
 
 const props = defineProps<{

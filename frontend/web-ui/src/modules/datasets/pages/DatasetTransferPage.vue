@@ -63,7 +63,7 @@
       </div>
       <div v-else-if="!importing && step > 0" class="transfer-summary">
         <Database class="source-symbol" :size="24" /><strong>{{ selected?.display_name || selected?.dataset_id }} v{{ selected?.version_number }}</strong>
-        <span>·</span><span>{{ selected?.task_type }}</span>
+        <span>·</span><span>{{ selected?.task_type ? text(selected.task_type) : '' }}</span>
         <span>·</span><span>{{ exportCount.toLocaleString() }} {{ text('samples') }}</span><template v-if="step === 1 && !selection"><span>·</span><span>{{ selected?.object_count.toLocaleString() }} {{ label('个对象', 'objects') }}</span></template><strong v-if="step >= 2" class="export-target">→ {{ exportFormatLabel }}</strong>
       </div>
       <fieldset :disabled="busy" class="dataset-wizard-fields">

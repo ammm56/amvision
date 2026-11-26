@@ -44,7 +44,7 @@
       <dt>{{ text('project') }}</dt>
       <dd>{{ project.projects.find(item => item.project_id === current.project_id)?.display_name || current.project_id }}</dd>
       <dt>{{ text('task') }}</dt>
-      <dd>{{ current.task_type }}</dd>
+      <dd>{{ text(current.task_type) }}</dd>
 
     </dl>
     <template v-if="!editing">

@@ -17,7 +17,7 @@
           @change="changeVersion($event,true)"
           @more="tab = 'lineage'"
         />
-        <span v-if="workspace" class="dataset-task-label">{{ isMediaTask(workspace.task_type) ? text(workspace.task_type) : workspace.task_type }}</span>
+        <span v-if="workspace" class="dataset-task-label">{{ text(workspace.task_type) }}</span>
       </div>
       <div v-if="!unavailableStatus" class="dataset-actions">
         <ResourceMenu :label="text('more')" :items="headerActions" @action="headerAction" />

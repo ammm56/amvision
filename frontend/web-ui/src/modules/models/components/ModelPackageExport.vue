@@ -1,7 +1,7 @@
 <template>
   <section class="package-export">
     <h2>{{ zh ? '导出模型包' : 'Export model package' }}</h2>
-    <div class="package-export__source"><Package :size="22" /><div><strong>{{ name }}</strong><span>{{ taskType }} · {{ modelVersionDisplayName(version) }}</span></div></div>
+    <div class="package-export__source"><Package :size="22" /><div><strong>{{ name }}</strong><span>{{ modelTaskLabel(taskType, zh) }} · {{ modelVersionDisplayName(version) }}</span></div></div>
     <template v-if="!record">
       <h3>{{ zh ? '选择模型产物' : 'Select artifacts' }}</h3>
       <div class="resource-table">
@@ -10,7 +10,7 @@
           <tbody>
             <tr v-if="hasCheckpoint"><td><input v-model="checkpoint" type="checkbox" aria-label="PyTorch" /></td><td>PyTorch</td><td>FP32</td></tr>
             <tr v-for="build in builds" :key="build.model_build_id">
-              <td><input v-model="selected" type="checkbox" :value="build.model_build_id" :aria-label="`${build.build_format} ${build.runtime_precision}`" /></td><td>{{ build.build_format }}</td><td>{{ build.runtime_precision.toUpperCase() }}</td>
+              <td><input v-model="selected" type="checkbox" :value="build.model_build_id" :aria-label="`${conversionFormatName(build.build_format, zh)} ${build.runtime_precision.toUpperCase()}`" /></td><td>{{ conversionFormatName(build.build_format, zh) }}</td><td>{{ build.runtime_precision.toUpperCase() }}</td>
             </tr>
             <tr v-if="!hasCheckpoint && !builds.length"><td colspan="3">{{ zh ? '暂无可导出的模型文件' : 'No artifacts are available for export' }}</td></tr>
           </tbody>
@@ -39,7 +39,9 @@
 </template>
 
 <script setup lang="ts">
+import { conversionFormatName } from '../conversion-task-presentation'
 import { modelVersionDisplayName } from '../model-display-name'
+import { modelTaskLabel } from '../model-evaluation-types'
 import { FileText, Package, Scan, ShieldCheck, SlidersHorizontal } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@/shared/ui/components/Button.vue'

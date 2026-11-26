@@ -71,6 +71,7 @@ const percentText = computed(() => props.valueText || (normalizedPercent.value =
 .task-progress__compact-value {
   color: var(--am-progress-text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .task-progress__track {

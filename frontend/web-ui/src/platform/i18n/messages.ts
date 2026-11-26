@@ -3,6 +3,8 @@ import { userAccessMessages } from './user-access'
 import type { SupportedLocale } from './locales'
 import { deploymentTransferMessages } from './deployment-transfers'
 import { modelConversionSourceMessages } from './model-conversion-source'
+import { taskKindMessages } from './task-kinds'
+import { deploymentWorkspaceMessages } from './deployment-workspace'
 
 export type MessageValue = string | MessageSchema
 
@@ -381,7 +383,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: '来源 ModelVersion id',
         targetFormat: '目标格式',
         runtimeProfileId: 'RuntimeProfile id',
-        conversionRuntimeProfileId: '目标运行时配置 id（可选）',
+        conversionRuntimeProfileId: '目标运行时配置 ID（可选）',
         conversionDisplayName: '任务展示名称（可选）',
       },
       actions: {
@@ -2718,7 +2720,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: 'Source ModelVersion id',
         targetFormat: 'Target format',
         runtimeProfileId: 'RuntimeProfile id',
-        conversionRuntimeProfileId: 'Target runtime profile id (optional)',
+        conversionRuntimeProfileId: 'Target runtime profile ID (optional)',
         conversionDisplayName: 'Task display name (optional)',
       },
       actions: {
@@ -5052,7 +5054,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: 'Source ModelVersion id',
         targetFormat: 'ターゲット形式',
         runtimeProfileId: 'RuntimeProfile id',
-        conversionRuntimeProfileId: '対象 RuntimeProfile id（任意）',
+        conversionRuntimeProfileId: '対象 RuntimeProfile ID（任意）',
         conversionDisplayName: 'タスク表示名（任意）',
       },
       actions: {
@@ -7228,7 +7230,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: 'Source ModelVersion id',
         targetFormat: '대상 형식',
         runtimeProfileId: 'RuntimeProfile id',
-        conversionRuntimeProfileId: '대상 RuntimeProfile id (선택)',
+        conversionRuntimeProfileId: '대상 RuntimeProfile ID (선택)',
         conversionDisplayName: '작업 표시 이름 (선택)',
       },
       actions: {
@@ -9440,8 +9442,10 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
 for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
   baseMessages[locale].workflowDisplay = workflowDisplayMessages[locale]
   baseMessages[locale].deploymentTransfer = deploymentTransferMessages[locale]
+  baseMessages[locale].deploymentWorkspace = deploymentWorkspaceMessages[locale]
   baseMessages[locale].userAccess = userAccessMessages[locale]
   baseMessages[locale].modelConversionSource = modelConversionSourceMessages[locale]
+  baseMessages[locale].taskKinds = taskKindMessages[locale]
 }
 
 export const messages: Record<string, MessageSchema> = {

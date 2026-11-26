@@ -1,10 +1,16 @@
 <template>
   <section class="page-stack model-workspace">
     <div v-show="!trainingWizardOpen && !conversionWizardOpen && !packageImportOpen && (activeTab !== 'evaluation' || !evaluationFocusMode)" class="model-ops-navigation">
-      <TabList v-model="activeTab" :tabs="modelTabs" :label="zh ? '模型管理' : 'Models'" />
+      <TabList v-model="activeTab" variant="underline" :tabs="modelTabs" :label="zh ? '模型管理' : 'Models'" />
       <div class="model-ops-navigation__actions">
         <Button v-if="activeTab === 'conversion' && canWriteModels" @click="packageExportRecordsOpen = true">{{ zh ? '导出记录' : 'Export records' }}</Button>
         <Button v-if="activeTab === 'conversion'" :variant="canWriteTasks ? 'primary' : 'secondary'" :disabled="!canWriteTasks || conversionSubmissionUncertain || conversionSubmitting || conversionCopyLoading" @click="startConversionWizard"><Plus :size="16" />{{ zh ? '创建转换' : 'Create conversion' }}</Button>
+        <Button
+          v-else-if="activeTab === 'evaluation'"
+          :variant="canWriteTasks && sessionStore.hasScopes(['datasets:read']) ? 'primary' : 'secondary'"
+          :disabled="!canWriteTasks || !sessionStore.hasScopes(['datasets:read'])"
+          @click="evaluationPanel?.openCreate()"
+        ><Plus :size="16" />{{ zh ? '创建评估' : 'Create evaluation' }}</Button>
         <Button v-else-if="activeTab === 'training' || (activeTab === 'versions' && !catalogEmpty)" :variant="canWriteTasks ? 'primary' : 'secondary'" :disabled="!canWriteTasks" @click="startTraining()"><Plus :size="16" />{{ zh ? '创建训练' : 'Create training' }}</Button>
       </div>
     </div>
@@ -204,7 +210,7 @@
 
     <ModelPackageRecords v-if="canWriteModels && ((activeTab === 'conversion' && !conversionWizardOpen) || packageImportOpen)" v-model:import-open="packageImportOpen" v-model:export-records-open="packageExportRecordsOpen" :project-id="selectedProjectId" :project-name="projectStore.selectedProject?.display_name || selectedProjectId" :zh="zh" :version-names="modelVersionNames" @create-import="startPackageImport" />
     <ImportedModelAssets v-if="activeTab === 'conversion' && !conversionWizardOpen && !packageImportOpen && canWriteModels" :project-id="selectedProjectId" />
-    <ModelEvaluationPanel v-if="activeTab === 'evaluation'" :project-id="selectedProjectId" :can-write="canWriteTasks && sessionStore.hasScopes(['datasets:read'])" :zh="zh" @focus-mode="evaluationFocusMode = $event" />
+    <ModelEvaluationPanel v-if="activeTab === 'evaluation'" ref="evaluationPanel" :project-id="selectedProjectId" :can-write="canWriteTasks && sessionStore.hasScopes(['datasets:read'])" :zh="zh" @focus-mode="evaluationFocusMode = $event" />
 
     <PlatformBaseModelPickerDialog
       :open="baseModelPickerOpen"
@@ -368,6 +374,7 @@ function readTab(): string {
 }
 const activeTab = ref(readTab())
 const evaluationFocusMode = ref(false)
+const evaluationPanel = ref<InstanceType<typeof ModelEvaluationPanel> | null>(null)
 watch(() => [transferRoute?.query.tab, transferRoute?.query.datasetExport, transferRoute?.query.trainingFrom, transferRoute?.query.conversionFrom], () => {
   activeTab.value = readTab()
 })
@@ -1417,10 +1424,6 @@ async function refreshPickerCatalog(): Promise<void> {
 .model-ops-navigation { display:flex; justify-content:space-between; align-items:flex-end; gap:10px 24px; margin-block-end:4px; box-shadow:inset 0 -1px var(--am-border); }
 .model-ops-navigation__actions { display:flex; flex:none; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:12px; margin-inline-start:auto; padding-block:4px 8px; }
 .model-ops-navigation__actions:empty { display:none; }
-.model-ops-navigation :deep(.local-tabs) { min-inline-size:0; border:0; gap:8px; }
-.model-ops-navigation :deep(.local-tabs__tab) { min-height:44px; padding-inline:16px; border:0; border-bottom:3px solid transparent; border-radius:var(--am-radius-sm) var(--am-radius-sm) 0 0; background:transparent; color:var(--am-text); }
-.model-ops-navigation :deep(.local-tabs__tab:not(.is-active):hover) { background:var(--am-hover-surface); }
-.model-ops-navigation :deep(.local-tabs__tab.is-active) { border-bottom-color:var(--am-brand-primary); background:transparent; color:var(--am-brand-primary); }
 @media (max-width:767px) {
   .model-ops-navigation { flex-wrap:wrap; box-shadow:none; }
   .model-ops-navigation :deep(.local-tabs) { box-shadow:inset 0 -1px var(--am-border); }

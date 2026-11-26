@@ -1,401 +1,198 @@
 <template>
-  <section class="page-stack">
-    <PageHeader :title="t('deploymentOps.title')">
-      <template #actions>
-        <label class="segmented-field">
-          <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
-          <SelectField fit-options :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
-        </label>
-        <Button variant="secondary" :disabled="!selectedProjectId || !canWriteModels" @click="transferPanel?.beginImport()">{{ t('deploymentTransfer.importInstance') }}</Button>
-        <input ref="transferFileInput" type="file" accept=".zip" hidden @change="uploadDeploymentPackage">
-        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
-          <RefreshCw :size="16" />
-          {{ t('common.refresh') }}
+  <section class="page-stack model-workspace deployment-workspace">
+    <nav v-if="!createWizardOpen" class="deployment-ops-navigation" :aria-label="t('deploymentOps.title')">
+      <TabList
+        :tabs="pageTabs"
+        :model-value="activeTab"
+        variant="underline"
+        :label="t('deploymentOps.title')"
+        @update:model-value="setActiveTab"
+      />
+      <div class="deployment-ops-navigation__actions">
+        <Button
+          v-if="activeTab === 'instances'"
+          variant="secondary"
+          data-deployment-action="capabilities"
+          @click="capabilitiesDrawerOpen = true"
+        >
+          <Cpu :size="16" aria-hidden="true" />
+          {{ t('deploymentWorkspace.actions.deviceCapabilities') }}
         </Button>
-      </template>
-    </PageHeader>
+        <Button
+          v-if="(activeTab === 'instances' || activeTab === 'imports') && canManageTransfers"
+          :variant="activeTab === 'imports' ? 'primary' : 'secondary'"
+          data-deployment-action="import-wizard"
+          :disabled="!selectedProjectId"
+          @click="openDeploymentImportDialog"
+        >
+          <Upload :size="16" aria-hidden="true" />
+          {{ t('deploymentWorkspace.actions.importDeployment') }}
+        </Button>
+        <Button
+          v-if="activeTab === 'instances' && canWriteModels"
+          variant="primary"
+          data-deployment-action="create-wizard"
+          :disabled="!selectedProjectId"
+          @click="openCreateWizard"
+        >
+          <Plus :size="16" aria-hidden="true" />
+          {{ t('deploymentWorkspace.actions.createDeployment') }}
+        </Button>
+      </div>
+    </nav>
 
+    <input ref="transferFileInput" type="file" accept=".zip" hidden @change="uploadDeploymentPackage" />
     <InlineError :message="errorMessage" />
     <InlineError :message="versionSourceError" />
     <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
-    <DeploymentTransferPanel v-if="canManageTransfers" ref="transferPanel" :project-id="selectedProjectId" :devices="sessionStore.bootstrap?.devices ?? null" @settled="refreshPage" @choose-file="transferFileInput?.click()" />
 
-    <div class="operation-grid deployment-workspace-grid">
-      <form class="form-panel deployment-create-panel" @submit.prevent="submitDeployment">
-        <div class="section-heading deployment-create-panel__heading">
-          <div>
-            <h2>{{ t('deploymentOps.createTitle') }}</h2>
-          </div>
-          <Button type="button" variant="secondary" :disabled="sourceModelsLoading" :loading="sourceModelsLoading" @click="openDeploymentSourcePicker">
-            {{ selectedDeploymentSource ? t('deploymentOps.source.change') : t('deploymentOps.source.choose') }}
-          </Button>
-        </div>
-        <div v-if="selectedDeploymentSource" class="summary-grid deployment-source-summary__grid">
-          <div>
-            <span>{{ t('deploymentOps.columns.model') }}</span>
-            <strong>{{ selectedDeploymentSource.modelName }}</strong>
-          </div>
-          <div>
-            <span>model_type</span>
-            <strong>{{ selectedDeploymentSource.modelType }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.source.kind') }}</span>
-            <strong>{{ selectedDeploymentSource.sourceKind === 'model-build' ? 'ModelBuild' : 'ModelVersion' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.modelVersionId').replace(/ ID$/i, '') }}</span>
-            <strong>
-              {{ selectedSourceVersionName || '—' }}
-            </strong>
-          </div>
-          <div>
-            <span>Build format</span>
-            <strong>{{ selectedDeploymentSource.buildFormat || '-' }}</strong>
-          </div>
-          <div>
-            <span>Runtime backend</span>
-            <strong>{{ selectedDeploymentSource.runtimeBackend || '-' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.runtimePrecision') }}</span>
-            <strong>{{ selectedDeploymentSource.runtimePrecision || '-' }}</strong>
-          </div>
-          <div>
-            <span>RuntimeProfile id</span>
-            <strong>{{ selectedDeploymentSource.runtimeProfileId || '-' }}</strong>
-          </div>
-        </div>
-        <div v-else class="source-empty-card">
-          <strong>{{ t('deploymentOps.source.emptyTitle') }}</strong>
-          <span>{{ t('deploymentOps.source.emptyDescription') }}</span>
-        </div>
-        <div class="form-grid deployment-create-grid">
-          <label class="field">
-            <span>{{ t('deploymentOps.fields.deviceName') }}</span>
-            <SelectField :model-value="deviceName" :options="deploymentDeviceOptions" @update:model-value="setDeviceName" />
-          </label>
-          <label class="field">
-            <span>{{ t('deploymentOps.fields.instanceCount') }}</span>
-            <input
-              v-model.number="instanceCount"
-              type="number"
-              min="1"
-              max="64"
-              step="1"
-              @blur="normalizeInstanceCount"
-            />
-          </label>
-          <div v-if="isOpenVinoBackend" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.openvinoPerformanceHint') }}</span>
-            <SelectField
-              :model-value="openvinoPerformanceHint"
-              :options="openvinoPerformanceHintOptions"
-              @update:model-value="setOpenvinoPerformanceHint"
-            />
-          </div>
-          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('inference_num_threads')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.openvinoInferenceThreads') }}</span>
-            <SelectField
-              :model-value="openvinoInferenceNumThreads"
-              :options="openvinoInferenceThreadOptions"
-              @update:model-value="setOpenvinoInferenceNumThreads"
-            />
-          </div>
-          <label v-if="(openvinoDeviceKind === 'cpu' || openvinoDeviceKind === 'gpu') && supportedRuntimeField('num_streams')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.openvinoStreams') }}</span>
-            <input
-              v-model.number="openvinoNumStreams"
-              type="number"
-              min="1"
-              step="1"
-              @blur="normalizeOpenvinoNumStreams"
-            />
-          </label>
-          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('scheduling_core_type')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.cpuCoreType') }}</span>
-            <SelectField
-              :model-value="openvinoSchedulingCoreType"
-              :options="openvinoSchedulingCoreTypeOptions"
-              @update:model-value="setOpenvinoSchedulingCoreType"
-            />
-          </div>
-          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_hyper_threading')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.hyperThreading') }}</span>
-            <SelectField
-              :model-value="openvinoHyperThreading"
-              :options="autoBooleanOptions"
-              @update:model-value="setOpenvinoHyperThreading"
-            />
-          </div>
-          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_cpu_pinning')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.cpuPinning') }}</span>
-            <SelectField
-              :model-value="openvinoCpuPinning"
-              :options="autoBooleanOptions"
-              @update:model-value="setOpenvinoCpuPinning"
-            />
-          </div>
-          <div v-if="isOpenVinoBackend && openvinoDeviceKind !== 'cpu' && supportedRuntimeField('num_requests')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.openvinoInferRequests') }}</span>
-            <div class="field-control-row">
-              <SelectField
-                :model-value="openvinoNumRequestsMode"
-                :options="openvinoNumRequestsModeOptions"
-                @update:model-value="setOpenvinoNumRequestsMode"
-              />
-              <input
-                v-if="openvinoNumRequestsMode === 'manual'"
-                v-model.number="openvinoNumRequests"
-                type="number"
-                min="1"
-                step="1"
-                :aria-label="t('deploymentOps.runtimeConfig.openvinoInferRequests')"
-                @blur="normalizeOpenvinoNumRequests"
-              />
-            </div>
-          </div>
-          <div v-if="(openvinoDeviceKind === 'gpu' || openvinoDeviceKind === 'npu') && supportedRuntimeField('inference_precision')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.inferencePrecision') }}</span>
-            <SelectField
-              :model-value="openvinoInferencePrecision"
-              :options="openvinoInferencePrecisionOptions"
-              @update:model-value="setOpenvinoInferencePrecision"
-            />
-          </div>
-          <div v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('turbo')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.npuTurbo') }}</span>
-            <SelectField
-              :model-value="openvinoNpuTurbo"
-              :options="autoBooleanOptions"
-              @update:model-value="setOpenvinoNpuTurbo"
-            />
-          </div>
-          <div v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('tiles')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.npuTiles') }}</span>
-            <div class="field-control-row">
-              <SelectField
-                :model-value="openvinoNpuTilesMode"
-                :options="autoManualOptions"
-                @update:model-value="setOpenvinoNpuTilesMode"
-              />
-              <input
-                v-if="openvinoNpuTilesMode === 'manual'"
-                v-model.number="openvinoNpuTiles"
-                type="number"
-                min="1"
-                :max="openvinoNpuMaxTiles ?? undefined"
-                step="1"
-                :aria-label="t('deploymentOps.runtimeConfig.npuTiles')"
-                @blur="normalizeOpenvinoNpuTiles"
-              />
-            </div>
-          </div>
-          <label v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('compilation_mode_params')" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.npuCompilationModeParams') }}</span>
-            <input v-model="openvinoNpuCompilationModeParams" />
-          </label>
-          <div
-            v-if="showTensorRtSingleProfileRange"
-            class="field"
-          >
-            <span>{{ t('deploymentOps.runtimeConfig.tensorrtProfileRange') }}</span>
-            <div class="deployment-profile-summary">
-              <span
-                v-for="line in tensorRtSingleProfileRangeLines"
-                :key="line"
-              >
-                {{ line }}
-              </span>
-            </div>
-          </div>
-          <div v-if="showTensorRtProfileSelector" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.tensorrtOptimizationProfile') }}</span>
-            <SelectField
-              :model-value="tensorrtOptimizationProfileIndex"
-              :options="tensorRtOptimizationProfileOptions"
-              @update:model-value="setTensorrtOptimizationProfileIndex"
-            />
-          </div>
-          <div v-if="isTensorRtBackend" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.tensorrtPinnedOutput') }}</span>
-            <SelectField
-              :model-value="tensorrtPinnedOutput"
-              :options="serviceDefaultBooleanOptions"
-              @update:model-value="setTensorrtPinnedOutput"
-            />
-          </div>
-          <div class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.keepWarm') }}</span>
-            <SelectField
-              :model-value="keepWarmEnabled"
-              :options="enabledDisabledOptions"
-              @update:model-value="setKeepWarmEnabled"
-            />
-          </div>
-          <label v-if="keepWarmEnabled === 'true'" class="field">
-            <span>{{ t('deploymentOps.runtimeConfig.keepWarmInterval') }}</span>
-            <input
-              v-model.number="keepWarmIntervalSeconds"
-              type="number"
-              min="0.01"
-              step="0.01"
-              @blur="normalizeKeepWarmIntervalSeconds"
-            />
-          </label>
-          <label class="field field--wide">
-            <span>{{ t('deploymentOps.fields.displayName') }}</span>
-            <input v-model="displayName" />
-          </label>
-        </div>
-        <div class="form-actions">
-          <Button variant="primary" type="submit" :disabled="!canWriteModels || creating" :loading="creating">
-            <Zap :size="16" />
-            {{ creating ? t('deploymentOps.actions.creating') : t('deploymentOps.actions.create') }}
-          </Button>
-        </div>
-        <InlineMessage v-if="lastCreatedDeployment" tone="success">
-          {{ t('deploymentOps.messages.created') }} {{ lastCreatedDeployment.deployment_instance_id }}
-        </InlineMessage>
-      </form>
+    <DeploymentTransferPanel
+      v-if="canManageTransfers"
+      ref="transferPanel"
+      :project-id="selectedProjectId"
+      :devices="sessionStore.bootstrap?.devices ?? null"
+      @settled="refreshPage"
+      @choose-file="transferFileInput?.click()"
+    />
 
-      <section class="resource-section deployment-instances-panel">
-        <div class="section-heading">
-          <div>
-            <h2>{{ t('deploymentOps.listTitle') }}</h2>
-          </div>
-          <StatusBadge tone="neutral">{{ deployments.length }}</StatusBadge>
-        </div>
-        <EmptyState v-if="deployments.length === 0" :title="t('deploymentOps.emptyTitle')" :description="t('deploymentOps.emptyDescription')" />
-        <div v-else class="deployment-instance-list">
-          <article
-            v-for="item in deployments"
-            :key="item.deployment_instance_id"
-            class="deployment-instance-card"
-            :data-deployment-id="item.deployment_instance_id"
-          >
-            <header class="deployment-instance-card__header">
-              <div class="deployment-instance-card__title">
-                <strong>{{ deploymentCardTitle(item) }}</strong>
-                <span class="deployment-instance-card__origin">{{ t(item.metadata.creation_source === 'deployment-import' ? 'deploymentTransfer.importOrigin' : 'deploymentTransfer.localOrigin') }}</span>
-              </div>
-              <div
-                class="deployment-instance-card__states"
-                role="img"
-                :title="deploymentStatusIndicatorLabel(item)"
-                :aria-label="deploymentStatusIndicatorLabel(item)"
-              >
-                <span
-                  v-for="indicator in deploymentStatusIndicators(item)"
-                  :key="indicator.channel"
-                  class="deployment-status-indicator__block"
-                  :class="[
-                    `deployment-status-indicator__block--${indicator.channel}`,
-                    `deployment-status-indicator__block--${indicator.tone}`,
-                  ]"
-                  :data-status-channel="indicator.channel"
-                  :data-status-value="indicator.value"
-                  :data-status-tone="indicator.tone"
-                  aria-hidden="true"
-                />
-              </div>
-            </header>
-            <div class="deployment-instance-card__details">
-              <div v-if="item.model_name !== deploymentCardTitle(item)">
-                <span>{{ t('deploymentOps.columns.model') }}</span>
-                <strong>{{ item.model_name }}</strong>
-              </div>
-              <div>
-                <span>{{ t('deploymentOps.columns.runtime') }}</span>
-                <strong>{{ formatRuntimeLabel(item) }}</strong>
-              </div>
-              <div>
-                <span>{{ t('deploymentOps.fields.inputSize') }}</span>
-                <strong>{{ formatInputSize(item) }}</strong>
-              </div>
-              <div>
-                <span>{{ t('deploymentOps.columns.instances') }}</span>
-                <strong>{{ getDeploymentInstanceCount(item) }}</strong>
-              </div>
-            </div>
-            <div class="deployment-instance-card__actions" @click.stop>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                :disabled="!canStartDeployment(item)"
-                data-deployment-action="start"
-                @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'start')"
-              >
-                <Play :size="14" />
-                {{ t('deploymentOps.actions.start') }}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                :disabled="!canWarmupDeployment(item)"
-                :title="warmupButtonTitle(item)"
-                data-deployment-action="warmup"
-                @click="runHealthAction(item.deployment_instance_id, runtimeMode, 'warmup')"
-              >
-                <Zap :size="14" />
-                {{ t('deploymentOps.actions.warmup') }}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                :disabled="!canResetDeployment(item)"
-                data-deployment-action="reset"
-                @click="runHealthAction(item.deployment_instance_id, runtimeMode, 'reset')"
-              >
-                <RotateCcw :size="14" />
-                {{ t('deploymentOps.actions.reset') }}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="danger"
-                :disabled="!canStopDeployment(item)"
-                data-deployment-action="stop"
-                @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'stop')"
-              >
-                <Square :size="14" />
-                {{ t('deploymentOps.actions.stop') }}
-              </Button>
-              <DeploymentExportActions v-if="selectedProjectId" :key="`${selectedProjectId}:${item.deployment_instance_id}`" :project-id="selectedProjectId" :deployment-id="item.deployment_instance_id" :operation="transferPanel?.exportFor(item.deployment_instance_id)" :disabled="!canWriteModels" @updated="transferPanel?.store($event)" />
-              <Button
-                type="button"
-                size="sm"
-                variant="danger"
-                :disabled="!canDeleteDeployment(item)"
-                :title="deleteButtonTitle(item)"
-                data-deployment-action="delete"
-                @click="openDeleteDeploymentDialog(item.deployment_instance_id)"
-              >
-                <Trash2 :size="14" />
-                {{ t('deploymentOps.actions.delete') }}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                data-deployment-action="status-details"
-                @click="openDeploymentStatusDrawer(item.deployment_instance_id)"
-              >
-                <Info :size="14" />
-                {{ t('deploymentOps.actions.statusDetails') }}
-              </Button>
-            </div>
-          </article>
-        </div>
-        <InlineMessage v-if="runtimeCapabilitiesLoading" :message="t('deploymentOps.messages.capabilitiesLoading')" />
-        <InlineMessage v-else-if="runtimeCapabilityWarnings.length" tone="warning">
-          {{ runtimeCapabilityWarnings.join('；') }}
-        </InlineMessage>
-      </section>
-    </div>
+    <DeploymentCreateWizard
+      v-if="createWizardOpen"
+      :project-name="selectedProjectName"
+      :devices="sessionStore.bootstrap?.devices ?? null"
+      :wizard-models="wizardModels"
+      :wizard-models-loading="wizardModelsLoading"
+      :wizard-selected-model-id="wizardSelectedModelId"
+      :wizard-selected-model-detail="wizardSelectedModelDetail"
+      :wizard-detail-loading="wizardDetailLoading"
+      :selected-deployment-source="selectedDeploymentSource"
+      :selected-source-version-name="selectedSourceVersionName"
+      :source-models-loading="sourceModelsLoading"
+      :unavailable-reason="selectedDeploymentSource ? deploymentSourceUnavailableReason(selectedDeploymentSource) : ''"
+      :can-write-models="canWriteModels"
+      :creating="creating"
+      :created-deployment="wizardCreatedDeployment"
+      :start-failure-message="wizardStartFailureMessage"
+      :device-name="deviceName"
+      :deployment-device-options="deploymentDeviceOptions"
+      :instance-count="instanceCount"
+      :display-name="displayName"
+      :is-open-vino-backend="isOpenVinoBackend"
+      :is-tensor-rt-backend="isTensorRtBackend"
+      :openvino-device-kind="openvinoDeviceKind"
+      :openvino-performance-hint="openvinoPerformanceHint"
+      :openvino-performance-hint-options="openvinoPerformanceHintOptions"
+      :openvino-inference-num-threads="openvinoInferenceNumThreads"
+      :openvino-inference-thread-options="openvinoInferenceThreadOptions"
+      :openvino-num-streams="openvinoNumStreams"
+      :openvino-scheduling-core-type="openvinoSchedulingCoreType"
+      :openvino-scheduling-core-type-options="openvinoSchedulingCoreTypeOptions"
+      :openvino-hyper-threading="openvinoHyperThreading"
+      :openvino-cpu-pinning="openvinoCpuPinning"
+      :auto-boolean-options="autoBooleanOptions"
+      :openvino-num-requests-mode="openvinoNumRequestsMode"
+      :openvino-num-requests-mode-options="openvinoNumRequestsModeOptions"
+      :openvino-num-requests="openvinoNumRequests"
+      :openvino-inference-precision="openvinoInferencePrecision"
+      :openvino-inference-precision-options="openvinoInferencePrecisionOptions"
+      :openvino-npu-turbo="openvinoNpuTurbo"
+      :openvino-npu-tiles-mode="openvinoNpuTilesMode"
+      :auto-manual-options="autoManualOptions"
+      :openvino-npu-tiles="openvinoNpuTiles"
+      :openvino-npu-max-tiles="openvinoNpuMaxTiles"
+      :openvino-npu-compilation-mode-params="openvinoNpuCompilationModeParams"
+      :show-tensor-rt-single-profile-range="showTensorRtSingleProfileRange"
+      :tensor-rt-single-profile-range-lines="tensorRtSingleProfileRangeLines"
+      :show-tensor-rt-profile-selector="showTensorRtProfileSelector"
+      :tensorrt-optimization-profile-index="tensorrtOptimizationProfileIndex"
+      :tensor-rt-optimization-profile-options="tensorRtOptimizationProfileOptions"
+      :tensorrt-pinned-output="tensorrtPinnedOutput"
+      :service-default-boolean-options="serviceDefaultBooleanOptions"
+      :keep-warm-enabled="keepWarmEnabled"
+      :enabled-disabled-options="enabledDisabledOptions"
+      :keep-warm-interval-seconds="keepWarmIntervalSeconds"
+      :runtime-capabilities="runtimeCapabilities"
+      :runtime-capabilities-loading="runtimeCapabilitiesLoading"
+      :runtime-capability-warnings="runtimeCapabilityWarnings"
+      :supported-runtime-field="supportedRuntimeField"
+      @cancel="closeCreateWizard"
+      @done="closeCreateWizard"
+      @open-source-picker="openDeploymentSourcePicker"
+      @select-wizard-model="selectWizardModel"
+      @select-inline-source="applyDeploymentSource"
+      @submit="handleWizardSubmit"
+      @update:device-name="setDeviceName"
+      @update:instance-count="instanceCount = $event"
+      @normalize:instance-count="normalizeInstanceCount"
+      @update:display-name="displayName = $event"
+      @update:openvino-performance-hint="setOpenvinoPerformanceHint($event as SelectValue)"
+      @update:openvino-inference-num-threads="setOpenvinoInferenceNumThreads($event as SelectValue)"
+      @update:openvino-num-streams="openvinoNumStreams = $event"
+      @normalize:openvino-num-streams="normalizeOpenvinoNumStreams"
+      @update:openvino-scheduling-core-type="setOpenvinoSchedulingCoreType($event as SelectValue)"
+      @update:openvino-hyper-threading="setOpenvinoHyperThreading($event as SelectValue)"
+      @update:openvino-cpu-pinning="setOpenvinoCpuPinning($event as SelectValue)"
+      @update:openvino-num-requests-mode="setOpenvinoNumRequestsMode($event as SelectValue)"
+      @update:openvino-num-requests="openvinoNumRequests = $event"
+      @normalize:openvino-num-requests="normalizeOpenvinoNumRequests"
+      @update:openvino-inference-precision="setOpenvinoInferencePrecision($event as SelectValue)"
+      @update:openvino-npu-turbo="setOpenvinoNpuTurbo($event as SelectValue)"
+      @update:openvino-npu-tiles-mode="setOpenvinoNpuTilesMode($event as SelectValue)"
+      @update:openvino-npu-tiles="openvinoNpuTiles = $event"
+      @normalize:openvino-npu-tiles="normalizeOpenvinoNpuTiles"
+      @update:openvino-npu-compilation-mode-params="openvinoNpuCompilationModeParams = $event"
+      @update:tensorrt-optimization-profile-index="setTensorrtOptimizationProfileIndex($event as SelectValue)"
+      @update:tensorrt-pinned-output="setTensorrtPinnedOutput($event as SelectValue)"
+      @update:keep-warm-enabled="setKeepWarmEnabled($event as SelectValue)"
+      @update:keep-warm-interval-seconds="keepWarmIntervalSeconds = $event"
+      @normalize:keep-warm-interval-seconds="normalizeKeepWarmIntervalSeconds"
+    />
+
+    <DeploymentInstanceTable
+      v-else-if="activeTab === 'instances'"
+      :project-id="selectedProjectId"
+      :project-name="selectedProjectName"
+      :deployments="deployments"
+      :runtime-mode="runtimeMode"
+      :runtime-mode-options="runtimeModeOptions"
+      :runtime-snapshots="runtimeSnapshotsByDeployment"
+      :running-actions="runningActionByDeployment"
+      :can-write="canWriteModels"
+      :can-manage-transfers="canManageTransfers"
+      :loading="loading"
+      :export-for="id => transferPanel?.exportFor(id)"
+      :version-labels-by-id="versionLabelsById"
+      @refresh="refreshPage"
+      @update:runtime-mode="setRuntimeMode"
+      @open-capabilities="capabilitiesDrawerOpen = true"
+      @create="openCreateWizard"
+      @import="openDeploymentImportDialog"
+      @open-details="openDeploymentStatusDrawer"
+      @start="runStatusAction($event, runtimeMode, 'start')"
+      @stop="openStopDeploymentDialog"
+      @warmup="runHealthAction($event, runtimeMode, 'warmup')"
+      @reset="openResetDeploymentDialog"
+      @delete="openDeleteDeploymentDialog"
+      @export-updated="transferPanel?.store($event)"
+    />
+
+    <DeploymentTransferRecordsTab
+      v-else-if="selectedProjectId"
+      :project-id="selectedProjectId"
+      :project-name="selectedProjectName"
+      :direction="activeTab === 'imports' ? 'import' : 'export'"
+      :items="transferItems"
+      :deployments="deployments"
+      :runtime-snapshots="runtimeSnapshotsByDeployment"
+      :version-labels-by-id="versionLabelsById"
+      :can-write="canManageTransfers"
+      :refreshing="false"
+      @refresh="transferPanel?.refresh()"
+      @begin-import="openDeploymentImportDialog"
+      @open-import="transferPanel?.open($event)"
+      @cancel="transferPanel?.cancel($event)"
+      @dismiss="transferPanel?.dismiss($event)"
+      @updated="transferPanel?.store($event)"
+    />
 
     <DeploymentSourcePickerDialog
       :open="deploymentSourcePickerOpen"
@@ -416,29 +213,185 @@
       @apply-source="applyDeploymentSource"
     />
 
+    <!-- Stop Deployment Confirmation -->
+    <ConfirmDialog
+      v-if="pendingStopDeployment"
+      :title="t('deploymentWorkspace.dialogs.stopNamedTitle', { name: deploymentCardTitle(pendingStopDeployment) })"
+      :message="stopReferences.length ? t('deploymentWorkspace.dialogs.stopNamedMessage') : t('deploymentWorkspace.dialogs.stopMessage')"
+      :confirm-label="t('deploymentWorkspace.actions.confirmStop')"
+      :cancel-label="t('common.cancel')"
+      :busy="!!deploymentRunningAction(pendingStopDeployment.deployment_instance_id)"
+      confirm-variant="danger"
+      size="medium"
+      panel-class="deployment-confirm-dialog"
+      @cancel="pendingStopDeploymentId = null"
+      @confirm="confirmStopDeployment"
+    >
+      <template #title-icon>
+        <AlertTriangle class="dialog-title-icon is-warning" :size="20" aria-hidden="true" />
+      </template>
+      <div v-if="stopReferences.length" class="dialog-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t('deploymentWorkspace.dialogs.stopAppName') }}</th>
+              <th>{{ t('deploymentWorkspace.dialogs.stopAppType') }}</th>
+              <th>{{ t('deploymentWorkspace.dialogs.stopAppStatus') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="refItem in stopReferences" :key="refItem.workflow_runtime_id">
+              <td><strong>{{ refItem.display_name || refItem.workflow_runtime_id }}</strong></td>
+              <td>Runtime</td>
+              <td>
+                <span class="dialog-dot-status" :class="{ 'is-running': refItem.observed_state === 'running' }">
+                  <span aria-hidden="true" />{{ refItem.observed_state }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="dialog-sub-note">
+        {{ t('deploymentWorkspace.dialogs.stopNoRefsMessage', { busy: stopBusyCount }) }}
+      </p>
+      <div class="dialog-info-bar">
+        <Info :size="15" aria-hidden="true" />
+        <span>{{ t('deploymentWorkspace.dialogs.stopFooterHint') }}</span>
+      </div>
+    </ConfirmDialog>
+
+    <!-- Reset Deployment Confirmation / Busy Blocker -->
+    <ConfirmDialog
+      v-if="pendingResetDeployment"
+      :title="resetBusyCount > 0 ? t('deploymentWorkspace.dialogs.resetBlockedTitle') : t('deploymentWorkspace.dialogs.resetTitle')"
+      :confirm-label="resetBusyCount > 0 ? t('deploymentWorkspace.actions.recheck') : t('deploymentWorkspace.actions.confirmReset')"
+      :cancel-label="resetBusyCount > 0 ? t('common.close') : t('common.cancel')"
+      :confirm-disabled="resetChecking"
+      :confirm-variant="resetBusyCount > 0 ? 'primary' : 'danger'"
+      :busy="resetChecking || !!deploymentRunningAction(pendingResetDeployment.deployment_instance_id)"
+      size="medium"
+      panel-class="deployment-confirm-dialog"
+      @cancel="pendingResetDeploymentId = null"
+      @confirm="resetBusyCount > 0 ? recheckResetDeployment() : confirmResetDeployment()"
+    >
+      <template #title-icon>
+        <AlertCircle class="dialog-title-icon is-warning" :size="20" aria-hidden="true" />
+      </template>
+      <template v-if="resetBusyCount > 0" #leading-actions>
+        <Button size="sm" variant="secondary" disabled>
+          {{ t('deploymentWorkspace.actions.confirmReset') }}
+        </Button>
+      </template>
+      <dl class="deployment-dialog-card">
+        <div><dt>{{ t('deploymentWorkspace.columns.name') }}</dt><dd>{{ deploymentCardTitle(pendingResetDeployment) }}</dd></div>
+        <div><dt>{{ t('deploymentWorkspace.dialogs.resetTargetArtifact') }}</dt><dd>{{ formatDeploymentBackend(pendingResetDeployment.runtime_backend) }} {{ (pendingResetDeployment.runtime_precision || 'fp32').toUpperCase() }}</dd></div>
+        <div><dt>{{ t('deploymentWorkspace.dialogs.resetTargetRuntime') }}</dt><dd>{{ formatDeploymentDeviceName(pendingResetDeployment.device_name) || t('deploymentOps.options.automaticDefault') }}</dd></div>
+        <div><dt>{{ t('deploymentOps.fields.instanceCount') }}</dt><dd>{{ t('deploymentWorkspace.dialogs.resetInstanceSummary', { count: pendingResetDeployment.runtime_configuration.execution.instance_count, mode: t(`deploymentOps.runtimeModes.${runtimeMode}`) }) }}</dd></div>
+        <div><dt>{{ t('deploymentWorkspace.dialogs.resetBusyCount') }}</dt><dd>{{ resetBusyCount }}</dd></div>
+        <div>
+          <dt>{{ t('deploymentWorkspace.columns.status') }}</dt>
+          <dd>
+            <span class="dialog-dot-status is-running"><span aria-hidden="true" />{{ resetBusyCount > 0 ? t('deploymentWorkspace.states.running') : t('deploymentWorkspace.dialogs.resetStatusCanReset') }}</span>
+          </dd>
+        </div>
+      </dl>
+
+      <div class="dialog-numbered-section">
+        <strong>{{ resetBusyCount > 0 ? t('deploymentWorkspace.dialogs.resetCheckTitle') : t('deploymentWorkspace.dialogs.resetImpactTitle') }}</strong>
+        <ol v-if="resetBusyCount > 0" class="dialog-numbered-list">
+          <li><span>{{ t('deploymentWorkspace.dialogs.resetBusyCount') }}</span><em class="is-warning">{{ t('deploymentWorkspace.dialogs.resetStepBusyCount', { busy: resetBusyCount }) }}</em></li>
+          <li><span>{{ t('deploymentOps.actions.reset') }}</span><em>{{ t('deploymentWorkspace.dialogs.resetStepNotExecuted') }}</em></li>
+          <li><span>{{ t('deploymentWorkspace.dialogs.resetImpactRetain') }}</span><em class="is-success">{{ t('deploymentWorkspace.dialogs.resetStepRetained') }}</em></li>
+        </ol>
+        <ol v-else class="dialog-numbered-list">
+          <li>{{ t('deploymentWorkspace.dialogs.resetImpactRelease') }}</li>
+          <li>{{ t('deploymentWorkspace.dialogs.resetImpactCounters') }}</li>
+          <li>{{ t('deploymentWorkspace.dialogs.resetImpactRetain') }}</li>
+        </ol>
+      </div>
+
+      <div class="dialog-warning-bar">
+        <AlertCircle :size="15" aria-hidden="true" />
+        <span>{{ resetBusyCount > 0 ? t('deploymentWorkspace.dialogs.resetBusyHint') : t('deploymentWorkspace.dialogs.resetIdleHint') }}</span>
+      </div>
+    </ConfirmDialog>
+
+    <!-- Delete Deployment Confirmation / Dependency Blocker -->
     <ConfirmDialog
       v-if="pendingDeleteDeployment"
-      :title="t('deploymentOps.actions.delete')"
-      :message="t('common.confirmDelete')"
-      :details="deleteDeploymentDialogDetails"
-      :confirm-label="t('deploymentOps.actions.delete')"
-      :cancel-label="t('common.cancel')"
+      :title="isDeleteBlocked ? t('deploymentWorkspace.dialogs.deleteBlockedTitle') : t('deploymentWorkspace.dialogs.deleteTitle')"
+      :message="isDeleteBlocked ? t('deploymentWorkspace.dialogs.deleteBlockedMessage') : t('common.confirmDelete')"
+      :confirm-label="isDeleteBlocked ? t('deploymentWorkspace.actions.viewReferences') : t('deploymentWorkspace.actions.confirmDelete')"
+      :cancel-label="isDeleteBlocked ? t('common.close') : t('common.cancel')"
+      :confirm-variant="isDeleteBlocked ? 'primary' : 'danger'"
       :busy="isDeleteActionBusy(pendingDeleteDeployment.deployment_instance_id)"
-      confirm-variant="danger"
+      size="medium"
+      panel-class="deployment-confirm-dialog"
       @cancel="closeDeleteDeploymentDialog"
-      @confirm="confirmDeleteDeployment"
+      @confirm="isDeleteBlocked ? openDeleteBlockedReferences() : confirmDeleteDeployment()"
     >
-      <InlineError :message="errorMessage" />
-      <template v-if="deletionPreview">
-        <p v-if="deletionPreview.deleted_models.length">{{ t('deploymentTransfer.deleteModels') }}</p>
-        <ul><li v-for="model in deletionPreview.deleted_models" :key="model.resource_id">{{ model.kind }} · {{ model.resource_id }}</li></ul>
-        <p v-if="deletionPreview.retained_models.length">{{ t('deploymentTransfer.retainModels') }}</p>
-        <ul><li v-for="model in deletionPreview.retained_models" :key="model.resource_id">{{ model.resource_id }}（{{ model.reason }}）</li></ul>
+      <template #title-icon>
+        <AlertCircle v-if="isDeleteBlocked" class="dialog-title-icon is-warning" :size="20" aria-hidden="true" />
+        <Trash2 v-else class="dialog-title-icon is-danger" :size="20" aria-hidden="true" />
+      </template>
+
+      <template v-if="isDeleteBlocked">
+        <div v-if="deleteReferences.length" class="dialog-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ t('deploymentWorkspace.drawer.referenceObject') }}</th>
+                <th>{{ t('deploymentWorkspace.columns.status') }}</th>
+                <th>{{ t('deploymentWorkspace.columns.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="refItem in deleteReferences" :key="refItem.workflow_runtime_id">
+                <td><strong>{{ refItem.display_name || refItem.workflow_runtime_id }}</strong></td>
+                <td>
+                  <span class="dialog-dot-status" :class="{ 'is-running': refItem.observed_state === 'running' }">
+                    <span aria-hidden="true" />Runtime {{ refItem.observed_state }}
+                  </span>
+                </td>
+                <td>
+                  <RouterLink class="dialog-action-link" :to="{ path: '/applications', query: { runtime: refItem.workflow_runtime_id } }" @click="closeDeleteDeploymentDialog">
+                    {{ t('deploymentWorkspace.actions.view') }}
+                  </RouterLink>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="dialog-warning-bar">
+          <AlertCircle :size="15" aria-hidden="true" />
+          <span>{{ !canDeleteDeployment(pendingDeleteDeployment) ? t('deploymentWorkspace.dialogs.deleteRunningHint') : t('deploymentWorkspace.dialogs.deleteBlockedHint') }}</span>
+        </div>
+        <p class="dialog-sub-note">{{ t('deploymentWorkspace.dialogs.deleteBlockedModelRetain') }}</p>
+      </template>
+
+      <template v-else>
+        <dl class="deployment-dialog-card">
+          <div><dt>{{ t('deploymentWorkspace.columns.name') }}</dt><dd>{{ deploymentCardTitle(pendingDeleteDeployment) }}</dd></div>
+          <div>
+            <dt>{{ t('deploymentWorkspace.columns.status') }}</dt>
+            <dd><span class="dialog-dot-status"><span aria-hidden="true" />{{ t('deploymentWorkspace.states.stopped') }}</span></dd>
+          </div>
+          <div><dt>{{ t('deploymentWorkspace.dialogs.deleteActiveRefs') }}</dt><dd>{{ deleteReferences.length }}</dd></div>
+          <div><dt>{{ t('deploymentWorkspace.dialogs.deleteCheckedAt') }}</dt><dd>{{ deleteCheckedAtLabel }}</dd></div>
+        </dl>
+        <div class="dialog-warning-bar">
+          <AlertCircle :size="15" aria-hidden="true" />
+          <span>{{ t('deploymentWorkspace.dialogs.deleteRetentionHint') }}</span>
+        </div>
+        <p class="dialog-sub-note">{{ t('deploymentWorkspace.dialogs.deleteRecheckHint') }}</p>
+        <InlineError :message="errorMessage" />
       </template>
     </ConfirmDialog>
 
     <DeploymentStatusDrawer
       :open="statusDrawerOpen"
+      :initial-tab="statusDrawerInitialTab"
       :deployment="selectedDeployment"
       :status="selectedRuntimeStatus"
       :health="selectedRuntimeHealth"
@@ -448,17 +401,39 @@
       :display-name="selectedDeployment ? deploymentCardTitle(selectedDeployment) : ''"
       :summary-label="selectedDeployment ? deploymentSummaryLabel(selectedDeployment) : ''"
       :summary-tone="selectedDeployment ? deploymentSummaryTone(selectedDeployment) : 'neutral'"
+      :version-labels-by-id="versionLabelsById"
+      :can-warmup="selectedDeployment ? canWarmupDeployment(selectedDeployment) : false"
+      :can-reset="selectedDeployment ? canResetDeployment(selectedDeployment) : false"
+      :can-start="selectedDeployment ? canWriteModels && !isRuntimeActionBusy(selectedDeployment) : false"
+      :can-stop="selectedDeployment ? canWriteModels && !isRuntimeActionBusy(selectedDeployment) : false"
       @close="closeDeploymentStatusDrawer"
+      @start="runStatusAction($event, runtimeMode, 'start')"
+      @stop="openStopDeploymentDialog"
+      @warmup="runHealthAction($event, runtimeMode, 'warmup')"
+      @reset="openResetDeploymentDialog"
+      @recheck="recheckStatusDrawerDeployment"
+      @refresh-events="loadDeploymentEvents"
+    />
+
+    <DeploymentCapabilitiesDrawer
+      v-if="capabilitiesDrawerOpen"
+      :open="capabilitiesDrawerOpen"
+      :devices="sessionStore.bootstrap?.devices ?? null"
+      @close="capabilitiesDrawerOpen = false"
+      @refresh-devices="refreshHostDevices"
     />
   </section>
 </template>
 
 <script setup lang="ts">
 import { useCatalogVersionLabel } from '@/modules/models/composables/useCatalogVersionLabel'
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { Info, Play, RefreshCw, RotateCcw, Square, Trash2, Zap } from '@lucide/vue'
+import { modelDisplayName, modelVersionDisplayName } from '@/modules/models/model-display-name'
+import { modelTaskLabel } from '@/modules/models/model-evaluation-types'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { AlertCircle, AlertTriangle, Cpu, Info, Plus, Trash2, Upload } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 import {
   createTaskDeployment,
@@ -469,23 +444,34 @@ import {
   listTaskDeployments,
   runTaskDeploymentHealthAction,
   runTaskDeploymentStatusAction,
-  type DeploymentHealthAction,
   type DeploymentBackendOptions,
   type DeploymentRuntimeCapabilities,
   type DeploymentRuntimeConfiguration,
   type DeploymentRuntimeMode,
   type DeploymentStatusAction,
+  type DeploymentHealthAction,
   type ModelTaskType,
   type TaskDeploymentInstance,
   type TaskDeploymentProcessEvent,
   type TaskDeploymentProcessStatus,
   type TaskDeploymentRuntimeHealth,
 } from '../services/deployment.service'
+import DeploymentCapabilitiesDrawer from '../components/DeploymentCapabilitiesDrawer.vue'
+import DeploymentCreateWizard from '../components/DeploymentCreateWizard.vue'
+import DeploymentInstanceTable from '../components/DeploymentInstanceTable.vue'
 import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDialog.vue'
-import DeploymentStatusDrawer from '../components/DeploymentStatusDrawer.vue'
+import DeploymentStatusDrawer, { type DeploymentStatusDrawerTab } from '../components/DeploymentStatusDrawer.vue'
+import DeploymentTransferPanel from '../components/DeploymentTransferPanel.vue'
+import DeploymentTransferRecordsTab from '../components/DeploymentTransferRecordsTab.vue'
 import type { DeploymentSourceSelection } from '../components/deployment-source.types'
 import { isModelVersionTaskType, type ModelVersionAction } from '@/modules/models/model-version-action'
 import { buildDeploymentDeviceOptions, hasCudaDevice } from '../deployment-device-support'
+import {
+  computeDeploymentCapacity,
+  formatDeploymentBackend,
+  formatDeploymentDeviceName,
+  resolveDeploymentVisualState,
+} from '../deployment-presentation'
 import {
   formatTensorRtShape,
   parseTensorRtEngineCapabilities,
@@ -494,6 +480,7 @@ import {
 import {
   getDeploymentSourceModelDetail,
   listDeploymentSourceModels,
+  listProjectModelCatalog,
   type DeploymentSourceModelDetail,
   type DeploymentSourceModelSummary,
 } from '@/modules/models/services/model.service'
@@ -501,34 +488,24 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
-import SelectField from '@/shared/ui/components/Select.vue'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
-import DeploymentTransferPanel from '../components/DeploymentTransferPanel.vue'
-import DeploymentExportActions from '../components/DeploymentExportActions.vue'
-import { previewDeploymentDeletion, type DeploymentDeletionPreview } from '../services/deployment-transfer.service'
-
-const transferPanel = ref<InstanceType<typeof DeploymentTransferPanel> | null>(null)
-const transferFileInput = ref<HTMLInputElement | null>(null)
-const deletionPreview = ref<DeploymentDeletionPreview | null>(null)
-async function uploadDeploymentPackage(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (file) await transferPanel.value?.upload(file)
-}
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
-import PageHeader from '@/shared/ui/layout/PageHeader.vue'
+import TabList from '@/shared/ui/navigation/TabList.vue'
+import {
+  listDeploymentReferences,
+  previewDeploymentDeletion,
+  type DeploymentDeletionPreview,
+  type DeploymentReferenceItem,
+} from '../services/deployment-transfer.service'
 
 const route = useRoute()
-const versionSource = ref<ModelVersionAction | null>(null)
-const versionSourceError = ref<string | null>(null)
+const router = useRouter()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const { t, locale } = useI18n()
+const zh = computed(() => locale.value.startsWith('zh'))
 
+type PageTab = 'instances' | 'imports' | 'exports'
 type SelectValue = string | number | boolean | null
 const TASK_TYPES: readonly ModelTaskType[] = ['detection', 'classification', 'segmentation', 'pose', 'obb']
 
@@ -542,6 +519,56 @@ interface DeploymentRuntimeSnapshot {
   health: TaskDeploymentRuntimeHealth | null
 }
 
+const activeTab = ref<PageTab>('instances')
+const createWizardOpen = ref(false)
+const capabilitiesDrawerOpen = ref(false)
+const wizardCreatedDeployment = ref<TaskDeploymentInstance | null>(null)
+const wizardStartFailureMessage = ref<string | null>(null)
+
+const pageTabs = computed(() => [
+  { id: 'instances', label: t('deploymentWorkspace.tabs.instances') },
+  { id: 'imports', label: t('deploymentWorkspace.tabs.imports') },
+  { id: 'exports', label: t('deploymentWorkspace.tabs.exports') },
+])
+
+function readRouteTab(): PageTab {
+  const value = route?.query?.tab
+  if (value === 'imports' || value === 'exports') return value
+  return 'instances'
+}
+
+function setActiveTab(tab: string): void {
+  const normalized: PageTab = tab === 'imports' || tab === 'exports' ? tab : 'instances'
+  errorMessage.value = null
+  activeTab.value = normalized
+  void router?.replace?.({ query: { ...route?.query, tab: normalized === 'instances' ? undefined : normalized } })
+}
+
+watch(() => route?.query?.tab, () => {
+  activeTab.value = readRouteTab()
+}, { immediate: true })
+
+const transferPanel = ref<InstanceType<typeof DeploymentTransferPanel> | null>(null)
+const transferFileInput = ref<HTMLInputElement | null>(null)
+const transferItems = computed(() => transferPanel.value?.items ?? [])
+const deletionPreview = ref<DeploymentDeletionPreview | null>(null)
+function openDeploymentImportDialog(): void {
+  if (typeof transferPanel.value?.openImportDialog === 'function') {
+    transferPanel.value.openImportDialog()
+    return
+  }
+  transferPanel.value?.beginImport()
+}
+async function uploadDeploymentPackage(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) await transferPanel.value?.upload(file)
+}
+
+const versionSource = ref<ModelVersionAction | null>(null)
+const versionSourceError = ref<string | null>(null)
+
 const runtimeModeOptions = computed(() => [
   { label: t('deploymentOps.runtimeModes.sync'), value: 'sync' },
   { label: t('deploymentOps.runtimeModes.async'), value: 'async' },
@@ -549,7 +576,10 @@ const runtimeModeOptions = computed(() => [
 const RUNTIME_REFRESH_CONCURRENCY = 4
 const DEFAULT_KEEP_WARM_INTERVAL_SECONDS = 0.1
 
-const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: taskType }))
+const taskTypeOptions = computed(() => TASK_TYPES.map((taskType) => ({
+  label: modelTaskLabel(taskType, zh.value),
+  value: taskType,
+})))
 
 const deployments = ref<TaskDeploymentInstance[]>([])
 const deploymentEvents = ref<TaskDeploymentProcessEvent[]>([])
@@ -562,6 +592,7 @@ const runtimeSnapshotsByDeployment = ref<Record<string, DeploymentRuntimeSnapsho
 const runningActionByDeployment = ref<Record<string, string>>({})
 const selectedDeploymentId = ref('')
 const statusDrawerOpen = ref(false)
+const statusDrawerInitialTab = ref<DeploymentStatusDrawerTab>('overview')
 const selectedTaskType = ref<ModelTaskType>('detection')
 const deploymentSourcePickerOpen = ref(false)
 const sourceModelsLoading = ref(false)
@@ -570,7 +601,20 @@ const sourceModels = ref<DeploymentSourceModelSummary[]>([])
 const selectedSourceModelId = ref('')
 const selectedSourceModelDetail = ref<DeploymentSourceModelDetail | null>(null)
 const selectedDeploymentSource = ref<DeploymentSourceSelection | null>(null)
+const wizardModels = ref<DeploymentSourceModelSummary[]>([])
+const wizardModelsLoading = ref(false)
+const wizardSelectedModelId = ref('')
+const wizardSelectedModelDetail = ref<DeploymentSourceModelDetail | null>(null)
+const wizardDetailLoading = ref(false)
 const pendingDeleteDeploymentId = ref<string | null>(null)
+const pendingStopDeploymentId = ref<string | null>(null)
+const pendingResetDeploymentId = ref<string | null>(null)
+const resetChecking = ref(false)
+const stopReferences = ref<DeploymentReferenceItem[]>([])
+const deleteReferences = ref<DeploymentReferenceItem[]>([])
+const deleteCheckedAt = ref('')
+const versionLabelsById = ref<Record<string, { modelName: string; versionLabel: string }>>({})
+let versionCatalogSequence = 0
 
 const modelType = ref('')
 const modelVersionId = ref('')
@@ -603,12 +647,37 @@ const runtimeMode = ref<DeploymentRuntimeMode>('sync')
 const canWriteModels = computed(() => sessionStore.hasScopes(['models:write']))
 const canManageTransfers = computed(() => sessionStore.hasScopes(['models:read', 'models:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const selectedProjectName = computed(() => {
+  const proj = projectStore.projects.find(item => item.project_id === projectStore.selectedProjectId)
+  return proj?.display_name || projectStore.selectedProjectId || ''
+})
 const selectedSourceVersionName = useCatalogVersionLabel(() => [
   selectedProjectId.value, selectedDeploymentSource.value?.taskType, selectedDeploymentSource.value?.modelVersionId,
 ])
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
 const selectedRuntimeStatus = computed(() => deploymentRuntimeStatus(selectedDeploymentId.value))
 const selectedRuntimeHealth = computed(() => deploymentRuntimeHealth(selectedDeploymentId.value))
+
+const pendingStopDeployment = computed(() => {
+  const id = pendingStopDeploymentId.value
+  return id ? deployments.value.find(item => item.deployment_instance_id === id) ?? null : null
+})
+const stopBusyCount = computed(() => {
+  const item = pendingStopDeployment.value
+  if (!item) return 0
+  return computeDeploymentCapacity(item, deploymentRuntimeHealth(item.deployment_instance_id)).busy
+})
+
+const pendingResetDeployment = computed(() => {
+  const id = pendingResetDeploymentId.value
+  return id ? deployments.value.find(item => item.deployment_instance_id === id) ?? null : null
+})
+const resetBusyCount = computed(() => {
+  const item = pendingResetDeployment.value
+  if (!item) return 0
+  return computeDeploymentCapacity(item, deploymentRuntimeHealth(item.deployment_instance_id)).busy
+})
+
 const selectedCpuResourceSummary = computed(() => {
   const deployment = selectedDeployment.value
   if (
@@ -620,21 +689,15 @@ const selectedCpuResourceSummary = computed(() => {
   const manager = asRecord(
     selectedRuntimeHealth.value?.effective_runtime_configuration.cpu_device_resource_manager,
   )
-  if (!manager) {
-    return null
-  }
+  if (!manager) return null
   const physicalCoreCount = readNonNegativeInteger(manager, 'cpu_physical_core_count')
   const schedulingPolicy = manager.scheduling_policy
   const reservations = Array.isArray(manager.reservations) ? manager.reservations : []
   const reservation = reservations
     .map((item) => asRecord(item))
     .find((item) => item?.deployment_instance_id === deployment.deployment_instance_id)
-  const deploymentThreadCapacity = reservation
-    ? readNonNegativeInteger(reservation, 'allocated_thread_count')
-    : null
-  const threadsPerInstance = reservation
-    ? readNonNegativeInteger(reservation, 'allocated_threads_per_instance')
-    : null
+  const deploymentThreadCapacity = reservation ? readNonNegativeInteger(reservation, 'allocated_thread_count') : null
+  const threadsPerInstance = reservation ? readNonNegativeInteger(reservation, 'allocated_threads_per_instance') : null
   if (
     physicalCoreCount === null
     || schedulingPolicy !== 'per_deployment_shared'
@@ -643,17 +706,11 @@ const selectedCpuResourceSummary = computed(() => {
   ) {
     return null
   }
-  return {
-    physicalCoreCount,
-    deploymentThreadCapacity,
-    threadsPerInstance,
-  }
+  return { physicalCoreCount, deploymentThreadCapacity, threadsPerInstance }
 })
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
 function readNonNegativeInteger(record: Record<string, unknown>, key: string): number | null {
@@ -665,9 +722,12 @@ const pendingDeleteDeployment = computed(() => {
   const deploymentId = pendingDeleteDeploymentId.value
   return deploymentId ? deployments.value.find((item) => item.deployment_instance_id === deploymentId) ?? null : null
 })
-const deleteDeploymentDialogDetails = computed(() => {
-  return pendingDeleteDeployment.value ? t('deploymentTransfer.deleteDetails') : ''
+const isDeleteBlocked = computed(() => {
+  if (!pendingDeleteDeployment.value) return false
+  return !canDeleteDeployment(pendingDeleteDeployment.value) || deleteReferences.value.length > 0
 })
+const deleteCheckedAtLabel = computed(() => deleteCheckedAt.value ? formatSystemDateTime(deleteCheckedAt.value) : '—')
+
 const deploymentDeviceLabels = computed(() => ({
   automaticDefault: t('deploymentOps.options.automaticDefault'),
   openvinoAutoDefault: t('deploymentOps.options.openvinoAutoDefault'),
@@ -681,9 +741,7 @@ const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
 const selectedRuntimeBackend = computed(() => selectedDeploymentSource.value?.runtimeBackend.trim().toLowerCase() ?? '')
 const isOpenVinoBackend = computed(() => selectedRuntimeBackend.value === 'openvino')
 const isTensorRtBackend = computed(() => selectedRuntimeBackend.value === 'tensorrt')
-const tensorRtEngineCapabilities = computed(() => parseTensorRtEngineCapabilities(
-  selectedDeploymentSource.value?.buildMetadata ?? {},
-))
+const tensorRtEngineCapabilities = computed(() => parseTensorRtEngineCapabilities(selectedDeploymentSource.value?.buildMetadata ?? {}))
 const showTensorRtSingleProfileRange = computed(() => (
   isTensorRtBackend.value
   && tensorRtEngineCapabilities.value?.inputShapeMode === 'dynamic'
@@ -700,9 +758,7 @@ const tensorRtSingleProfileRangeLines = computed(() => {
 })
 const tensorRtOptimizationProfileOptions = computed(() => (
   tensorRtEngineCapabilities.value?.optimizationProfiles.map((profile) => ({
-    label: t('deploymentOps.runtimeConfig.tensorrtProfileIndex', {
-      index: profile.index,
-    }),
+    label: t('deploymentOps.runtimeConfig.tensorrtProfileIndex', { index: profile.index }),
     value: profile.index,
     description: formatTensorRtProfileRangeLines(profile).join(' · '),
   })) ?? []
@@ -720,15 +776,9 @@ const openvinoPerformanceHintOptions = computed(() => {
     { label: t('deploymentOps.options.maximumThroughput'), value: 'throughput' },
   ]
   if (openvinoDeviceKind.value === 'auto') {
-    options.push({
-      label: t('deploymentOps.options.cumulativeThroughput'),
-      value: 'cumulative_throughput',
-    })
+    options.push({ label: t('deploymentOps.options.cumulativeThroughput'), value: 'cumulative_throughput' })
   }
-  options.push({
-    label: t('deploymentOps.options.openvinoRuntimeDefault'),
-    value: 'none',
-  })
+  options.push({ label: t('deploymentOps.options.openvinoRuntimeDefault'), value: 'none' })
   return options
 })
 const openvinoSchedulingCoreTypeOptions = computed(() => [
@@ -764,10 +814,7 @@ const autoManualOptions = computed(() => [
   { label: t('deploymentOps.options.automatic'), value: 'auto' },
   { label: t('deploymentOps.options.manual'), value: 'manual' },
 ])
-const openvinoMaxInferenceThreads = computed(() => normalizePositiveInteger(
-  runtimeCapabilities.value?.hardware.cpu_physical_core_count,
-  1,
-))
+const openvinoMaxInferenceThreads = computed(() => normalizePositiveInteger(runtimeCapabilities.value?.hardware.cpu_physical_core_count, 1))
 const openvinoInferenceThreadOptions = computed(() => Array.from(
   { length: openvinoMaxInferenceThreads.value },
   (_, index) => ({ label: String(index + 1), value: index + 1 }),
@@ -821,6 +868,7 @@ watch([
     || typeof modelId !== 'string' || !modelId || typeof versionId !== 'string' || !versionId
     || !isModelVersionTaskType(taskType)) return
   if (buildId !== undefined && (typeof buildId !== 'string' || !buildId)) return
+  openCreateWizard()
   void openVersionDeploymentSource({ projectId, modelId, versionId, taskType, buildId })
 }, { immediate: true })
 
@@ -833,6 +881,79 @@ watch(deploymentDeviceOptions, (options) => {
 watch([selectedRuntimeBackend, deviceName], () => {
   void loadRuntimeCapabilities()
 })
+
+function openCreateWizard(): void {
+  wizardCreatedDeployment.value = null
+  wizardStartFailureMessage.value = null
+  errorMessage.value = null
+  createWizardOpen.value = true
+  void loadWizardModels()
+}
+
+function closeCreateWizard(): void {
+  createWizardOpen.value = false
+  wizardCreatedDeployment.value = null
+  wizardStartFailureMessage.value = null
+  selectedDeploymentSource.value = null
+  wizardSelectedModelId.value = ''
+  wizardSelectedModelDetail.value = null
+  modelType.value = ''
+  modelVersionId.value = ''
+  modelBuildId.value = ''
+  runtimeProfileId.value = ''
+  displayName.value = ''
+}
+
+async function loadWizardModels(): Promise<void> {
+  if (!selectedProjectId.value) return
+  wizardModelsLoading.value = true
+  try {
+    const groups = await Promise.all(
+      TASK_TYPES.map(task => Promise.resolve(listDeploymentSourceModels(selectedProjectId.value, task)).then(
+        res => (Array.isArray(res) ? res : []),
+        () => [],
+      )),
+    )
+    const seen = new Set<string>()
+    const merged: DeploymentSourceModelSummary[] = []
+    for (const model of groups.flat()) {
+      if (model.scope_kind !== 'project' || seen.has(model.model_id)) continue
+      seen.add(model.model_id)
+      merged.push(model)
+    }
+    wizardModels.value = merged
+    const targetId = selectedDeploymentSource.value?.modelId
+      || (wizardSelectedModelId.value && merged.some(m => m.model_id === wizardSelectedModelId.value) ? wizardSelectedModelId.value : '')
+      || merged[0]?.model_id
+      || ''
+    if (targetId) {
+      await selectWizardModel(targetId)
+    } else {
+      wizardSelectedModelId.value = ''
+      wizardSelectedModelDetail.value = null
+    }
+  } finally {
+    wizardModelsLoading.value = false
+  }
+}
+
+async function selectWizardModel(modelId: string): Promise<void> {
+  wizardSelectedModelId.value = modelId
+  if (!modelId || !selectedProjectId.value) {
+    wizardSelectedModelDetail.value = null
+    return
+  }
+  wizardDetailLoading.value = true
+  try {
+    const detail = await getDeploymentSourceModelDetail(selectedProjectId.value, modelId)
+    if (wizardSelectedModelId.value !== modelId) return
+    wizardSelectedModelDetail.value = detail
+  } catch {
+    if (wizardSelectedModelId.value === modelId) wizardSelectedModelDetail.value = null
+  } finally {
+    if (wizardSelectedModelId.value === modelId) wizardDetailLoading.value = false
+  }
+}
 
 function selectValueToString(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')
@@ -875,10 +996,7 @@ function setOpenvinoSchedulingCoreType(value: SelectValue): void {
   }
 }
 
-function setAutoBoolean(
-  value: SelectValue,
-  assign: (normalized: 'auto' | 'true' | 'false') => void,
-): void {
+function setAutoBoolean(value: SelectValue, assign: (normalized: 'auto' | 'true' | 'false') => void): void {
   const normalized = selectValueToString(value)
   if (normalized === 'auto' || normalized === 'true' || normalized === 'false') {
     assign(normalized)
@@ -886,15 +1004,11 @@ function setAutoBoolean(
 }
 
 function setOpenvinoHyperThreading(value: SelectValue): void {
-  setAutoBoolean(value, (normalized) => {
-    openvinoHyperThreading.value = normalized
-  })
+  setAutoBoolean(value, (normalized) => { openvinoHyperThreading.value = normalized })
 }
 
 function setOpenvinoCpuPinning(value: SelectValue): void {
-  setAutoBoolean(value, (normalized) => {
-    openvinoCpuPinning.value = normalized
-  })
+  setAutoBoolean(value, (normalized) => { openvinoCpuPinning.value = normalized })
 }
 
 function setOpenvinoNumRequestsMode(value: SelectValue): void {
@@ -909,9 +1023,7 @@ function setOpenvinoInferencePrecision(value: SelectValue): void {
 }
 
 function setOpenvinoNpuTurbo(value: SelectValue): void {
-  setAutoBoolean(value, (normalized) => {
-    openvinoNpuTurbo.value = normalized
-  })
+  setAutoBoolean(value, (normalized) => { openvinoNpuTurbo.value = normalized })
 }
 
 function setOpenvinoNpuTilesMode(value: SelectValue): void {
@@ -919,16 +1031,12 @@ function setOpenvinoNpuTilesMode(value: SelectValue): void {
 }
 
 function setTensorrtPinnedOutput(value: SelectValue): void {
-  setAutoBoolean(value, (normalized) => {
-    tensorrtPinnedOutput.value = normalized
-  })
+  setAutoBoolean(value, (normalized) => { tensorrtPinnedOutput.value = normalized })
 }
 
 function setTensorrtOptimizationProfileIndex(value: SelectValue): void {
   const parsed = Number(value)
-  const validIndices = tensorRtEngineCapabilities.value?.optimizationProfiles.map(
-    (profile) => profile.index,
-  ) ?? []
+  const validIndices = tensorRtEngineCapabilities.value?.optimizationProfiles.map((profile) => profile.index) ?? []
   tensorrtOptimizationProfileIndex.value = validIndices.includes(parsed) ? parsed : 0
 }
 
@@ -958,9 +1066,7 @@ async function loadRuntimeCapabilities(): Promise<void> {
     runtimeCapabilities.value = null
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.capabilitiesFailed')
   } finally {
-    if (loadSequence === runtimeCapabilityLoadSequence) {
-      runtimeCapabilitiesLoading.value = false
-    }
+    if (loadSequence === runtimeCapabilityLoadSequence) runtimeCapabilitiesLoading.value = false
   }
 }
 
@@ -973,11 +1079,7 @@ function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilit
   const options = configuration.backend_options
   if (options.kind === 'openvino-cpu') {
     openvinoPerformanceHint.value = options.performance_hint
-    openvinoInferenceNumThreads.value = normalizePositiveInteger(
-      options.inference_num_threads,
-      openvinoMaxInferenceThreads.value,
-      openvinoMaxInferenceThreads.value,
-    )
+    openvinoInferenceNumThreads.value = normalizePositiveInteger(options.inference_num_threads, openvinoMaxInferenceThreads.value, openvinoMaxInferenceThreads.value)
     openvinoNumStreams.value = normalizePositiveInteger(options.num_streams, 1)
     openvinoSchedulingCoreType.value = options.scheduling_core_type
     openvinoHyperThreading.value = formatAutoBoolean(options.enable_hyper_threading)
@@ -999,11 +1101,7 @@ function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilit
     applyOpenvinoNumRequestsDefault(options.num_requests)
   } else if (options.kind === 'tensorrt') {
     setTensorrtOptimizationProfileIndex(options.optimization_profile_index)
-    tensorrtPinnedOutput.value = options.pinned_output_buffer_enabled === null
-      ? 'auto'
-      : options.pinned_output_buffer_enabled
-        ? 'true'
-        : 'false'
+    tensorrtPinnedOutput.value = options.pinned_output_buffer_enabled === null ? 'auto' : options.pinned_output_buffer_enabled ? 'true' : 'false'
   }
 }
 
@@ -1030,18 +1128,12 @@ function normalizeOpenvinoNumRequests(): void {
 }
 
 function normalizeOpenvinoNpuTiles(): void {
-  openvinoNpuTiles.value = normalizePositiveInteger(
-    openvinoNpuTiles.value,
-    1,
-    openvinoNpuMaxTiles.value ?? undefined,
-  )
+  openvinoNpuTiles.value = normalizePositiveInteger(openvinoNpuTiles.value, 1, openvinoNpuMaxTiles.value ?? undefined)
 }
 
 function normalizeKeepWarmIntervalSeconds(): void {
   const parsed = Number(keepWarmIntervalSeconds.value)
-  keepWarmIntervalSeconds.value = Number.isFinite(parsed) && parsed >= 0.01
-    ? parsed
-    : DEFAULT_KEEP_WARM_INTERVAL_SECONDS
+  keepWarmIntervalSeconds.value = Number.isFinite(parsed) && parsed >= 0.01 ? parsed : DEFAULT_KEEP_WARM_INTERVAL_SECONDS
 }
 
 function applyOpenvinoNumRequestsDefault(value: number | 'auto'): void {
@@ -1051,14 +1143,11 @@ function applyOpenvinoNumRequestsDefault(value: number | 'auto'): void {
 
 function applyOpenvinoNpuTilesDefault(value: number | 'auto'): void {
   openvinoNpuTilesMode.value = value === 'auto' ? 'auto' : 'manual'
-  openvinoNpuTiles.value = value === 'auto'
-    ? 1
-    : normalizePositiveInteger(value, 1, openvinoNpuMaxTiles.value ?? undefined)
+  openvinoNpuTiles.value = value === 'auto' ? 1 : normalizePositiveInteger(value, 1, openvinoNpuMaxTiles.value ?? undefined)
 }
 
 function parseAutoBoolean(value: 'auto' | 'true' | 'false'): boolean | 'auto' {
-  if (value === 'auto') return 'auto'
-  return value === 'true'
+  return value === 'auto' ? 'auto' : value === 'true'
 }
 
 function buildBackendOptions(): DeploymentBackendOptions {
@@ -1066,9 +1155,7 @@ function buildBackendOptions(): DeploymentBackendOptions {
     return {
       kind: 'tensorrt',
       optimization_profile_index: resolveTensorRtOptimizationProfileIndex(),
-      pinned_output_buffer_enabled: tensorrtPinnedOutput.value === 'auto'
-        ? null
-        : tensorrtPinnedOutput.value === 'true',
+      pinned_output_buffer_enabled: tensorrtPinnedOutput.value === 'auto' ? null : tensorrtPinnedOutput.value === 'true',
       pinned_output_buffer_max_bytes: null,
     }
   }
@@ -1077,11 +1164,7 @@ function buildBackendOptions(): DeploymentBackendOptions {
     return {
       kind: 'openvino-cpu',
       performance_hint: openvinoPerformanceHint.value,
-      inference_num_threads: normalizePositiveInteger(
-        openvinoInferenceNumThreads.value,
-        1,
-        openvinoMaxInferenceThreads.value,
-      ),
+      inference_num_threads: normalizePositiveInteger(openvinoInferenceNumThreads.value, 1, openvinoMaxInferenceThreads.value),
       num_streams: normalizePositiveInteger(openvinoNumStreams.value, 1),
       scheduling_core_type: openvinoSchedulingCoreType.value,
       enable_hyper_threading: parseAutoBoolean(openvinoHyperThreading.value),
@@ -1093,9 +1176,7 @@ function buildBackendOptions(): DeploymentBackendOptions {
       kind: 'openvino-gpu',
       performance_hint: openvinoPerformanceHint.value,
       num_streams: normalizePositiveInteger(openvinoNumStreams.value, 1),
-      num_requests: openvinoNumRequestsMode.value === 'auto'
-        ? 'auto'
-        : normalizePositiveInteger(openvinoNumRequests.value, 1),
+      num_requests: openvinoNumRequestsMode.value === 'auto' ? 'auto' : normalizePositiveInteger(openvinoNumRequests.value, 1),
       inference_precision: openvinoInferencePrecision.value,
       queue_priority: 'auto',
       queue_throttle: 'auto',
@@ -1105,27 +1186,17 @@ function buildBackendOptions(): DeploymentBackendOptions {
     return {
       kind: 'openvino-npu',
       performance_hint: openvinoPerformanceHint.value,
-      num_requests: openvinoNumRequestsMode.value === 'auto'
-        ? 'auto'
-        : normalizePositiveInteger(openvinoNumRequests.value, 1),
+      num_requests: openvinoNumRequestsMode.value === 'auto' ? 'auto' : normalizePositiveInteger(openvinoNumRequests.value, 1),
       inference_precision: openvinoInferencePrecision.value === 'f32' ? 'auto' : openvinoInferencePrecision.value,
       turbo: parseAutoBoolean(openvinoNpuTurbo.value),
-      tiles: openvinoNpuTilesMode.value === 'auto'
-        ? 'auto'
-        : normalizePositiveInteger(
-            openvinoNpuTiles.value,
-            1,
-            openvinoNpuMaxTiles.value ?? undefined,
-          ),
+      tiles: openvinoNpuTilesMode.value === 'auto' ? 'auto' : normalizePositiveInteger(openvinoNpuTiles.value, 1, openvinoNpuMaxTiles.value ?? undefined),
       compilation_mode_params: openvinoNpuCompilationModeParams.value.trim() || null,
     }
   }
   return {
     kind: 'openvino-auto',
     performance_hint: openvinoPerformanceHint.value,
-    num_requests: openvinoNumRequestsMode.value === 'auto'
-      ? 'auto'
-      : normalizePositiveInteger(openvinoNumRequests.value, 1),
+    num_requests: openvinoNumRequestsMode.value === 'auto' ? 'auto' : normalizePositiveInteger(openvinoNumRequests.value, 1),
   }
 }
 
@@ -1246,9 +1317,7 @@ async function loadDeploymentSourceModels(): Promise<void> {
     selectedSourceModelDetail.value = null
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.sourceModelsFailed')
   } finally {
-    if (loadSequence === sourceModelLoadSequence) {
-      sourceModelsLoading.value = false
-    }
+    if (loadSequence === sourceModelLoadSequence) sourceModelsLoading.value = false
   }
 }
 
@@ -1266,10 +1335,40 @@ async function selectDeploymentSourceModel(modelId: string): Promise<void> {
     if (detailSequence !== sourceModelDetailSequence || selectedSourceModelId.value !== modelId) return
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.sourceModelDetailFailed')
   } finally {
-    if (detailSequence === sourceModelDetailSequence && selectedSourceModelId.value === modelId) {
-      sourceModelDetailLoading.value = false
+    if (detailSequence === sourceModelDetailSequence && selectedSourceModelId.value === modelId) sourceModelDetailLoading.value = false
+  }
+}
+
+watch([pendingStopDeployment, pendingResetDeployment, pendingDeleteDeployment, locale], () => {
+  void nextTick(() => {
+    const cancelText = t('common.cancel')
+    const closeText = t('common.close')
+    for (const closeBtn of document.querySelectorAll<HTMLButtonElement>('.deployment-confirm-dialog .confirm-dialog__close')) {
+      if (closeBtn.getAttribute('aria-label') === cancelText) {
+        closeBtn.setAttribute('aria-label', closeText)
+      }
+    }
+  })
+}, { flush: 'post' })
+
+watch(selectedProjectId, (projectId) => {
+  versionLabelsById.value = {}
+  if (projectId) void refreshVersionLabels(projectId)
+})
+
+function resolveSourceVersionLabel(selection: DeploymentSourceSelection): string {
+  const explicit = (selection as { modelVersionName?: string }).modelVersionName?.trim()
+  if (explicit) return explicit
+  const cached = versionLabelsById.value[selection.modelVersionId]?.versionLabel?.trim()
+  if (cached) return cached
+  for (const detail of [wizardSelectedModelDetail.value, selectedSourceModelDetail.value]) {
+    const version = detail?.versions.find((item) => item.model_version_id === selection.modelVersionId)
+    if (version) {
+      const formatted = modelVersionDisplayName(version, false)
+      if (formatted && formatted !== '—') return formatted
     }
   }
+  return ''
 }
 
 function applyDeploymentSource(selection: DeploymentSourceSelection): void {
@@ -1284,186 +1383,71 @@ function applyDeploymentSource(selection: DeploymentSourceSelection): void {
   modelBuildId.value = selection.modelBuildId
   runtimeProfileId.value = selection.runtimeProfileId
   selectedTaskType.value = selection.taskType
-  const deviceOptions = buildDeploymentDeviceOptions(
-    sessionStore.bootstrap?.devices ?? null,
-    selection.runtimeBackend,
-    deploymentDeviceLabels.value,
-  )
-  if (!deviceOptions.some((option) => option.value === deviceName.value)) {
-    deviceName.value = deviceOptions[0]?.value ?? ''
-  }
+  const deviceOptions = buildDeploymentDeviceOptions(sessionStore.bootstrap?.devices ?? null, selection.runtimeBackend, deploymentDeviceLabels.value)
+  if (!deviceOptions.some((option) => option.value === deviceName.value)) deviceName.value = deviceOptions[0]?.value ?? ''
   if (!displayName.value.trim()) {
-    const sourceLabel = selection.modelBuildId || selection.modelVersionId
-    displayName.value = `${selection.modelName} ${sourceLabel}`
+    const versionLabel = resolveSourceVersionLabel(selection)
+    displayName.value = `${selection.modelName} ${versionLabel}`.trim()
   }
   closeDeploymentSourcePicker()
 }
 
 function resolveTensorRtOptimizationProfileIndex(): number {
   if (!showTensorRtProfileSelector.value) return 0
-  const validIndices = tensorRtEngineCapabilities.value?.optimizationProfiles.map(
-    (profile) => profile.index,
-  ) ?? []
-  return validIndices.includes(tensorrtOptimizationProfileIndex.value)
-    ? tensorrtOptimizationProfileIndex.value
-    : 0
+  const validIndices = tensorRtEngineCapabilities.value?.optimizationProfiles.map((profile) => profile.index) ?? []
+  return validIndices.includes(tensorrtOptimizationProfileIndex.value) ? tensorrtOptimizationProfileIndex.value : 0
 }
 
 function formatTensorRtProfileRangeLines(profile: TensorRtOptimizationProfile): string[] {
-  return profile.inputs.map((input) => t(
-    'deploymentOps.runtimeConfig.tensorrtProfileInputRange',
-    {
-      input: input.inputName,
-      min: formatTensorRtShape(input.minShape),
-      opt: formatTensorRtShape(input.optShape),
-      max: formatTensorRtShape(input.maxShape),
-    },
-  ))
+  return profile.inputs.map((input) => t('deploymentOps.runtimeConfig.tensorrtProfileInputRange', {
+    input: input.inputName,
+    min: formatTensorRtShape(input.minShape),
+    opt: formatTensorRtShape(input.optShape),
+    max: formatTensorRtShape(input.maxShape),
+  }))
 }
 
 function deploymentSourceUnavailableReason(selection: DeploymentSourceSelection): string {
   const runtimeBackend = selection.runtimeBackend.trim().toLowerCase()
-  if (runtimeBackend !== 'tensorrt') {
-    return ''
-  }
+  if (runtimeBackend !== 'tensorrt') return ''
   const devices = sessionStore.bootstrap?.devices ?? null
-  if (!hasCudaDevice(devices)) {
-    return t('deploymentOps.messages.tensorrtCudaUnavailable')
-  }
+  if (!hasCudaDevice(devices)) return t('deploymentOps.messages.tensorrtCudaUnavailable')
   const tensorrt = readDeviceRecord(devices, 'tensorrt')
-  if (tensorrt?.installed !== true) {
-    return t('deploymentOps.messages.tensorrtRuntimeUnavailable')
-  }
+  if (tensorrt?.installed !== true) return t('deploymentOps.messages.tensorrtRuntimeUnavailable')
   return ''
 }
 
-function readDeviceRecord(
-  record: Record<string, unknown> | null | undefined,
-  key: string,
-): Record<string, unknown> | null {
+function readDeviceRecord(record: Record<string, unknown> | null | undefined, key: string): Record<string, unknown> | null {
   const value = record?.[key]
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-type DeploymentSummaryState = 'active' | 'running' | 'starting' | 'stopped' | 'degraded' | 'failed' | 'unavailable' | 'created' | 'unknown'
-type DeploymentStatusChannel = 'deployment' | 'process' | 'desired' | 'observed'
-type DeploymentStatusIndicatorTone = 'success' | 'warning' | 'danger' | 'neutral' | 'unknown'
-
-interface DeploymentStatusIndicator {
-  channel: DeploymentStatusChannel
-  value: string
-  tone: DeploymentStatusIndicatorTone
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
 function deploymentCardTitle(item: TaskDeploymentInstance): string {
-  const displayName = item.display_name.trim()
+  const name = item.display_name.trim()
   const generatedSourceId = item.model_build_id || item.model_version_id
   const generatedName = `${item.model_name} ${generatedSourceId}`.trim()
-  if (!displayName || displayName === item.deployment_instance_id || displayName === generatedName) {
+  if (!name || name === item.deployment_instance_id || name === generatedName) {
     return item.model_name || item.deployment_instance_id
   }
-  return displayName
-}
-
-function formatRuntimeLabel(item: TaskDeploymentInstance): string {
-  const backend = item.runtime_backend || 'pytorch'
-  const precision = item.runtime_precision || 'fp32'
-  const device = item.device_name ? ` / ${item.device_name}` : ''
-  return `${backend} ${precision}${device}`
-}
-
-function formatInputSize(item: TaskDeploymentInstance): string {
-  return item.input_size ? `${item.input_size.width} x ${item.input_size.height}` : '-'
-}
-
-function deploymentStatusIndicatorTone(value: string): DeploymentStatusIndicatorTone {
-  const normalized = value.trim().toLowerCase()
-  if (!normalized || normalized === 'unknown' || normalized === 'unloaded') return 'unknown'
-  if (['fail', 'crash', 'error', 'unavailable', 'unhealthy', 'offline'].some((token) => normalized.includes(token))) {
-    return 'danger'
-  }
-  if (['stopped', 'inactive', 'idle', 'disabled'].some((token) => normalized.includes(token))) {
-    return 'neutral'
-  }
-  if (['starting', 'stopping', 'warming', 'pending', 'queued', 'created', 'degraded'].some((token) => normalized.includes(token))) {
-    return 'warning'
-  }
-  if (['active', 'running', 'ready', 'healthy', 'succeeded', 'success'].some((token) => normalized.includes(token))) {
-    return 'success'
-  }
-  return 'unknown'
-}
-
-function deploymentStatusIndicators(item: TaskDeploymentInstance): DeploymentStatusIndicator[] {
-  const runtimeStatus = deploymentRuntimeStatus(item.deployment_instance_id)
-  const values: Array<[DeploymentStatusChannel, unknown]> = [
-    ['deployment', item.status],
-    ['process', runtimeStatus?.process_state],
-    ['desired', runtimeStatus?.desired_state],
-    ['observed', runtimeStatus?.observed_state],
-  ]
-  return values.map(([channel, rawValue]) => {
-    const value = String(rawValue ?? '').trim()
-    return { channel, value, tone: deploymentStatusIndicatorTone(value) }
-  })
-}
-
-function deploymentStatusIndicatorLabel(item: TaskDeploymentInstance): string {
-  const labels: Record<DeploymentStatusChannel, string> = {
-    deployment: t('deploymentOps.columns.status'),
-    process: t('deploymentOps.fields.processState'),
-    desired: t('deploymentOps.fields.desiredState'),
-    observed: t('deploymentOps.fields.observedState'),
-  }
-  return deploymentStatusIndicators(item)
-    .map((indicator) => `${labels[indicator.channel]}：${indicator.value || '-'}`)
-    .join(' · ')
-}
-
-function deploymentSummaryState(item: TaskDeploymentInstance): DeploymentSummaryState {
-  const runtimeStatus = deploymentRuntimeStatus(item.deployment_instance_id)
-  const processState = String(runtimeStatus?.process_state ?? '').trim().toLowerCase()
-  const observedState = String(runtimeStatus?.observed_state ?? '').trim().toLowerCase()
-  const desiredState = String(runtimeStatus?.desired_state ?? '').trim().toLowerCase()
-  const itemState = String(item.status ?? '').trim().toLowerCase()
-  const states = [processState, observedState, desiredState, itemState]
-
-  if (states.some((state) => state.includes('fail') || state.includes('crash') || state.includes('error'))) return 'failed'
-  if (observedState.includes('degraded')) return 'degraded'
-  if (processState.includes('unavailable')) return 'unavailable'
-  if (processState.includes('running') || observedState.includes('running')) return 'running'
-  if (processState.includes('start') || observedState.includes('start')) return 'starting'
-  if (processState.includes('stop') || observedState.includes('stop')) return 'stopped'
-  if (itemState.includes('active') || itemState.includes('ready')) return 'active'
-  if (itemState.includes('created')) return 'created'
-  return 'unknown'
+  return name
 }
 
 function deploymentSummaryLabel(item: TaskDeploymentInstance): string {
-  return t(`deploymentOps.states.${deploymentSummaryState(item)}`)
+  const snap = deploymentRuntimeSnapshot(item.deployment_instance_id)
+  return t(`deploymentWorkspace.states.${resolveDeploymentVisualState(snap?.status, snap?.health).key}`)
 }
 
 function deploymentSummaryTone(item: TaskDeploymentInstance): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const state = deploymentSummaryState(item)
-  if (state === 'running' || state === 'active') return 'success'
-  if (state === 'failed') return 'danger'
-  if (state === 'degraded' || state === 'unavailable') return 'warning'
-  if (state === 'starting' || state === 'created') return 'info'
-  return 'neutral'
+  const snap = deploymentRuntimeSnapshot(item.deployment_instance_id)
+  return resolveDeploymentVisualState(snap?.status, snap?.health).tone
 }
 
 function createEmptyRuntimeSnapshot(): DeploymentRuntimeSnapshot {
-  return {
-    status: null,
-    health: null,
-  }
+  return { status: null, health: null }
 }
 
 function deploymentRuntimeSnapshot(deploymentId: string): DeploymentRuntimeSnapshot | null {
-  if (!deploymentId) return null
-  return runtimeSnapshotsByDeployment.value[deploymentId] ?? null
+  return deploymentId ? runtimeSnapshotsByDeployment.value[deploymentId] ?? null : null
 }
 
 function deploymentRuntimeStatus(deploymentId: string): TaskDeploymentProcessStatus | null {
@@ -1478,54 +1462,27 @@ function runtimeSnapshotValueEquals(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
 }
 
-function setDeploymentRuntimeSnapshot(
-  deploymentId: string,
-  patch: Partial<DeploymentRuntimeSnapshot>,
-): void {
+function setDeploymentRuntimeSnapshot(deploymentId: string, patch: Partial<DeploymentRuntimeSnapshot>): void {
   if (!deploymentId) return
   const current = runtimeSnapshotsByDeployment.value[deploymentId] ?? createEmptyRuntimeSnapshot()
   const next: DeploymentRuntimeSnapshot = {
     status: patch.status === undefined ? current.status : patch.status,
     health: patch.health === undefined ? current.health : patch.health,
   }
-  if (
-    runtimeSnapshotValueEquals(current.status, next.status)
-    && runtimeSnapshotValueEquals(current.health, next.health)
-  ) {
-    return
-  }
-  runtimeSnapshotsByDeployment.value = {
-    ...runtimeSnapshotsByDeployment.value,
-    [deploymentId]: next,
-  }
+  if (runtimeSnapshotValueEquals(current.status, next.status) && runtimeSnapshotValueEquals(current.health, next.health)) return
+  runtimeSnapshotsByDeployment.value = { ...runtimeSnapshotsByDeployment.value, [deploymentId]: next }
 }
 
-function commitDeploymentRuntimeStatus(
-  deploymentId: string,
-  status: TaskDeploymentProcessStatus | null,
-): void {
+function commitDeploymentRuntimeStatus(deploymentId: string, status: TaskDeploymentProcessStatus | null): void {
   setDeploymentRuntimeSnapshot(deploymentId, { status })
 }
 
-function commitDeploymentRuntimeHealth(
-  deploymentId: string,
-  health: TaskDeploymentRuntimeHealth | null,
-): void {
-  setDeploymentRuntimeSnapshot(deploymentId, {
-    status: health,
-    health,
-  })
+function commitDeploymentRuntimeHealth(deploymentId: string, health: TaskDeploymentRuntimeHealth | null): void {
+  setDeploymentRuntimeSnapshot(deploymentId, { status: health, health })
 }
 
-function commitDeploymentRuntimeResult(
-  deploymentId: string,
-  status: TaskDeploymentProcessStatus | null,
-  health: TaskDeploymentRuntimeHealth | null,
-): void {
-  setDeploymentRuntimeSnapshot(deploymentId, {
-    status: health ?? status,
-    health,
-  })
+function commitDeploymentRuntimeResult(deploymentId: string, status: TaskDeploymentProcessStatus | null, health: TaskDeploymentRuntimeHealth | null): void {
+  setDeploymentRuntimeSnapshot(deploymentId, { status: health ?? status, health })
 }
 
 function deleteDeploymentRuntimeSnapshot(deploymentId: string): void {
@@ -1547,8 +1504,7 @@ function isCurrentDeploymentRuntimeRefresh(deploymentId: string, token: number):
 }
 
 function finishDeploymentRuntimeRefresh(deploymentId: string, token: number): void {
-  if (!isCurrentDeploymentRuntimeRefresh(deploymentId, token)) return
-  runtimeRefreshTokenByDeployment.delete(deploymentId)
+  if (isCurrentDeploymentRuntimeRefresh(deploymentId, token)) runtimeRefreshTokenByDeployment.delete(deploymentId)
 }
 
 function normalizeDeploymentRuntimeMode(value: string | null | undefined): DeploymentRuntimeMode {
@@ -1566,11 +1522,8 @@ function taskTypeForDeployment(item: TaskDeploymentInstance): ModelTaskType {
 
 function setDeploymentRunningAction(deploymentId: string, action: string | null): void {
   const nextActions = { ...runningActionByDeployment.value }
-  if (action) {
-    nextActions[deploymentId] = action
-  } else {
-    delete nextActions[deploymentId]
-  }
+  if (action) nextActions[deploymentId] = action
+  else delete nextActions[deploymentId]
   runningActionByDeployment.value = nextActions
 }
 
@@ -1586,41 +1539,11 @@ function isRuntimeActionBusy(item: TaskDeploymentInstance): boolean {
   return deploymentRunningAction(item.deployment_instance_id) !== null
 }
 
-function canStartDeployment(item: TaskDeploymentInstance): boolean {
-  if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
-  const processState = String(deploymentRuntimeStatus(item.deployment_instance_id)?.process_state ?? '').toLowerCase()
-  return processState !== 'running'
-}
-
-function canStopDeployment(item: TaskDeploymentInstance): boolean {
-  if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
-  const status = deploymentRuntimeStatus(item.deployment_instance_id)
-  if (status?.desired_state === 'running') return true
-  const processState = String(status?.process_state ?? item.status ?? '').toLowerCase()
-  return processState.includes('running') || processState.includes('starting') || processState.includes('ready')
-}
-
 function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
   if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
   const status = deploymentRuntimeStatus(item.deployment_instance_id)
   if (!status) return true
-  return status.desired_state === 'stopped'
-    && status.observed_state === 'stopped'
-    && status.process_state === 'stopped'
-}
-
-function deleteButtonTitle(item: TaskDeploymentInstance): string {
-  if (!canWriteModels.value) return t('deploymentOps.messages.writePermissionRequired')
-  if (deploymentRunningAction(item.deployment_instance_id) !== null) return t('deploymentOps.messages.actionInProgress')
-  const status = deploymentRuntimeStatus(item.deployment_instance_id)
-  if (status && (
-    status.desired_state !== 'stopped'
-    || status.observed_state !== 'stopped'
-    || status.process_state !== 'stopped'
-  )) {
-    return t('deploymentOps.messages.deleteRequiresStopped')
-  }
-  return t('deploymentOps.actions.delete')
+  return status.desired_state === 'stopped' && status.observed_state === 'stopped' && status.process_state === 'stopped'
 }
 
 function canWarmupDeployment(item: TaskDeploymentInstance): boolean {
@@ -1641,28 +1564,105 @@ function isRuntimeHealthWarmupComplete(health: TaskDeploymentRuntimeHealth, fall
   return health.keep_warm?.activated === true
 }
 
-function warmupButtonTitle(item: TaskDeploymentInstance): string {
-  if (isDeploymentWarmupComplete(item)) return t('deploymentOps.messages.warmupComplete')
-  if (!canWriteModels.value) return t('deploymentOps.messages.writePermissionRequired')
-  if (deploymentRunningAction(item.deployment_instance_id) !== null) return t('deploymentOps.messages.actionInProgress')
-  return t('deploymentOps.messages.warmupDeployment')
-}
-
 function canResetDeployment(item: TaskDeploymentInstance): boolean {
   return canWriteModels.value && !isRuntimeActionBusy(item)
+}
+
+async function refreshHostDevices(): Promise<void> {
+  try {
+    if (typeof sessionStore.loadBootstrap === 'function') {
+      await sessionStore.loadBootstrap({ includeDevices: true })
+    } else if (typeof sessionStore.ensureDeviceBootstrap === 'function') {
+      await sessionStore.ensureDeviceBootstrap()
+    }
+  } catch {
+    // 设备摘要刷新失败时保留已有 bootstrap，不阻断能力抽屉使用
+  }
+}
+
+function seedVersionLabelsFromDeployments(
+  items: TaskDeploymentInstance[],
+  target: Record<string, { modelName: string; versionLabel: string }> = versionLabelsById.value,
+): Record<string, { modelName: string; versionLabel: string }> {
+  let changed = false
+  const next = { ...target }
+  for (const item of items) {
+    if (!item.model_version_id) continue
+    const displayModelName = item.model_display_name?.trim() || ''
+    const versionLabel = item.model_version_number ? `v${item.model_version_number}` : ''
+    if (!displayModelName && !versionLabel) continue
+    const existing = next[item.model_version_id]
+    const mergedModelName = existing?.modelName || displayModelName || item.model_name
+    const mergedVersionLabel = existing?.versionLabel || versionLabel
+    if (!existing || existing.modelName !== mergedModelName || existing.versionLabel !== mergedVersionLabel) {
+      next[item.model_version_id] = {
+        modelName: mergedModelName,
+        versionLabel: mergedVersionLabel,
+      }
+      changed = true
+    }
+  }
+  return changed ? next : target
+}
+
+async function refreshVersionLabels(projectId: string): Promise<void> {
+  const seq = ++versionCatalogSequence
+  if (!projectId) {
+    versionLabelsById.value = {}
+    return
+  }
+  const next = seedVersionLabelsFromDeployments(deployments.value, {})
+  const limit = 100
+  try {
+    if (typeof listProjectModelCatalog !== 'function') {
+      versionLabelsById.value = next
+      return
+    }
+    for (let offset = 0; ; offset += limit) {
+      const page = await Promise.resolve(listProjectModelCatalog({ projectId, offset, limit })).catch(() => null)
+      if (seq !== versionCatalogSequence || selectedProjectId.value !== projectId) return
+      const items = page?.items
+      if (!Array.isArray(items) || items.length === 0) break
+      for (const model of items) {
+        const modelName = modelDisplayName(model)
+        const versions = Array.isArray(model.available_versions) ? model.available_versions : []
+        for (const version of versions) {
+          if (!version?.model_version_id) continue
+          const shortLabel = modelVersionDisplayName(version, false)
+          const resolvedLabel = shortLabel !== '—' ? shortLabel : modelVersionDisplayName(version, true)
+          const existing = next[version.model_version_id]
+          next[version.model_version_id] = {
+            modelName: modelName || existing?.modelName || '',
+            versionLabel: resolvedLabel === '—' ? (existing?.versionLabel ?? '') : resolvedLabel,
+          }
+        }
+      }
+      if (offset + limit >= (page?.total ?? 0)) break
+    }
+    if (seq === versionCatalogSequence && selectedProjectId.value === projectId) {
+      versionLabelsById.value = seedVersionLabelsFromDeployments(deployments.value, next)
+    }
+  } catch {
+    if (seq === versionCatalogSequence && selectedProjectId.value === projectId) {
+      versionLabelsById.value = seedVersionLabelsFromDeployments(deployments.value, next)
+    }
+  }
 }
 
 async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
+  const projectId = selectedProjectId.value
+  if (projectId) void refreshVersionLabels(projectId)
+  else versionLabelsById.value = {}
   try {
     deployments.value = await listAllTaskDeployments()
+    versionLabelsById.value = seedVersionLabelsFromDeployments(deployments.value)
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
       statusDrawerOpen.value = false
     }
-    // 项目概览的只读深链接只打开详情，不触发启停操作。
-    const requested = typeof route.query.deployment === 'string' ? route.query.deployment : ''
+    const requested = typeof route?.query?.deployment === 'string' ? route.query.deployment : ''
     if (requested && deployments.value.some(item => item.deployment_instance_id === requested)) {
       selectedDeploymentId.value = requested
       statusDrawerOpen.value = true
@@ -1680,10 +1680,7 @@ async function listAllTaskDeployments(): Promise<TaskDeploymentInstance[]> {
     TASK_TYPES.map(async (taskType) => {
       const items = await listTaskDeployments(taskType, selectedProjectId.value)
       return items.map((item) => ({
-        item: {
-          ...item,
-          task_type: item.task_type || taskType,
-        },
+        item: { ...item, task_type: item.task_type || taskType },
         routeTaskType: taskType,
       }))
     }),
@@ -1715,9 +1712,7 @@ function shouldPreferDeploymentCandidate(next: DeploymentListCandidate, current:
 }
 
 async function selectDeployment(deploymentId: string): Promise<void> {
-  if (selectedDeploymentId.value !== deploymentId) {
-    deploymentEvents.value = []
-  }
+  if (selectedDeploymentId.value !== deploymentId) deploymentEvents.value = []
   selectedDeploymentId.value = deploymentId
   const deployment = selectedDeployment.value
   await Promise.all([
@@ -1726,13 +1721,24 @@ async function selectDeployment(deploymentId: string): Promise<void> {
   ])
 }
 
-function openDeploymentStatusDrawer(deploymentId: string): void {
+function openDeploymentStatusDrawer(deploymentId: string, initialTab: DeploymentStatusDrawerTab = 'overview'): void {
+  statusDrawerInitialTab.value = initialTab
   statusDrawerOpen.value = true
   void selectDeployment(deploymentId)
 }
 
 function closeDeploymentStatusDrawer(): void {
   statusDrawerOpen.value = false
+  statusDrawerInitialTab.value = 'overview'
+}
+
+async function recheckStatusDrawerDeployment(deploymentId: string): Promise<void> {
+  const target = deployments.value.find(item => item.deployment_instance_id === deploymentId)
+  if (!target) return
+  await Promise.all([
+    refreshDeploymentRuntimeSnapshot(target, { showError: true }),
+    loadDeploymentEvents(),
+  ])
 }
 
 async function loadDeploymentEvents(): Promise<void> {
@@ -1774,20 +1780,13 @@ async function refreshRuntimeSnapshotsForDeployments(items: TaskDeploymentInstan
     }
   }))
   const failed = failures[0]
-  if (failed) {
-    errorMessage.value = failed
-  }
+  if (failed) errorMessage.value = failed
 }
 
-async function refreshDeploymentRuntimeSnapshot(
-  deployment: TaskDeploymentInstance,
-  options: { showError?: boolean } = {},
-): Promise<string | null> {
+async function refreshDeploymentRuntimeSnapshot(deployment: TaskDeploymentInstance, options: { showError?: boolean } = {}): Promise<string | null> {
   const deploymentId = deployment.deployment_instance_id
   const refreshToken = beginDeploymentRuntimeRefresh(deploymentId)
-  if (options.showError) {
-    errorMessage.value = null
-  }
+  if (options.showError) errorMessage.value = null
   try {
     const status = await runTaskDeploymentStatusAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'status')
     let health: TaskDeploymentRuntimeHealth | null = null
@@ -1804,16 +1803,14 @@ async function refreshDeploymentRuntimeSnapshot(
   } catch (error) {
     if (!isCurrentDeploymentRuntimeRefresh(deploymentId, refreshToken)) return null
     const message = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
-    if (options.showError) {
-      errorMessage.value = message
-    }
+    if (options.showError) errorMessage.value = message
     return message
   } finally {
     finishDeploymentRuntimeRefresh(deploymentId, refreshToken)
   }
 }
 
-async function submitDeployment(): Promise<void> {
+async function handleWizardSubmit(payload: { startAfterCreate: boolean }): Promise<void> {
   if (!selectedDeploymentSource.value || !modelType.value.trim()) {
     errorMessage.value = t('deploymentOps.messages.sourceRequired')
     return
@@ -1824,19 +1821,15 @@ async function submitDeployment(): Promise<void> {
     return
   }
   normalizeInstanceCount()
-  if (isOpenVinoBackend.value && openvinoDeviceKind.value !== 'npu') {
-    normalizeOpenvinoNumStreams()
-  }
-  if (isOpenVinoBackend.value && openvinoNumRequestsMode.value === 'manual') {
-    normalizeOpenvinoNumRequests()
-  }
-  if (openvinoDeviceKind.value === 'npu' && openvinoNpuTilesMode.value === 'manual') {
-    normalizeOpenvinoNpuTiles()
-  }
+  if (isOpenVinoBackend.value && openvinoDeviceKind.value !== 'npu') normalizeOpenvinoNumStreams()
+  if (isOpenVinoBackend.value && openvinoNumRequestsMode.value === 'manual') normalizeOpenvinoNumRequests()
+  if (openvinoDeviceKind.value === 'npu' && openvinoNpuTilesMode.value === 'manual') normalizeOpenvinoNpuTiles()
+
   creating.value = true
   errorMessage.value = null
+  wizardStartFailureMessage.value = null
   try {
-    lastCreatedDeployment.value = await createTaskDeployment({
+    const created = await createTaskDeployment({
       taskType: selectedDeploymentSource.value.taskType,
       projectId: selectedProjectId.value,
       modelType: modelType.value.trim(),
@@ -1849,7 +1842,21 @@ async function submitDeployment(): Promise<void> {
       runtimeConfiguration: buildRuntimeConfiguration(),
       displayName: displayName.value,
     })
-    selectedDeploymentId.value = lastCreatedDeployment.value.deployment_instance_id
+    lastCreatedDeployment.value = created
+    wizardCreatedDeployment.value = created
+    selectedDeploymentId.value = created.deployment_instance_id
+    if (payload.startAfterCreate) {
+      try {
+        await runStatusAction(created.deployment_instance_id, runtimeMode.value, 'start', { rethrow: true })
+      } catch (startCause) {
+        const message = startCause instanceof Error ? startCause.message : t('deploymentOps.messages.actionFailed')
+        errorMessage.value = null
+        wizardStartFailureMessage.value = t('deploymentWorkspace.wizard.createdStartFailed', {
+          id: created.deployment_instance_id,
+          error: message,
+        })
+      }
+    }
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.createFailed')
@@ -1858,7 +1865,12 @@ async function submitDeployment(): Promise<void> {
   }
 }
 
-async function runStatusAction(deploymentId: string, modeValue: string, action: DeploymentStatusAction): Promise<void> {
+async function runStatusAction(
+  deploymentId: string,
+  modeValue: string,
+  action: DeploymentStatusAction,
+  options?: { rethrow?: boolean },
+): Promise<void> {
   const mode = normalizeDeploymentRuntimeMode(modeValue)
   const deployment = deployments.value.find((item) => item.deployment_instance_id === deploymentId)
   const taskType = deployment ? taskTypeForDeployment(deployment) : selectedTaskType.value
@@ -1882,6 +1894,7 @@ async function runStatusAction(deploymentId: string, modeValue: string, action: 
     await loadDeploymentEvents()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
+    if (options?.rethrow) throw error
   } finally {
     setDeploymentRunningAction(deploymentId, null)
   }
@@ -1898,13 +1911,7 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
   try {
     if (action === 'warmup') {
       const currentHealth = await loadDeploymentRuntimeHealthBeforeWarmup(taskType, deploymentId, mode)
-      if (
-        currentHealth
-        && isRuntimeHealthWarmupComplete(
-          currentHealth,
-          deployment ? getDeploymentInstanceCount(deployment) : 0,
-        )
-      ) {
+      if (currentHealth && isRuntimeHealthWarmupComplete(currentHealth, deployment ? getDeploymentInstanceCount(deployment) : 0)) {
         await loadDeploymentEvents()
         return
       }
@@ -1919,21 +1926,85 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
   }
 }
 
+function openStopDeploymentDialog(deploymentId: string): void {
+  pendingStopDeploymentId.value = deploymentId
+  stopReferences.value = []
+  if (selectedProjectId.value) {
+    void listDeploymentReferences(selectedProjectId.value, deploymentId)
+      .then((res) => {
+        if (pendingStopDeploymentId.value === deploymentId) stopReferences.value = res.items
+      })
+      .catch(() => { /* 引用只读展示，不阻断停止确认 */ })
+  }
+}
+
+async function confirmStopDeployment(): Promise<void> {
+  const target = pendingStopDeployment.value
+  if (!target) return
+  pendingStopDeploymentId.value = null
+  stopReferences.value = []
+  await runStatusAction(target.deployment_instance_id, runtimeMode.value, 'stop')
+}
+
+async function openResetDeploymentDialog(deploymentId: string): Promise<void> {
+  pendingResetDeploymentId.value = deploymentId
+  await recheckResetDeployment()
+}
+
+async function recheckResetDeployment(): Promise<void> {
+  const target = pendingResetDeployment.value
+  if (!target) return
+  resetChecking.value = true
+  try {
+    const health = await runTaskDeploymentHealthAction(taskTypeForDeployment(target), target.deployment_instance_id, runtimeMode.value, 'health')
+    commitDeploymentRuntimeHealth(target.deployment_instance_id, health)
+  } catch {
+    // 若尚未运行则保留已有快照状态，不阻断只读检查。
+  } finally {
+    resetChecking.value = false
+  }
+}
+
+async function confirmResetDeployment(): Promise<void> {
+  const target = pendingResetDeployment.value
+  if (!target || resetBusyCount.value > 0) return
+  pendingResetDeploymentId.value = null
+  await runHealthAction(target.deployment_instance_id, runtimeMode.value, 'reset')
+}
+
 async function openDeleteDeploymentDialog(deploymentId: string): Promise<void> {
   const deployment = deployments.value.find((item) => item.deployment_instance_id === deploymentId)
-  if (!deployment || !canDeleteDeployment(deployment)) return
-  try {
-    deletionPreview.value = await previewDeploymentDeletion(selectedProjectId.value!, deploymentId)
+  if (!deployment || !selectedProjectId.value) return
+  errorMessage.value = null
+  deleteReferences.value = []
+  deletionPreview.value = null
+  deleteCheckedAt.value = new Date().toISOString()
+  const refs = await listDeploymentReferences(selectedProjectId.value, deploymentId)
+    .catch(() => ({ items: [], total: 0 }))
+  deleteReferences.value = refs.items
+  if (!canDeleteDeployment(deployment) || refs.items.length > 0) {
     pendingDeleteDeploymentId.value = deploymentId
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : String(error)
+    return
   }
+  try {
+    deletionPreview.value = await previewDeploymentDeletion(selectedProjectId.value, deploymentId)
+  } catch {
+    // 预览失败时不阻断打开删除弹窗，也不向页面顶部写入持久化错误横幅
+  }
+  pendingDeleteDeploymentId.value = deploymentId
+}
+
+function openDeleteBlockedReferences(): void {
+  const id = pendingDeleteDeploymentId.value
+  pendingDeleteDeploymentId.value = null
+  if (id) openDeploymentStatusDrawer(id, 'references')
 }
 
 function closeDeleteDeploymentDialog(): void {
   const deploymentId = pendingDeleteDeployment.value?.deployment_instance_id
   if (deploymentId && isDeleteActionBusy(deploymentId)) return
   pendingDeleteDeploymentId.value = null
+  deleteReferences.value = []
 }
 
 async function confirmDeleteDeployment(): Promise<void> {
@@ -1948,14 +2019,23 @@ async function confirmDeleteDeployment(): Promise<void> {
     await deleteTaskDeployment(taskType, deploymentId, deletionPreview.value?.revision)
     deleteDeploymentRuntimeSnapshot(deploymentId)
     deploymentEvents.value = []
-    lastCreatedDeployment.value = lastCreatedDeployment.value?.deployment_instance_id === deploymentId
-      ? null
-      : lastCreatedDeployment.value
+    lastCreatedDeployment.value = lastCreatedDeployment.value?.deployment_instance_id === deploymentId ? null : lastCreatedDeployment.value
     await refreshPage()
     pendingDeleteDeploymentId.value = null
   } catch (error) {
+    const [refs] = await Promise.all([
+      selectedProjectId.value
+        ? listDeploymentReferences(selectedProjectId.value, deploymentId).catch(() => ({ items: [], total: 0 }))
+        : Promise.resolve({ items: [], total: 0 }),
+      refreshDeploymentRuntimeSnapshot(deployment),
+    ])
+    deleteReferences.value = refs.items
+    if (!canDeleteDeployment(deployment) || refs.items.length > 0) {
+      errorMessage.value = null
+      return
+    }
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.deleteFailed')
-    try { deletionPreview.value = await previewDeploymentDeletion(selectedProjectId.value!, deploymentId) } catch { /* 保留后端错误，避免隐藏失败。 */ }
+    try { deletionPreview.value = await previewDeploymentDeletion(selectedProjectId.value!, deploymentId) } catch { /* 保留后端错误 */ }
   } finally {
     setDeploymentRunningAction(deploymentId, null)
   }
@@ -1977,6 +2057,228 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 </script>
 
 <style scoped>
+.deployment-workspace {
+  min-width: 0;
+  max-width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.deployment-ops-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px 24px;
+  min-height: 48px;
+  margin-block-end: 4px;
+  box-shadow: inset 0 -1px var(--am-border);
+}
+
+.deployment-ops-navigation__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-inline-start: auto;
+  padding-block: 4px 8px;
+}
+
+.deployment-ops-navigation__actions:empty {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .deployment-ops-navigation {
+    flex-wrap: wrap;
+    box-shadow: none;
+  }
+
+  .deployment-ops-navigation :deep(.local-tabs) {
+    box-shadow: inset 0 -1px var(--am-border);
+  }
+}
+
+.dialog-title-icon {
+  vertical-align: -4px;
+  margin-right: 8px;
+}
+
+.dialog-title-icon.is-warning {
+  color: var(--am-warning-icon);
+}
+
+.dialog-title-icon.is-danger {
+  color: var(--am-danger-icon);
+}
+
+.deployment-dialog-card {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface-muted);
+  font-size: 13px;
+}
+
+.deployment-dialog-card > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 34%) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.deployment-dialog-card dt {
+  color: var(--am-text-muted);
+}
+
+.deployment-dialog-card dd {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.dialog-table-wrap {
+  margin-bottom: 12px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.dialog-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dialog-table-wrap th,
+.dialog-table-wrap td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--am-border);
+  text-align: left;
+}
+
+.dialog-table-wrap tr:last-child td {
+  border-bottom: 0;
+}
+
+.dialog-table-wrap th {
+  background: var(--am-table-header);
+  color: var(--am-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialog-dot-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialog-dot-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--am-neutral-icon);
+}
+
+.dialog-dot-status.is-running > span {
+  background: var(--am-action-primary);
+}
+
+.dialog-action-link {
+  color: var(--am-action-primary-strong);
+  font-weight: 600;
+}
+
+.dialog-numbered-section {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.dialog-numbered-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  counter-reset: dialog-step;
+}
+
+.dialog-numbered-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--am-border);
+}
+
+.dialog-numbered-list li:last-child {
+  border-bottom: 0;
+}
+
+.dialog-numbered-list li::before {
+  counter-increment: dialog-step;
+  content: counter(dialog-step);
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: var(--am-surface-muted);
+  border: 1px solid var(--am-border);
+  font-size: 11px;
+  color: var(--am-text-muted);
+  flex-shrink: 0;
+}
+
+.dialog-numbered-list li > span:first-child {
+  flex: 1 1 auto;
+}
+
+.dialog-numbered-list em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--am-text-muted);
+}
+
+.dialog-numbered-list em.is-warning { color: var(--am-warning-text); }
+.dialog-numbered-list em.is-success { color: var(--am-action-primary-strong); }
+
+.dialog-info-bar,
+.dialog-warning-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.dialog-info-bar {
+  border: 1px solid var(--am-border);
+  background: var(--am-surface-muted);
+  color: var(--am-text-muted);
+}
+
+.dialog-warning-bar {
+  border: 1px solid var(--am-warning-border);
+  background: var(--am-warning-surface);
+  color: var(--am-warning-text);
+}
+
+.dialog-sub-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--am-text-muted);
+}
+
 .deployment-create-panel__heading {
   align-items: center;
 }
@@ -2003,11 +2305,6 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 
 .source-empty-card span {
   color: var(--am-text-muted);
-}
-
-.deployment-workspace-grid {
-  grid-template-columns: 1fr;
-  align-items: start;
 }
 
 .deployment-create-panel {
@@ -2045,125 +2342,7 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   font-weight: 500;
 }
 
-.deployment-instances-panel {
-  min-width: 0;
-}
-
-.deployment-instance-list {
-  display: grid;
-  gap: 10px;
-}
-
-.deployment-instance-card {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface);
-}
-
-.deployment-instance-card__header {
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.deployment-instance-card__title {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.deployment-instance-card__origin { color: var(--am-text-muted); font-size: 12px; }
-
-.deployment-instance-card__title strong,
-.deployment-instance-card__details strong {
-  overflow-wrap: anywhere;
-}
-
-.deployment-instance-card__details span {
-  color: var(--am-text-muted);
-}
-
-.deployment-instance-card__states {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  justify-content: flex-end;
-  min-height: 24px;
-  flex: 0 0 auto;
-}
-
-.deployment-status-indicator__block {
-  --deployment-status-color: var(--am-neutral-icon);
-
-  display: block;
-  width: 14px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 2px;
-  background: var(--deployment-status-color);
-}
-
-.deployment-status-indicator__block--success {
-  --deployment-status-color: var(--am-action-primary);
-}
-
-.deployment-status-indicator__block--warning {
-  --deployment-status-color: var(--am-warning-icon);
-}
-
-.deployment-status-indicator__block--danger {
-  --deployment-status-color: var(--am-danger-icon);
-}
-
-.deployment-status-indicator__block--neutral {
-  --deployment-status-color: var(--am-neutral-icon);
-}
-
-.deployment-status-indicator__block--unknown {
-  --deployment-status-color: var(--am-neutral-icon);
-}
-
-.deployment-instance-card__details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px;
-}
-
-.deployment-instance-card__details div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.deployment-instance-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-@media (max-width: 900px) {
-  .deployment-workspace-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 720px) {
-  .deployment-instance-card__header {
-    display: grid;
-  }
-
-  .deployment-instance-card__states {
-    justify-content: flex-start;
-  }
-
-  .deployment-instance-card__details {
-    grid-template-columns: 1fr;
-  }
-
   .deployment-source-summary__grid {
     grid-template-columns: 1fr;
   }

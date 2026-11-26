@@ -40,4 +40,12 @@ describe('TabList', () => {
     expect(document.activeElement).toBe(wrapper.findAll('[role="tab"]')[0]?.element)
     wrapper.unmount()
   })
+
+  it('支持下划线页签变体', () => {
+    const wrapper = mount(TabList, {
+      props: { modelValue: 'nodes', tabs, label: '节点目录视图', variant: 'underline' },
+    })
+
+    expect(wrapper.get('[role="tablist"]').classes()).toContain('local-tabs--underline')
+  })
 })

@@ -218,15 +218,11 @@ onMounted(() => void activate(() => {
 
 .confirm-dialog-enter-active .confirm-dialog,
 .confirm-dialog-leave-active .confirm-dialog {
-  transition:
-    opacity 160ms ease,
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .confirm-dialog-enter-from,
-.confirm-dialog-leave-to,
-.confirm-dialog-enter-from .confirm-dialog,
-.confirm-dialog-leave-to .confirm-dialog {
+.confirm-dialog-leave-to {
   opacity: 0;
 }
 

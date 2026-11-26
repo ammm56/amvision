@@ -415,7 +415,7 @@
 
 <script setup lang="ts">
 import { Box, Check, ChevronLeft, Database, FileText, History, Pencil, Play, Plus, Settings, Target } from '@lucide/vue'
-import { evaluationTypes } from '../model-evaluation-types'
+import { evaluationTypes, modelTaskLabel } from '../model-evaluation-types'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
@@ -702,7 +702,7 @@ const reviewGroups = computed(() => {
     { step: 1, icon: Box, title: stepLabels.value[0], fields: [
       [text('训练任务名称', 'Task name'), props.trainingDisplayName || '—'],
       [text('基础模型', 'Base model'), model?.model_type ? `${model.model_type.toUpperCase()}-${model.model_scale}` : model?.model_name || '—'],
-      [text('任务类型', 'Task type'), props.selectedTaskType],
+      [text('任务类型', 'Task type'), modelTaskLabel(props.selectedTaskType, chinese)],
       [text('输出到', 'Output model'), outputModelLabel.value],
     ] },
     { step: 2, icon: Database, title: stepLabels.value[1], fields: [
@@ -716,7 +716,7 @@ const reviewGroups = computed(() => {
       [text('输入尺寸', 'Input size'), `${props.inputWidth} × ${props.inputHeight}`],
       [text('训练设备', 'Device'), device || props.trainingDevice || 'Auto'],
       [text('批大小策略', 'Batch size'), props.batchMode === 'auto' ? `AutoBatch · ${Math.round(props.batchTargetMemoryFraction * 100)}%` : props.batchSize],
-      ['AMP', props.ampMode === 'disabled' ? text('关闭', 'Off') : props.ampDtype],
+      ['AMP', props.ampMode === 'disabled' ? text('关闭', 'Off') : (props.ampDtype === 'auto' ? t('modelOps.trainingParameters.ampDtypeAuto') : props.ampDtype.toUpperCase())],
       ...(props.batchRecoverOnOom ? [[text('首轮 OOM 重试', 'First-epoch OOM retries'), props.batchMaxOomRetries]] : []),
       [text('验证间隔（轮）', 'Validation interval'), props.evaluationInterval],
       [text('保存间隔（轮）', 'Checkpoint interval'), props.checkpointInterval],

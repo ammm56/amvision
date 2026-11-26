@@ -40,7 +40,7 @@
           </div>
           <div>
             <span>{{ t('tasks.columns.type') }}</span>
-            <strong>{{ taskStore.selectedTask.task_kind || taskStore.selectedTask.kind || '-' }}</strong>
+            <strong :title="taskStore.selectedTask.task_kind || taskStore.selectedTask.kind || undefined">{{ formatTaskKind(taskStore.selectedTask.task_kind || taskStore.selectedTask.kind, t) }}</strong>
           </div>
           <div>
             <span>{{ t('tasks.columns.progress') }}</span>
@@ -102,6 +102,7 @@ import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import type { TaskEvent } from '@/shared/contracts'
+import { formatTaskKind } from '../task-kind'
 
 type JsonRecord = Record<string, unknown>
 

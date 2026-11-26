@@ -45,7 +45,7 @@
     <dl v-if="task" class="conversion-terminal-summary">
       <div><dt>{{ label('来源模型', 'Source model') }}</dt><dd><Box :size="16" />{{ terminalSourceName }}</dd></div>
       <div v-if="failureDetails"><dt>{{ label('参考运行时', 'Reference runtime') }}</dt><dd>{{ failureDetails.source_runtime }}</dd></div>
-      <div v-else><dt>{{ label('任务类型', 'Task type') }}</dt><dd>{{ taskType }}</dd></div>
+      <div v-else><dt>{{ label('任务类型', 'Task type') }}</dt><dd>{{ modelTaskLabel(taskType || undefined, locale.startsWith('zh')) }}</dd></div>
       <div><dt>{{ label('目标格式', 'Target format') }}</dt><dd><FileCode :size="16" />{{ targetFormat }}</dd></div>
       <div v-if="conversionPrecision"><dt>{{ label('精度', 'Precision') }}</dt><dd>{{ conversionPrecision }}</dd></div>
       <div v-if="inputShape"><dt>{{ label('输入尺寸', 'Input dimensions') }}</dt><dd>{{ inputShape }}</dd></div>
@@ -314,6 +314,7 @@ import ConversionValidationFailure from '../components/ConversionValidationFailu
 import TaskRunLog from '../components/TrainingRunLog.vue'
 import { readConversionValidationFailure } from '../conversion-validation-failure'
 import { conversionElapsedTime, conversionFormatName, conversionRecord, conversionTargetLabel, readConversionStages } from '../conversion-task-presentation'
+import { modelTaskLabel } from '../model-evaluation-types'
 
 const route = useRoute()
 const router = useRouter()

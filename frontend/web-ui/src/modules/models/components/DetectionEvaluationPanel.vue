@@ -4,7 +4,6 @@
       <div class="evaluation-toolbar">
         <div class="evaluation-toolbar__end">
           <Button :loading="loading" @click="load"><RefreshCw :size="16" />{{ zh ? '刷新' : 'Refresh' }}</Button>
-          <Button v-if="canWrite" variant="primary" @click="openWizard()"><Plus :size="16" />{{ zh ? '创建评估' : 'Create evaluation' }}</Button>
         </div>
       </div>
       <div class="evaluation-list-filters">
@@ -37,7 +36,7 @@
       </table>
     </div>
     <div v-show="!step && (!compareOpen || conflicts.length)" class="evaluation-list-footer">
-      <div class="evaluation-toolbar evaluation-selection">
+      <div v-if="selected.length > 0" class="evaluation-toolbar evaluation-selection">
         <span aria-live="polite">{{ zh ? `已选 ${selected.length} 项` : `${selected.length} selected` }}</span>
         <div>
           <Button size="sm" :disabled="!selected.length" @click="selected = []">{{ zh ? '清空' : 'Clear selection' }}</Button>
@@ -218,7 +217,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Check, Plus, RefreshCw, Search, TriangleAlert } from '@lucide/vue'
+import { Check, RefreshCw, Search, TriangleAlert } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDatasetExportDetail, listProjectDatasetExports, type DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
 import { getDatasetWorkspace, listDatasetRecordPage } from '@/modules/datasets/services/dataset-workspace.service'
@@ -652,6 +651,7 @@ watch([() => route.query.evaluationFrom, () => route.query.datasetFrom, () => pr
     }
   }, { immediate: true })
 onBeforeUnmount(() => { inputRevision++; loadRequest?.abort(); compareRequest?.abort() })
+defineExpose({ openCreate: () => openWizard() })
 </script>
 
 <style scoped>

@@ -144,7 +144,7 @@
                   <strong>{{ sourceVersionLabel(build.source_model_version_id) }}</strong>
                   <span v-if="sourceImportLabel(build)">{{ sourceImportLabel(build) }}</span>
                   <span>
-                    {{ build.build_format }} · {{ build.runtime_backend }} ·
+                    {{ conversionFormatName(build.build_format, zh) }} · {{ formatDeploymentBackend(build.runtime_backend) }} ·
                     {{ build.runtime_precision.toUpperCase() }}
                   </span>
                   <span
@@ -194,9 +194,11 @@
 </template>
 
 <script setup lang="ts">
+import { conversionFormatName } from '@/modules/models/conversion-task-presentation'
 import { modelDisplayName, modelVersionDisplayName } from '@/modules/models/model-display-name'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { formatDeploymentBackend } from '../deployment-presentation'
 
 import type {
   DeploymentSourceModelBuild,
@@ -249,7 +251,8 @@ const emit = defineEmits<{
   'apply-source': [selection: DeploymentSourceSelection]
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const zh = computed(() => locale.value.startsWith('zh'))
 function sourceVersionLabel(id: string): string {
   const version = sourceVersion(id)
   return version ? modelVersionDisplayName(version) : '—'

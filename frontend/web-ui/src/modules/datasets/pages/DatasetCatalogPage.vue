@@ -148,7 +148,7 @@
             <strong :title="rowName(row)">{{ rowName(row) }}</strong>
           </td>
           <template v-if="isDataset(row)"
-            ><td :title="row.task_type">{{ isMediaTask(row.task_type) ? text(row.task_type) : row.task_type }}</td>
+            ><td :title="text(row.task_type)">{{ text(row.task_type) }}</td>
             <td class="dataset-version-cell">
               <span :title="row.latest_version?.dataset_version_id">{{
                 row.latest_version
@@ -165,7 +165,7 @@
                 `v${row.version_number}`
               }}</span>
             </td>
-            <td :title="text(row.task_type)">{{ isMediaTask(row.task_type) ? text(row.task_type) : row.task_type }}</td>
+            <td :title="text(row.task_type)">{{ text(row.task_type) }}</td>
             <td><DatasetCounts :items="sampleColumns(row.sample_count, null).slice(0, 1)" summary /></td>
             <td :title="versionSource(row)">{{ versionSource(row) }}</td></template
           >

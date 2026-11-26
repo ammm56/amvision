@@ -35,7 +35,7 @@
             <td>
               <RouterLink :to="taskDetailPath(task)">{{ task.task_id }}</RouterLink>
             </td>
-            <td>{{ task.task_kind || task.kind || '-' }}</td>
+            <td :title="task.task_kind || task.kind || undefined">{{ formatTaskKind(task.task_kind || task.kind, t) }}</td>
             <td><TaskStatusBadge :task="task" /></td>
             <td>
               <TaskProgress
@@ -86,6 +86,7 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
+import { formatTaskKind } from '../task-kind'
 
 const taskStore = useTaskStore()
 const projectStore = useProjectStore()
