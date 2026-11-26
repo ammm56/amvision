@@ -298,6 +298,8 @@ describe('Deployment workspace P6 architecture & interactions', () => {
     await flushPromises()
     expect(document.body.textContent).toContain('设备能力')
     expect(document.body.textContent).toContain('后端设备能力')
+    expect(document.body.querySelector('.capabilities-table-wrap img.runtime-formats__mark.is-coreml')).not.toBeNull()
+    expect(document.body.querySelector('.capabilities-table-wrap img.runtime-formats__mark.is-rknn')).not.toBeNull()
     expect(getDeploymentRuntimeCapabilities).toHaveBeenCalledWith('openvino', 'CPU')
   })
 

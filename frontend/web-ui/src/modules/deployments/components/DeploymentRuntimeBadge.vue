@@ -8,8 +8,6 @@
   >
     <span class="runtime-formats__item" aria-hidden="true">
       <img v-if="backendLogo" class="runtime-formats__mark" :class="`is-${iconKey}`" :src="backendLogo" alt="" />
-      <Cpu v-else-if="iconKey === 'rknn'" :size="17" />
-      <BrainCircuit v-else-if="iconKey === 'coreml'" :size="17" />
       <FileBox v-else :size="17" />
       <Zap v-if="isOptimized" class="runtime-formats__optimized" :size="11" />
     </span>
@@ -32,6 +30,8 @@ import onnxLogo from '@/modules/models/assets/onnx.svg'
 import nvidiaLogo from '@/modules/models/assets/nvidia.svg'
 // OpenVINO 标记来自 OpenVINO 官方仓库。
 import openvinoLogo from '@/modules/models/assets/openvino.svg'
+import coremlLogo from '@/modules/models/assets/coreml.svg'
+import armNpuLogo from '@/modules/models/assets/arm-npu.svg'
 import {
   formatDeploymentBackend,
   formatDeploymentDeviceName,
@@ -54,6 +54,8 @@ const logos: Partial<Record<string, string>> = {
   'onnx-optimized': onnxLogo,
   'openvino-ir': openvinoLogo,
   'tensorrt-engine': nvidiaLogo,
+  coreml: coremlLogo,
+  rknn: armNpuLogo,
 }
 
 const isOptimized = computed(() => {
@@ -70,8 +72,8 @@ const iconKey = computed(() => {
   if (backend === 'onnxruntime' || backend === 'onnx' || format === 'onnx') return 'onnx'
   if (backend === 'tensorrt' || backend === 'tensorrt-engine' || format === 'tensorrt-engine') return 'tensorrt-engine'
   if (backend === 'pytorch' || format === 'pytorch') return 'pytorch'
-  if (backend === 'rknn') return 'rknn'
-  if (backend === 'coreml') return 'coreml'
+  if (backend === 'rknn' || backend === 'arm-npu' || backend === 'arm_npu' || format === 'rknn' || format === 'arm-npu') return 'rknn'
+  if (backend === 'coreml' || backend === 'core-ml' || format === 'coreml') return 'coreml'
   return 'fallback'
 })
 
@@ -95,7 +97,11 @@ const labelText = computed(() => {
       ? 'onnxruntime'
       : iconKey.value === 'tensorrt-engine'
         ? 'tensorrt'
-        : 'pytorch'
+        : iconKey.value === 'coreml'
+          ? 'coreml'
+          : iconKey.value === 'rknn'
+            ? 'rknn'
+            : 'pytorch'
   const backendText = formatDeploymentBackend(props.backend || fallbackBackend)
   const backendPart = isOptimized.value ? `${backendText} (Optimized)` : backendText
   const precisionText = formatDeploymentPrecision(props.precision)
@@ -143,11 +149,21 @@ const labelText = computed(() => {
   border-radius: 2px;
 }
 
+.runtime-formats__mark.is-coreml {
+  width: 19px;
+  height: 19px;
+}
+
+.runtime-formats__mark.is-rknn {
+  width: 44px;
+  height: 16px;
+}
+
 .runtime-formats__mark.is-tensorrt-engine {
   filter: brightness(0);
 }
 
-html[data-theme='dark'] .runtime-formats__mark:is(.is-onnx, .is-onnx-optimized) {
+html[data-theme='dark'] .runtime-formats__mark:is(.is-onnx, .is-onnx-optimized, .is-coreml, .is-rknn) {
   filter: invert(1);
 }
 

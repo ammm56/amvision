@@ -62,7 +62,7 @@
             <label class="conversion-target">
               <input type="radio" name="conversion-target" :aria-label="group.label" :checked="group.key === activeTargetGroup"
                 :disabled="!group.enabled && !group.platform" @change="selectTargetGroup(group.key)" />
-              <component :is="group.icon" v-if="group.icon" :size="22" aria-hidden="true" />
+              <img v-if="group.logo" class="conversion-target__logo" :class="`is-${group.key}`" :src="group.logo" alt="" aria-hidden="true" />
               <span class="conversion-target__label"><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span>
             </label>
             <Button v-if="!group.enabled && !group.platform" type="button" variant="ghost" size="sm" class="conversion-target-choice__requirements"
@@ -298,9 +298,11 @@
 </template>
 
 <script setup lang="ts">
-import { Check, Cpu, Info, Layers3, TriangleAlert, Wand2 } from '@lucide/vue'
+import { Check, Info, TriangleAlert, Wand2 } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import armNpuLogo from '../assets/arm-npu.svg'
+import coremlLogo from '../assets/coreml.svg'
 
 import type {
   ConversionTargetKey,
@@ -452,11 +454,11 @@ const conversionEnvironmentHint = computed(() => selectedTargetGroup.value === '
   ? (zh.value ? 'OpenVINO 与来源 ONNX 的输出在 Worker 的 CPU 环境执行校验。' : 'The worker validates OpenVINO against the source ONNX on CPU.')
   : (zh.value ? 'Worker 在开始转换时检查执行设备与依赖。' : 'The worker checks devices and dependencies when conversion starts.'))
 const targetGroups = computed(() => ([
-  { key: 'onnx' as const, label: 'ONNX', description: zh.value ? '通用模型格式' : 'Portable model format', platform: false, icon: null },
-  { key: 'openvino' as const, label: 'OpenVINO', description: zh.value ? 'Intel 推理格式' : 'Intel inference format', platform: false, icon: null },
-  { key: 'tensorrt' as const, label: 'TensorRT', description: zh.value ? 'NVIDIA GPU 推理格式' : 'NVIDIA GPU inference format', platform: false, icon: null },
-  { key: 'coreml' as const, label: 'CoreML', description: zh.value ? 'Apple 设备机器学习推理' : 'Machine learning on Apple devices', platform: true, icon: Layers3 },
-  { key: 'arm-npu' as const, label: 'ARM NPU', description: zh.value ? '边缘设备 NPU 推理' : 'Edge NPU inference', platform: true, icon: Cpu },
+  { key: 'onnx' as const, label: 'ONNX', description: zh.value ? '通用模型格式' : 'Portable model format', platform: false, logo: null },
+  { key: 'openvino' as const, label: 'OpenVINO', description: zh.value ? 'Intel 推理格式' : 'Intel inference format', platform: false, logo: null },
+  { key: 'tensorrt' as const, label: 'TensorRT', description: zh.value ? 'NVIDIA GPU 推理格式' : 'NVIDIA GPU inference format', platform: false, logo: null },
+  { key: 'coreml' as const, label: 'CoreML', description: zh.value ? 'Apple 设备机器学习推理' : 'Machine learning on Apple devices', platform: true, logo: coremlLogo },
+  { key: 'arm-npu' as const, label: 'ARM NPU', description: zh.value ? '边缘设备 NPU 推理' : 'Edge NPU inference', platform: true, logo: armNpuLogo },
 ]).map(group => ({ ...group, enabled: props.conversionTargetOptions.some(option => groupForTarget(option.value) === group.key) })))
 const unavailableTargetKey = ref<TargetGroup | null>(null)
 const platformRequirementsOpen = ref(false)
@@ -640,7 +642,10 @@ function emitString(eventName: UpdateStringEvent, event: Event): void {
 .conversion-target-choice { grid-column:span 2; display:flex; align-items:center; justify-content:space-between; min-width:0; gap:4px; border:1px solid var(--am-border); border-radius:6px; }
 .conversion-target-choice--platform { grid-column:span 3; }
 .conversion-target { display:flex; flex:1; align-items:center; min-width:0; gap:10px; padding:12px 14px; cursor:pointer; }
-.conversion-target svg, .conversion-target input { flex:none; }
+.conversion-target svg, .conversion-target input, .conversion-target__logo { flex:none; }
+.conversion-target__logo { width:22px; height:22px; object-fit:contain; }
+.conversion-target__logo.is-arm-npu { width:52px; height:19px; }
+html[data-theme='dark'] .conversion-target__logo:is(.is-coreml, .is-arm-npu) { filter:invert(1); }
 .conversion-target__label { display:grid; min-width:0; gap:3px; }
 .conversion-target__label small { color:var(--am-text-muted); }
 .conversion-target-choice__requirements { flex:none; margin-inline-end:8px; }

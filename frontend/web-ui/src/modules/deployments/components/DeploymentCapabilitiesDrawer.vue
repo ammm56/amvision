@@ -28,44 +28,60 @@
     <section class="capabilities-section">
       <h3>{{ t('deploymentWorkspace.capabilities.hostDevices') }}</h3>
       <div v-if="capabilityTableRows.length" class="capabilities-table-wrap">
-        <table>
-          <colgroup>
-            <col style="width: 18%" />
-            <col style="width: 26%" />
-            <col style="width: 18%" />
-            <col style="width: 38%" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th :title="t('deploymentWorkspace.capabilities.backendCol')">{{ t('deploymentWorkspace.capabilities.backendCol') }}</th>
-              <th :title="t('deploymentWorkspace.capabilities.deviceCol')">{{ t('deploymentWorkspace.capabilities.deviceCol') }}</th>
-              <th :title="t('deploymentWorkspace.capabilities.availabilityCol')">{{ t('deploymentWorkspace.capabilities.availabilityCol') }}</th>
-              <th :title="t('deploymentWorkspace.capabilities.reasonCol')">{{ t('deploymentWorkspace.capabilities.reasonCol') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in capabilityTableRows" :key="`${row.backendKey}-${row.device}`">
-              <td class="capabilities-backend-td">
-                <span class="capabilities-backend-cell" :data-tooltip="row.backend">
-                  <DeploymentRuntimeBadge
-                    :backend="row.backendKey"
-                    backend-only
-                    :muted="!row.available"
-                    :tooltip="row.backend"
-                  />
-                </span>
-              </td>
-              <td :title="row.device">{{ row.device }}</td>
-              <td :title="row.available ? t('deploymentWorkspace.capabilities.available') : t('deploymentWorkspace.capabilities.unavailable')">
-                <span class="capability-status" :class="{ 'is-available': row.available }">
-                  <span class="capability-status__dot" aria-hidden="true" />
-                  <span>{{ row.available ? t('deploymentWorkspace.capabilities.available') : t('deploymentWorkspace.capabilities.unavailable') }}</span>
-                </span>
-              </td>
-              <td :title="row.reason">{{ row.reason }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <TooltipProvider :delay-duration="120">
+          <table>
+            <colgroup>
+              <col style="width: 18%" />
+              <col style="width: 26%" />
+              <col style="width: 18%" />
+              <col style="width: 38%" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th :title="t('deploymentWorkspace.capabilities.backendCol')">{{ t('deploymentWorkspace.capabilities.backendCol') }}</th>
+                <th :title="t('deploymentWorkspace.capabilities.deviceCol')">{{ t('deploymentWorkspace.capabilities.deviceCol') }}</th>
+                <th :title="t('deploymentWorkspace.capabilities.availabilityCol')">{{ t('deploymentWorkspace.capabilities.availabilityCol') }}</th>
+                <th :title="t('deploymentWorkspace.capabilities.reasonCol')">{{ t('deploymentWorkspace.capabilities.reasonCol') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in capabilityTableRows" :key="`${row.backendKey}-${row.device}`">
+                <td class="capabilities-backend-td">
+                  <TooltipRoot>
+                    <TooltipTrigger as-child>
+                      <span class="capabilities-backend-cell" tabindex="0">
+                        <DeploymentRuntimeBadge
+                          :backend="row.backendKey"
+                          backend-only
+                          :muted="!row.available"
+                          :tooltip="row.backend"
+                        />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipPortal>
+                      <TooltipContent
+                        class="capabilities-backend-tooltip"
+                        side="top"
+                        :side-offset="6"
+                        :collision-padding="12"
+                      >
+                        {{ row.backend }}
+                      </TooltipContent>
+                    </TooltipPortal>
+                  </TooltipRoot>
+                </td>
+                <td :title="row.device">{{ row.device }}</td>
+                <td :title="row.available ? t('deploymentWorkspace.capabilities.available') : t('deploymentWorkspace.capabilities.unavailable')">
+                  <span class="capability-status" :class="{ 'is-available': row.available }">
+                    <span class="capability-status__dot" aria-hidden="true" />
+                    <span>{{ row.available ? t('deploymentWorkspace.capabilities.available') : t('deploymentWorkspace.capabilities.unavailable') }}</span>
+                  </span>
+                </td>
+                <td :title="row.reason">{{ row.reason }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </TooltipProvider>
       </div>
       <EmptyState v-else :title="t('deploymentWorkspace.capabilities.unavailable')" />
     </section>
@@ -192,6 +208,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RefreshCw } from '@lucide/vue'
+import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from 'reka-ui'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
@@ -529,26 +546,12 @@ async function inspect(): Promise<void> {
   justify-content: center;
   min-height: 24px;
   vertical-align: middle;
+  border-radius: 4px;
 }
 
-.capabilities-backend-cell[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 6px);
-  transform: translateX(-50%);
-  z-index: 20;
-  padding: 4px 8px;
-  border: 1px solid var(--am-border);
-  border-radius: 6px;
-  background: var(--am-surface-raised, var(--am-surface));
-  color: var(--am-text);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-  pointer-events: none;
+.capabilities-backend-cell:focus-visible {
+  outline: 2px solid var(--am-input-focus-ring);
+  outline-offset: 2px;
 }
 
 .capability-status {
@@ -774,5 +777,22 @@ async function inspect(): Promise<void> {
   .capabilities-query {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+</style>
+
+<style>
+.capabilities-backend-tooltip {
+  z-index: var(--am-z-tooltip);
+  padding: 4px 8px;
+  border: 1px solid var(--am-border);
+  border-radius: 6px;
+  background: var(--am-surface-raised, var(--am-surface));
+  color: var(--am-text);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
 }
 </style>

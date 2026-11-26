@@ -52,7 +52,10 @@ export function formatDeploymentBackend(backend: string | null | undefined): str
     'onnx-optimized': 'ONNX Runtime',
     pytorch: 'PyTorch',
     coreml: 'CoreML',
+    'core-ml': 'CoreML',
     rknn: 'ARM NPU',
+    'arm-npu': 'ARM NPU',
+    arm_npu: 'ARM NPU',
   }
   return labels[normalized] || (backend ? backend : 'PyTorch')
 }
