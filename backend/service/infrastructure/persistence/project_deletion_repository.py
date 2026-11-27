@@ -27,6 +27,12 @@ from backend.service.infrastructure.persistence.local_auth_orm import (
 )
 from backend.service.infrastructure.persistence.model_file_orm import ModelFileRecord
 from backend.service.infrastructure.persistence.model_orm import ModelRecord
+from backend.service.infrastructure.persistence.batch_inference_task_orm import (
+    BatchInferenceTaskRecord,
+)
+from backend.service.infrastructure.persistence.direct_inference_record_orm import (
+    DirectInferenceRecord,
+)
 from backend.service.infrastructure.persistence.model_transfer_repository import (
     ImportedModelArtifactRecord,
     ModelTransferRecord,
@@ -228,6 +234,8 @@ class SqlAlchemyProjectDeletionRepository:
             self.session.flush()
 
             for model in (
+                BatchInferenceTaskRecord,
+                DirectInferenceRecord,
                 ImportedModelArtifactRecord,
                 ModelTransferRecord,
                 WorkflowExecutionPolicyRecord,

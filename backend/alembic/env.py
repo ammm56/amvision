@@ -23,6 +23,8 @@ _ORM_MODULES = (
     "backend.service.infrastructure.persistence.dataset_import_orm",
     "backend.service.infrastructure.persistence.dataset_export_orm",
     "backend.service.infrastructure.persistence.task_orm",
+    "backend.service.infrastructure.persistence.direct_inference_record_orm",
+    "backend.service.infrastructure.persistence.batch_inference_task_orm",
     "backend.service.infrastructure.persistence.queue_outbox_orm",
     "backend.service.infrastructure.persistence.deployment_orm",
     "backend.service.infrastructure.persistence.workflow_runtime_orm",

@@ -588,3 +588,50 @@ def get_sample_image(
             )
     except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as error:
         raise InvalidRequestError("样本图片无法解码") from error
+
+
+@dataset_catalog_router.get(
+    "/{dataset_id}/versions/{version_id}/samples/{sample_id}/file-ref"
+)
+def get_sample_file_ref(
+    dataset_id: str,
+    version_id: str,
+    sample_id: str,
+    principal: Reader,
+    uow: Uow,
+    storage: Storage,
+) -> dict:
+    """为数据集版本样本返回可供推理接口复用的公开 Project file_id 与对象路径。"""
+    from backend.service.infrastructure.object_store.object_key_layout import (
+        build_public_project_file_id,
+    )
+
+    version = checked_version(principal, uow, dataset_id, version_id)
+    sample = uow.dataset_catalog.sample(version_id, sample_id)
+    root_key = content_key(
+        version["project_id"], dataset_id, version_id, version["metadata"]
+    )
+    key = str(
+        sample["metadata"].get("image_object_key")
+        or f"images/{sample['split']}/{sample['sample_id']}/{sample['file_name']}"
+    )
+    relative = PurePosixPath(key.replace("\\", "/"))
+    if relative.is_absolute() or ".." in relative.parts or ":" in key:
+        raise InvalidRequestError("样本图片路径无效")
+    root = storage.resolve(root_key).resolve()
+    path = storage.resolve(f"{root_key}/{relative}").resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise ResourceNotFoundError("样本图片不存在或已移除")
+    object_key = f"{root_key}/{relative.as_posix()}"
+    return {
+        "file_id": build_public_project_file_id(
+            project_id=version["project_id"],
+            object_key=object_key,
+        ),
+        "object_key": object_key,
+        "file_name": sample["file_name"],
+        "sample_id": sample["sample_id"],
+        "split": sample["split"],
+        "width": sample.get("width"),
+        "height": sample.get("height"),
+    }

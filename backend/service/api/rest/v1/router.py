@@ -82,6 +82,12 @@ from backend.service.api.rest.v1.routes.obb_validation_sessions.router import (
     obb_validation_sessions_router,
 )
 from backend.service.api.rest.v1.routes.auth.router import auth_router
+from backend.service.api.rest.v1.routes.batch_inference_tasks.router import (
+    batch_inference_tasks_router,
+)
+from backend.service.api.rest.v1.routes.inference_records.router import (
+    inference_records_router,
+)
 from backend.service.api.rest.v1.routes.models.router import models_router
 from backend.service.api.rest.v1.routes.projects.router import projects_router
 from backend.service.api.rest.v1.routes.system.router import system_router
@@ -145,3 +151,5 @@ api_v1_router.include_router(obb_validation_sessions_router)
 api_v1_router.include_router(obb_evaluation_tasks_router)
 api_v1_router.include_router(dense_evaluation_router)
 api_v1_router.include_router(tasks_router)
+api_v1_router.include_router(inference_records_router)
+api_v1_router.include_router(batch_inference_tasks_router)

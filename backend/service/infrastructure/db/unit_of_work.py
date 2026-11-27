@@ -8,6 +8,12 @@ from sqlalchemy.sql import Executable
 from backend.service.infrastructure.persistence.dataset_catalog_repository import (
     DatasetCatalogRepository,
 )
+from backend.service.infrastructure.persistence.batch_inference_task_repository import (
+    SqlAlchemyBatchInferenceTaskRepository,
+)
+from backend.service.infrastructure.persistence.direct_inference_record_repository import (
+    SqlAlchemyDirectInferenceRecordRepository,
+)
 from backend.service.infrastructure.persistence.model_transfer_repository import (
     ModelTransferRepository,
 )
@@ -86,6 +92,8 @@ class SqlAlchemyUnitOfWork:
         """
 
         self.session = session
+        self.batch_inference_tasks = SqlAlchemyBatchInferenceTaskRepository(session)
+        self.direct_inference_records = SqlAlchemyDirectInferenceRecordRepository(session)
         self.dataset_catalog = DatasetCatalogRepository(session)
         self.model_transfers = ModelTransferRepository(session)
         self.resource_deletions = ResourceDeletionRepository(session)

@@ -33,10 +33,12 @@ def _import_orm_models() -> None:
     """导入所有当前已注册的 ORM 模块。"""
 
     from backend.service.infrastructure.persistence import (  # noqa: PLC0415
+        batch_inference_task_orm,
         dataset_export_orm,
         dataset_import_orm,
         dataset_orm,
         deployment_orm,
+        direct_inference_record_orm,
         local_auth_orm,
         model_file_orm,
         model_submission_repository,
@@ -50,10 +52,12 @@ def _import_orm_models() -> None:
     )
 
     _ = (
+        batch_inference_task_orm,
         dataset_export_orm,
         dataset_import_orm,
         dataset_orm,
         deployment_orm,
+        direct_inference_record_orm,
         local_auth_orm,
         model_file_orm,
         model_submission_repository,
