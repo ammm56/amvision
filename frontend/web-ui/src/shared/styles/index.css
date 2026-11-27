@@ -1550,12 +1550,36 @@ textarea:focus-visible {
   padding: 0;
 }
 
-.input-with-icon input:not([type='hidden']):not([type='checkbox']):not([type='radio']):focus-visible {
+:is(
+  .input-with-icon,
+  .inf-deploy-popover__search,
+  .inf-tasks-search,
+  .inf-bd-search,
+  .inf-picker-search,
+  .drawer-ref-search,
+  .evaluation-list-search,
+  .model-picker__search,
+  .model-reference__search,
+  .training-log__search,
+  .package-history__filters label
+) input:not([type='hidden']):not([type='checkbox']):not([type='radio']):focus-visible {
   border-color: transparent;
+  outline: none;
   box-shadow: none;
 }
 
-.input-with-icon:focus-within {
+:is(
+  .input-with-icon,
+  .inf-tasks-search,
+  .inf-bd-search,
+  .inf-picker-search,
+  .drawer-ref-search,
+  .evaluation-list-search,
+  .model-picker__search,
+  .model-reference__search,
+  .training-log__search,
+  .package-history__filters label
+):focus-within {
   border-color: var(--am-input-focus-ring);
   box-shadow: inset 0 0 0 1px var(--am-input-focus-ring);
 }

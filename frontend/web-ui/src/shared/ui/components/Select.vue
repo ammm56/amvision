@@ -288,8 +288,9 @@ watch(optionsSignature, (next, previous) => {
 .ui-select__button { min-width: 0; width: 100%; }
 .ui-select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-select__option:disabled { opacity: .5; cursor: not-allowed; }
-.ui-select__menu--floating { position: fixed; right: auto; box-sizing: border-box; z-index: calc(var(--am-z-modal) + 1); font-family: var(--am-font-sans); font-size: 13px; }
-.ui-select__menu--floating .ui-select__option { position: relative; padding-right: 30px; font: inherit; }
-.ui-select__menu--floating .ui-select__option > span { white-space: nowrap; }
+.ui-select__menu--floating { position: fixed; right: auto; box-sizing: border-box; overflow-x: hidden; z-index: calc(var(--am-z-modal) + 1); font-family: var(--am-font-sans); font-size: 13px; }
+.ui-select__menu--floating .ui-select__option { position: relative; min-width: 0; width: 100%; padding-right: 30px; font: inherit; }
+.ui-select__menu--floating .ui-select__option > span,
+.ui-select__menu--floating .ui-select__option > small { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-select__check { position: absolute; right: 8px; top: 10px; color: var(--am-action-primary); }
 </style>

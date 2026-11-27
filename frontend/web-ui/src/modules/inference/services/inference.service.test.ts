@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { apiRequest } from '@/shared/api/http-client'
-import { inferTaskDeployment, type TaskInferenceDebugInput } from './inference.service'
+import {
+  cancelBatchInferenceTask,
+  createBatchInferenceTask,
+  deleteBatchInferenceTask,
+  getDatasetSampleFileRef,
+  inferTaskDeployment,
+  saveDirectInferenceRecord,
+  type TaskInferenceDebugInput,
+} from './inference.service'
 
 vi.mock('@/shared/api/http-client', () => ({ apiRequest: vi.fn() }))
 
@@ -63,5 +71,72 @@ describe('inference service task-native parameters', () => {
     expect(body.has('top_k')).toBe(false)
     expect(body.has('mask_threshold')).toBe(false)
     expect(body.has('keypoint_confidence_threshold')).toBe(false)
+  })
+
+  it('forwards X-Request-Id header and resolves dataset sample file-ref and explicit save', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({} as never)
+    await inferTaskDeployment(input({ requestId: 'req-custom-1' }))
+    expect(vi.mocked(apiRequest).mock.calls.at(-1)?.[1]?.headers).toEqual({
+      'X-Request-Id': 'req-custom-1',
+    })
+
+    await getDatasetSampleFileRef('ds-1', 'v-1', 's-1')
+    expect(vi.mocked(apiRequest).mock.calls.at(-1)?.[0]).toBe(
+      '/datasets/ds-1/versions/v-1/samples/s-1/file-ref',
+    )
+
+    await saveDirectInferenceRecord({
+      projectId: 'project-1',
+      requestId: 'req-custom-1',
+      taskType: 'detection',
+      deploymentInstanceId: 'deployment-1',
+      resultPayload: { detection_count: 1 },
+    })
+    expect(vi.mocked(apiRequest).mock.calls.at(-1)?.[0]).toBe('/inference-records')
+  })
+
+  it('supports batch inference creation (upload FormData & dataset JSON), cancel, and delete', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({} as never)
+    const file = new File(['abc'], 'part.jpg', { type: 'image/jpeg' })
+
+    await createBatchInferenceTask({
+      projectId: 'project-1',
+      taskType: 'detection',
+      deploymentInstanceId: 'deploy-async-1',
+      displayName: 'batch-1',
+      sourceKind: 'upload',
+      files: [file],
+    })
+    const uploadCall = vi.mocked(apiRequest).mock.calls.at(-1)
+    expect(uploadCall?.[0]).toBe('/inference-batches')
+    expect(uploadCall?.[1]?.body).toBeInstanceOf(FormData)
+    expect((uploadCall?.[1]?.body as FormData).getAll('input_images')).toHaveLength(1)
+
+    await createBatchInferenceTask({
+      projectId: 'project-1',
+      taskType: 'detection',
+      deploymentInstanceId: 'deploy-async-1',
+      displayName: 'batch-2',
+      sourceKind: 'dataset_version',
+      datasetId: 'ds-1',
+      datasetVersionId: 'ver-1',
+      datasetSplit: 'val',
+    })
+    const datasetCall = vi.mocked(apiRequest).mock.calls.at(-1)
+    expect(datasetCall?.[1]?.body).toMatchObject({
+      source_kind: 'dataset_version',
+      dataset_id: 'ds-1',
+      dataset_version_id: 'ver-1',
+      dataset_split: 'val',
+    })
+
+    await cancelBatchInferenceTask('batch-2')
+    expect(vi.mocked(apiRequest).mock.calls.at(-1)?.[0]).toBe('/inference-batches/batch-2/cancel')
+
+    await deleteBatchInferenceTask('batch-2')
+    expect(vi.mocked(apiRequest).mock.calls.at(-1)).toEqual([
+      '/inference-batches/batch-2',
+      { method: 'DELETE' },
+    ])
   })
 })

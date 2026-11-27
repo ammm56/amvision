@@ -1,11 +1,11 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-const InferenceDebugPage = () => import('./pages/InferenceDebugPage.vue')
+const InferenceWorkspacePage = () => import('./pages/InferenceWorkspacePage.vue')
 
 export const inferenceRoutes: RouteRecordRaw[] = [
   {
     path: '/inference',
-    component: InferenceDebugPage,
+    component: InferenceWorkspacePage,
     meta: { requiredScopes: ['models:read'] },
   },
 ]
