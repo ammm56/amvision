@@ -319,6 +319,8 @@ describe('BatchInferenceCreateView & BatchInferenceDetailView', () => {
       skipped_items: 0,
       output_object_prefix: 'prefix',
       created_at: '2026-11-27T01:00:00Z',
+      started_at: '2026-11-27T01:00:01Z',
+      finished_at: '2026-11-27T01:01:00Z',
       updated_at: '2026-11-27T01:01:00Z',
     })
     vi.mocked(listBatchInferenceTaskItems).mockResolvedValue([
@@ -336,6 +338,7 @@ describe('BatchInferenceCreateView & BatchInferenceDetailView', () => {
         latency_ms: 12.3,
         image_width: 640,
         image_height: 480,
+        finished_at: '2026-11-27T01:00:10Z',
         result_summary: {},
       },
       {
@@ -350,6 +353,7 @@ describe('BatchInferenceCreateView & BatchInferenceDetailView', () => {
         state: 'failed',
         error_code: 'DECODE_ERROR',
         error_message: '图像解码失败',
+        finished_at: '2026-11-27T01:00:11Z',
         result_summary: {},
       },
     ])
@@ -378,6 +382,15 @@ describe('BatchInferenceCreateView & BatchInferenceDetailView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('项目文件')
     expect(wrapper.text()).not.toContain('project_files')
+
+    await wrapper.get('[data-tab-id="logs"]').trigger('click')
+    const logs = wrapper.get('[aria-label="任务日志"]')
+    expect(logs.findAll('tbody tr')).toHaveLength(5)
+    expect(logs.text()).toContain('批量推理完成，部分图片失败')
+    await logs.get('input[type="search"]').setValue('bad.jpg')
+    expect(logs.findAll('tbody tr')).toHaveLength(1)
+    expect(logs.text()).toContain('bad.jpg：图像解码失败')
+    expect(logs.text()).not.toContain('ok.jpg')
 
     await wrapper.findAll('button').find((b) => b.text() === '样本结果')?.trigger('click')
     await flushPromises()

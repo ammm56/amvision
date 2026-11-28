@@ -15,7 +15,7 @@
       </div>
 
       <div class="inf-bd-header__right">
-        <Button size="sm" variant="secondary" :loading="loading" @click="refreshAll">
+        <Button size="sm" variant="secondary" :loading="loading" @click="refreshAll()">
           <RefreshCw :size="14" />
           刷新
         </Button>
@@ -39,7 +39,7 @@
       </div>
     </header>
 
-    <InlineError :message="errorMessage" />
+    <InlineError :message="errorMessage || (activeTab !== 'logs' || !task ? refreshError : null)" />
 
     <section v-if="task" class="inf-bd-summary-card">
       <div class="inf-bd-meta-grid">
@@ -99,32 +99,7 @@
     </section>
 
     <section v-if="task" class="inf-bd-main-card">
-      <nav class="inf-bd-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          :class="{ 'is-active': activeTab === 'items' }"
-          @click="activeTab = 'items'"
-        >
-          样本结果
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :class="{ 'is-active': activeTab === 'info' }"
-          @click="activeTab = 'info'"
-        >
-          任务信息
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :class="{ 'is-active': activeTab === 'json' }"
-          @click="activeTab = 'json'"
-        >
-          汇总 JSON
-        </button>
-      </nav>
+      <TabList v-model="activeTab" class="inf-bd-tabs" :tabs="detailTabs" label="批量推理详情" />
 
       <template v-if="activeTab === 'items'">
         <div class="inf-bd-items-toolbar">
@@ -302,6 +277,16 @@
           </div>
         </div>
       </template>
+
+      <BatchInferenceTaskLog
+        v-else-if="activeTab === 'logs'"
+        :key="task.batch_task_id"
+        :task="task"
+        :items="allItems"
+        :loading="loading"
+        :error="Boolean(refreshError)"
+        @refresh="refreshAll()"
+      />
 
       <template v-else>
         <div class="inf-bd-json-wrap">
@@ -657,6 +642,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import TabList from '@/shared/ui/navigation/TabList.vue'
 import {
   cancelBatchInferenceTask,
   deleteBatchInferenceTask,
@@ -668,6 +654,7 @@ import {
   type BatchInferenceTaskItem,
   type TaskInferencePayload,
 } from '../services/inference.service'
+import BatchInferenceTaskLog from './BatchInferenceTaskLog.vue'
 import InferenceCanvasViewer from './InferenceCanvasViewer.vue'
 import InferenceResultInspector, { type InspectorDeploymentMeta } from './InferenceResultInspector.vue'
 import {
@@ -698,10 +685,17 @@ const emit = defineEmits<{
 const loading = ref(false)
 const actionBusy = ref(false)
 const errorMessage = ref<string | null>(null)
+const refreshError = ref<string | null>(null)
 const task = ref<BatchInferenceTask | null>(null)
 const allItems = ref<BatchInferenceTaskItem[]>([])
 
-const activeTab = ref<'items' | 'info' | 'json'>('items')
+const activeTab = ref('items')
+const detailTabs = [
+  { id: 'items', label: '样本结果' },
+  { id: 'info', label: '任务信息' },
+  { id: 'logs', label: '任务日志' },
+  { id: 'json', label: '汇总 JSON' },
+]
 const itemStateFilter = ref<'all' | 'succeeded' | 'failed' | 'pending'>('all')
 const itemSearch = ref('')
 const itemOffset = ref(0)
@@ -736,6 +730,8 @@ const cancelModalOpen = ref(false)
 const deleteModalOpen = ref(false)
 
 let pollTimer: number | undefined
+let refreshRevision = 0
+let refreshing = false
 let fsLoadGen = 0
 
 const pageSizeOptions = [10, 20, 50].map((n) => ({ value: String(n), label: `${n} 条/页` }))
@@ -867,6 +863,9 @@ const fullscreenDeploymentMeta = computed<InspectorDeploymentMeta | null>(() => 
 watch(
   () => props.batchTaskId,
   () => {
+    task.value = null
+    allItems.value = []
+    refreshError.value = null
     void refreshAll()
   },
 )
@@ -881,6 +880,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  refreshRevision++
   if (pollTimer) window.clearInterval(pollTimer)
   if (failurePreviewUrl.value) URL.revokeObjectURL(failurePreviewUrl.value)
   if (fullscreenImageUrl.value) URL.revokeObjectURL(fullscreenImageUrl.value)
@@ -900,20 +900,29 @@ function syncPolling(active: boolean): void {
 }
 
 async function refreshAll(silent = false): Promise<void> {
-  if (!props.batchTaskId) return
+  const taskId = props.batchTaskId
+  if (!taskId || (silent && refreshing)) return
+  const revision = ++refreshRevision
+  refreshing = true
   if (!silent) loading.value = true
-  errorMessage.value = null
+  if (!silent) errorMessage.value = null
   try {
     const [detail, items] = await Promise.all([
-      getBatchInferenceTask(props.batchTaskId),
-      listBatchInferenceTaskItems(props.batchTaskId, { limit: 200 }),
+      getBatchInferenceTask(taskId),
+      // 单次批量最多 500 张。样本和日志共用这一份完整记录。
+      listBatchInferenceTaskItems(taskId, { limit: 500 }),
     ])
+    if (revision !== refreshRevision) return
     task.value = detail
     allItems.value = items
+    refreshError.value = null
   } catch (err) {
-    if (!silent) errorMessage.value = getErrorMessage(err)
+    if (revision === refreshRevision) refreshError.value = getErrorMessage(err)
   } finally {
-    if (!silent) loading.value = false
+    if (revision === refreshRevision) {
+      refreshing = false
+      loading.value = false
+    }
   }
 }
 
@@ -1315,15 +1324,15 @@ function statusTone(status: string): 'ok' | 'warn' | 'danger' | 'neutral' {
 }
 
 .inf-bd-tabs {
-  display: flex;
+  width: 100%;
   gap: 16px;
-  border-bottom: 1px solid var(--am-border);
+  box-shadow: inset 0 -1px var(--am-border);
 }
 
-.inf-bd-tabs button {
+.inf-bd-tabs :deep(.local-tabs__tab) {
   padding: 8px 4px 10px;
-  border: none;
   border-bottom: 3px solid transparent;
+  border-radius: 0;
   background: transparent;
   color: var(--am-text-muted);
   font-size: 14px;
@@ -1331,7 +1340,7 @@ function statusTone(status: string): 'ok' | 'warn' | 'danger' | 'neutral' {
   cursor: pointer;
 }
 
-.inf-bd-tabs button.is-active {
+.inf-bd-tabs :deep(.local-tabs__tab.is-active) {
   color: var(--am-brand-primary);
   border-bottom-color: var(--am-brand-primary);
   font-weight: 600;

@@ -409,7 +409,7 @@ describe('Deployment workspace P6 architecture & interactions', () => {
     await wrapper.findAll('button').find(b => b.text().includes('检查配置'))!.trigger('click')
     await nextTick()
     expect(wrapper.text()).toContain('检查结果')
-    expect(wrapper.text()).toContain('输入输出契约完整')
+    expect(wrapper.text()).toContain('输入输出定义完整')
     expect(wrapper.text()).toContain('部署配置摘要')
 
     await wrapper.get('form.deployment-create-panel').trigger('submit')

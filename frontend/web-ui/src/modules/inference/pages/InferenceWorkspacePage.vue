@@ -1415,10 +1415,10 @@ function formatMs(value: number | null | undefined): string {
   flex: none;
 }
 
-@media (min-width: 1081px) {
+@media (min-width: 841px) {
   .inf-page--workbench {
-    height: calc(100vh - 64px);
-    min-height: 600px;
+    height: calc(100dvh - 56px);
+    min-height: 540px;
   }
 }
 
@@ -1540,7 +1540,26 @@ function formatMs(value: number | null | undefined): string {
   min-height: 0;
 }
 
-@media (max-width: 1080px) {
+@media (841px <= width <= 1080px) {
+  .inf-workbench-grid {
+    grid-template-columns: 248px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .inf-workbench-grid :deep(.inf-input-card__body) {
+    gap: 10px;
+  }
+
+  .inf-workbench-grid :deep(.inf-dropzone) {
+    padding-block: 14px;
+  }
+
+  .inf-target-meta {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 840px) {
   .inf-workbench-grid {
     grid-template-columns: 1fr;
     flex: none;
