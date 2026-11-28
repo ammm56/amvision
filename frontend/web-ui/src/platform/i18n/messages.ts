@@ -1158,7 +1158,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         },
         placeholders: {
           autoVersion: '留空则自动生成，例如 v3',
-          releaseNotes: '说明本次阈值、节点或公开契约变化',
+          releaseNotes: '说明本次阈值、节点或公开接口变化',
           breakingReason: '记录接受破坏性变化的原因',
         },
         actions: {
@@ -1274,8 +1274,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
           versionRestored: '已取消归档 Workflow App 版本：{version}',
           versionStateChangeFailed: '更新 Workflow App 版本状态失败',
           compareVersionFailed: '比较版本与草稿失败',
-          contractCompatible: '公开契约兼容',
-          contractBreaking: '包含破坏性公开契约变化',
+          contractCompatible: '公开接口兼容',
+          contractBreaking: '包含破坏性公开接口变化',
           contractChangeCount: '兼容变化 {changes} 项，破坏性变化 {breaking} 项',
           versionSelected: '已选择版本 {version}，Runtime generation 更新为 {generation}；请显式启动验证。',
           selectVersionFailed: '选择 Runtime 版本失败',
@@ -1285,7 +1285,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         title: '发布工作流',
         confirm: '发布',
         releaseNotes: '版本说明',
-        releaseNotesPlaceholder: '说明本次节点、参数或公开契约变化',
+        releaseNotesPlaceholder: '说明本次节点、参数或公开接口变化',
       },
       catalog: {
         kicker: 'Node Catalog',

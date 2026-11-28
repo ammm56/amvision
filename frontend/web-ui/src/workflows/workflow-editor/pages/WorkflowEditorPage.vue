@@ -414,6 +414,7 @@ import {
   parseWorkflowAppDocumentV1,
   retargetWorkflowAppDocument,
   downloadWorkflowAppDocument,
+  WORKFLOW_APP_DOCUMENT_FORMAT,
   WORKFLOW_DOCUMENT_MAX_BYTES,
   WorkflowDocumentLimitError,
   type WorkflowAppDocumentV1,
@@ -456,7 +457,7 @@ import { useWorkflowSaveRunFeedback } from '../actions/useWorkflowSaveRunFeedbac
 import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOrchestration'
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
-import { publishWorkflowAppVersion, updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
+import { getWorkflowAppVersion, publishWorkflowAppVersion, updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
 import { validateRequiredInputConnections } from '../validation/required-inputs'
 import { uploadWorkflowPromptMask } from '../services/workflow-runtime.service'
 import {
@@ -2553,10 +2554,33 @@ function roundInteractionNumber(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
+async function loadPageWithQueryVersion(): Promise<void> {
+  await loadPage()
+  const versionId = typeof route.query.version_id === 'string' ? route.query.version_id.trim() : ''
+  if (editorDisposed || !versionId || isNewApp.value || !routeApplicationId.value || !workflowApp.value) return
+  const project = selectedProjectId.value
+  const appId = routeApplicationId.value
+  try {
+    const detail = await getWorkflowAppVersion(project, appId, versionId)
+    if (editorDisposed || selectedProjectId.value !== project || routeApplicationId.value !== appId || !workflowApp.value) return
+    const document = parseWorkflowAppDocumentV1({
+      format_id: WORKFLOW_APP_DOCUMENT_FORMAT,
+      application: detail.application,
+      template: detail.template,
+    })
+    await loadWorkflowDocument(document, t('workflowEditor.history.loaded', { version: detail.display_version }))
+    const nextQuery = { ...route.query }
+    delete nextQuery.version_id
+    await router.replace({ query: nextQuery })
+  } catch (error) {
+    if (!editorDisposed) setActionError(`${t('workflowEditor.history.actionFailed')}: ${readWorkflowDocumentError(error)}`)
+  }
+}
+
 useWorkflowEditorLifecycle({
   canvasRef,
   toolbarRef,
-  loadPage,
+  loadPage: loadPageWithQueryVersion,
   handleKeydown,
   updateStageSize,
   stopNodeDrag,

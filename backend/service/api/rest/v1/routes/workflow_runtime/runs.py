@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from starlette.concurrency import run_in_threadpool
 
 from backend.contracts.workflows import WorkflowRunContract, WorkflowRunEventContract
@@ -12,6 +12,11 @@ from backend.service.api.deps.auth import (
     AuthenticatedPrincipal,
     require_scopes,
     require_workflow_invoke,
+)
+from backend.service.api.rest.v1.pagination import (
+    DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
+    paginate_sequence,
 )
 from backend.service.api.rest.v1.routes.workflow_runtime_support.responses import (
     build_workflow_app_invoke_result_payload as _build_workflow_app_invoke_result_payload,
@@ -23,6 +28,7 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.schemas import 
 )
 from backend.service.api.rest.v1.routes.workflow_runtime_support.services import (
     build_workflow_runtime_service as _build_workflow_runtime_service,
+    ensure_project_visible as _ensure_project_visible,
     with_created_by as _with_created_by,
 )
 from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import (
@@ -248,6 +254,34 @@ async def invoke_workflow_app_runtime_upload(
         created_by=principal.principal_id,
     )
     return _build_sync_invoke_response(invoke_result, response_mode=response_mode)
+
+
+@workflow_runtime_runs_router.get(
+    "/runs",
+    response_model=list[WorkflowRunContract],
+)
+def list_workflow_runs(
+    project_id: Annotated[str, Query(description="所属 Project id")],
+    request: Request,
+    response: Response,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    workflow_runtime_id: Annotated[str | None, Query(description="可选运行实例 id 过滤")] = None,
+    application_id: Annotated[str | None, Query(description="可选应用 id 过滤")] = None,
+    state: Annotated[str | None, Query(description="可选运行状态过滤")] = None,
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
+) -> list[WorkflowRunContract]:
+    """分页列出可见 Project 下的持久化 WorkflowRun 记录。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    runs = _build_workflow_runtime_service(request).list_workflow_runs(
+        project_id=project_id,
+        workflow_runtime_id=workflow_runtime_id,
+        application_id=application_id,
+        state=state,
+    )
+    paged = paginate_sequence(runs, response=response, offset=offset, limit=limit)
+    return [_build_workflow_run_contract(item) for item in paged]
 
 
 @workflow_runtime_runs_router.get(

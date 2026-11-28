@@ -292,7 +292,7 @@
           </section>
 
           <section v-if="direction === 'import' && (detailItem.summary || detailMappingEntries.length)" class="transfer-detail__section">
-            <h3>{{ zh ? '契约与映射' : 'Contract & mapping' }}</h3>
+            <h3>{{ zh ? '接口与映射' : 'Interface & mapping' }}</h3>
             <div v-if="detailItem.summary" class="transfer-detail__contract-strip">
               <div>
                 <span>{{ t('deploymentWorkspace.columns.taskType') }}</span>

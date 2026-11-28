@@ -48,6 +48,23 @@ export interface WorkflowAppRuntimeSelectVersionInput {
   breakingChangeReason?: string | null
 }
 
+export interface WorkflowAppRuntimeConfigUpdateInput {
+  expectedGeneration: number
+  displayName?: string
+  requestTimeoutSeconds?: number | null
+  workflowRunRecordMode?: 'none' | 'minimal' | 'full'
+  returnDiagnostics?: boolean
+}
+
+export interface WorkflowRunListQuery {
+  projectId: string
+  workflowRuntimeId?: string
+  applicationId?: string
+  state?: string
+  offset?: number
+  limit?: number
+}
+
 export interface WorkflowRuntimeInvokeInput {
   inputBindings?: WorkflowJsonObject
   fileUploads?: WorkflowPreviewFileUpload[]
@@ -201,6 +218,31 @@ export async function selectWorkflowAppRuntimeVersion(
   )
 }
 
+export async function updateWorkflowAppRuntimeConfig(
+  workflowRuntimeId: string,
+  input: WorkflowAppRuntimeConfigUpdateInput,
+): Promise<WorkflowAppRuntime> {
+  return apiRequest<WorkflowAppRuntime>(
+    `/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}`,
+    {
+      method: 'PATCH',
+      body: {
+        expected_generation: input.expectedGeneration,
+        ...(input.displayName !== undefined ? { display_name: input.displayName } : {}),
+        ...(input.requestTimeoutSeconds !== undefined
+          ? { request_timeout_seconds: input.requestTimeoutSeconds }
+          : {}),
+        ...(input.workflowRunRecordMode !== undefined
+          ? { workflow_run_record_mode: input.workflowRunRecordMode }
+          : {}),
+        ...(input.returnDiagnostics !== undefined
+          ? { return_diagnostics: input.returnDiagnostics }
+          : {}),
+      },
+    },
+  )
+}
+
 export async function uploadWorkflowPromptMask(
   projectId: string,
   applicationId: string,
@@ -297,6 +339,20 @@ export async function invokeWorkflowAppRuntime(workflowRuntimeId: string, input:
       timeout_seconds: input.timeoutSeconds ?? null,
     },
   })
+}
+
+export async function listWorkflowRuns(query: WorkflowRunListQuery): Promise<PaginatedResult<WorkflowRun>> {
+  const { payload, headers } = await apiRequestWithHeaders<WorkflowRun[]>('/workflows/runs', {
+    query: {
+      project_id: query.projectId,
+      ...(query.workflowRuntimeId ? { workflow_runtime_id: query.workflowRuntimeId } : {}),
+      ...(query.applicationId ? { application_id: query.applicationId } : {}),
+      ...(query.state ? { state: query.state } : {}),
+      offset: query.offset ?? 0,
+      limit: query.limit ?? 20,
+    },
+  })
+  return { items: payload, pagination: parsePaginationHeaders(headers) }
 }
 
 export async function getWorkflowRun(workflowRunId: string): Promise<WorkflowRun> {

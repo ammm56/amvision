@@ -1,213 +1,513 @@
 <template>
-  <section class="page-stack">
-    <PageHeader :title="t('workflowEditor.applications.title')">
-      <template #actions>
-        <Button variant="secondary" :disabled="loading || !selectedProjectId" :loading="loading" @click="refreshPage">
-          <RefreshCw :size="16" />
-          {{ t('common.refresh') }}
+  <section class="app-list-page">
+    <div v-if="selectedProjectId" class="app-list-toolbar">
+      <div class="app-list-search">
+        <Search :size="15" />
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索应用名称"
+          aria-label="搜索应用名称"
+          @input="offset = 0"
+        />
+        <button v-if="searchQuery" type="button" aria-label="清空搜索" @click="searchQuery = ''; offset = 0">
+          <X :size="13" />
+        </button>
+      </div>
+
+      <div class="app-list-toolbar__right">
+        <div class="app-filter-group">
+          <span class="app-filter-label">发布状态</span>
+          <Select
+            fit-options
+            floating
+            :model-value="publishFilter"
+            :options="publishFilterOptions"
+            aria-label="发布状态"
+            @update:model-value="selectPublishFilter"
+          />
+        </div>
+
+        <div class="app-filter-group">
+          <span class="app-filter-label">运行状态</span>
+          <Select
+            fit-options
+            floating
+            :model-value="runtimeFilter"
+            :options="runtimeFilterOptions"
+            aria-label="运行状态"
+            @update:model-value="selectRuntimeFilter"
+          />
+        </div>
+
+        <Button
+          v-if="canWriteWorkflows"
+          variant="secondary"
+          data-app-import-btn
+          @click="importDrawerOpen = true"
+        >
+          <FileUp :size="15" />
+          导入
         </Button>
-        <Button v-if="canWriteWorkflows" :disabled="!selectedProjectId" variant="primary" @click="openNewGraph">
-          <Plus :size="16" />
-          {{ t('workflowEditor.actions.newWorkflowGraph') }}
+
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
+          <RefreshCw v-if="!loading" :size="15" />
+          刷新
         </Button>
-      </template>
-    </PageHeader>
+
+        <Button
+          v-if="canWriteWorkflows"
+          variant="primary"
+          data-app-create-btn
+          @click="openNewGraph"
+        >
+          <Plus :size="15" />
+          新建应用
+        </Button>
+      </div>
+    </div>
 
     <InlineError :message="errorMessage" />
 
-    <EmptyState v-if="!selectedProjectId" :title="t('projects.messages.selectProjectRequired')">
-      <Button variant="secondary" @click="router.push('/projects')">{{ t('projects.title') }}</Button>
-    </EmptyState>
+    <div v-if="!selectedProjectId" class="app-list-card app-list-empty">
+      <p>请先选择项目以管理视觉应用。</p>
+      <Button variant="secondary" @click="router.push('/projects')">选择项目</Button>
+    </div>
 
-    <section v-if="selectedProjectId" class="resource-section">
-      <div>
-        <h2>{{ t('workflowEditor.runtime.title') }}</h2>
-      </div>
-      <div class="summary-grid">
-        <div>
-          <span>{{ t('workflowEditor.fields.applications') }}</span>
-          <strong>{{ applicationCount }}</strong>
-        </div>
-        <div>
-          <span>{{ t('workflowEditor.fields.appRuntimes') }}</span>
-          <strong>{{ appRuntimes.length }}</strong>
-        </div>
-        <div>
-          <span>{{ t('workflowEditor.fields.runningRuntimes') }}</span>
-          <strong>{{ runningRuntimeCount }}</strong>
-        </div>
-        <div>
-          <span>{{ t('workflowEditor.fields.nodeDefinitions') }}</span>
-          <strong>{{ nodeCatalog?.node_definitions.length ?? 0 }}</strong>
-        </div>
-      </div>
-    </section>
-
-    <section v-if="selectedProjectId" class="resource-section">
-      <div>
-        <h2>{{ t('workflowEditor.applications.listTitle') }}</h2>
-      </div>
-      <EmptyState v-if="workflowApps.length === 0" :title="t('workflowEditor.applications.emptyTitle')" :description="t('workflowEditor.applications.emptyDescription')" />
-      <div v-else class="resource-table">
-        <table>
+    <div v-else class="app-list-card">
+      <div class="app-list-table-wrap">
+        <table class="app-list-table">
           <thead>
             <tr>
-              <th>{{ t('workflowEditor.columns.application') }}</th>
-              <th>{{ t('workflowEditor.columns.bindings') }}</th>
-              <th>{{ t('workflowEditor.columns.runtime') }}</th>
-              <th>{{ t('workflowEditor.columns.updatedAt') }}</th>
-              <th class="workflow-app-list__actions-column">{{ t('workflowEditor.columns.actions') }}</th>
+              <th>应用名称</th>
+              <th>最新发布</th>
+              <th>运行实例</th>
+              <th>触发入口</th>
+              <th>更新时间</th>
+              <th class="col-actions-th">操作</th>
             </tr>
           </thead>
-          <tbody>
-            <tr v-for="workflowApp in workflowApps" :key="workflowApp.application.application_id">
-              <td>
-                <RouterLink :to="detailPath(workflowApp.application.application_id)">
-                  <strong>{{ workflowApp.application.display_name || workflowApp.application.application_id }}</strong>
+          <tbody v-if="pagedApps.length > 0">
+            <tr
+              v-for="row in pagedApps"
+              :key="row.application.application_id"
+              :class="{ 'is-selected': activeRowId === row.application.application_id }"
+              @click="activeRowId = row.application.application_id"
+            >
+              <td class="col-name">
+                <RouterLink
+                  :to="detailPath(row.application.application_id)"
+                  class="app-name-link"
+                  :title="row.application.display_name || row.application.application_id"
+                  @click.stop
+                >
+                  {{ row.application.display_name || row.application.application_id }}
                 </RouterLink>
               </td>
-              <td>{{ workflowApp.application.binding_count }}</td>
-              <td>
-                <StatusBadge v-if="workflowApp.primaryRuntime" :tone="runtimeTone(workflowApp.primaryRuntime.observed_state)">
-                  {{ workflowApp.primaryRuntime.observed_state }}
-                </StatusBadge>
-                <span v-else>{{ t('common.none') }}</span>
+              <td class="col-version">
+                <span :class="{ 'app-muted': !row.latestVersion }">
+                  {{ row.latestVersion ? row.latestVersion.display_version : '未发布' }}
+                </span>
               </td>
-              <td>{{ formatSystemDateTime(workflowApp.application.updated_at) }}</td>
-              <td class="workflow-app-list__actions-column">
-                <div class="table-actions table-actions--wrap workflow-app-list__actions">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    :title="t('workflowEditor.applications.detail')"
-                    :aria-label="t('workflowEditor.applications.detail')"
-                    @click="openDetail(workflowApp.application.application_id)"
+              <td class="col-runtimes">
+                <div class="app-runtime-summary">
+                  <template v-if="row.runtimes.length === 0">
+                    <span class="app-rt-pill is-neutral">
+                      <i class="app-dot" />
+                      未创建
+                    </span>
+                  </template>
+                  <template v-else>
+                    <span
+                      v-for="(seg, segIdx) in summarizeRuntimeCounts(row.runtimes)"
+                      :key="seg.key"
+                      class="app-rt-pill"
+                      :class="`is-${seg.tone}`"
+                    >
+                      <span v-if="segIdx > 0" class="app-rt-sep">·</span>
+                      <i class="app-dot" />
+                      {{ seg.label }}
+                    </span>
+                  </template>
+                </div>
+              </td>
+              <td class="col-triggers">{{ row.triggerCount }}</td>
+              <td class="col-time">{{ formatSystemDateTime(row.application.updated_at) }}</td>
+              <td class="col-actions" @click.stop>
+                <div class="app-row-actions">
+                  <button
+                    type="button"
+                    class="app-link-btn is-primary"
+                    @click="openDetail(row.application.application_id)"
                   >
-                    <SquarePen :size="14" />
-                    <span>{{ t('workflowEditor.applications.detail') }}</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    :title="t('workflowEditor.actions.openGraphEditor')"
-                    :aria-label="t('workflowEditor.actions.openGraphEditor')"
-                    @click="openGraphEditor(workflowApp.application.application_id)"
+                    查看
+                  </button>
+                  <button
+                    type="button"
+                    class="app-link-btn is-primary"
+                    @click="openGraphEditor(row.application.application_id)"
                   >
-                    <Workflow :size="14" />
-                    <span>{{ t('workflowEditor.actions.openGraphEditor') }}</span>
-                  </Button>
-                  <Button
-                    v-if="canWriteWorkflows"
-                    size="sm"
-                    variant="danger"
-                    :disabled="deletingApplicationId === workflowApp.application.application_id || workflowApp.runtimes.length > 0"
-                    :loading="deletingApplicationId === workflowApp.application.application_id"
-                    :title="workflowApp.runtimes.length > 0 ? t('workflowEditor.applications.deleteBlocked') : t('workflowEditor.applications.deleteHint')"
-                    @click="requestDeleteWorkflowApp(workflowApp)"
+                    图编辑
+                  </button>
+                  <button
+                    type="button"
+                    class="app-more-btn"
+                    :aria-expanded="openMenuAppId === row.application.application_id"
+                    aria-label="更多操作"
+                    @click="toggleRowMenu($event, row.application.application_id)"
                   >
-                    <Trash2 :size="14" />
-                    {{ t('workflowEditor.applications.delete') }}
-                  </Button>
+                    <MoreHorizontal :size="16" />
+                  </button>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <PaginationControls
-        v-if="workflowApps.length > 0"
-        class="workflow-app-list__pagination"
-        :offset="applicationPagination.offset"
-        :limit="applicationPagination.limit"
-        :item-count="workflowApps.length"
-        :total-count="applicationPagination.totalCount"
-        :has-more="applicationPagination.hasMore"
-        :disabled="loading"
-        @previous="loadPreviousPage"
-        @next="loadNextPage"
-      />
-    </section>
+
+      <div v-if="!loading && filteredApps.length === 0" class="app-list-empty">
+        <Layers :size="36" class="app-list-empty__icon" />
+        <p>{{ workflowApps.length === 0 ? '暂无视觉应用' : '没有匹配的应用' }}</p>
+        <Button v-if="workflowApps.length === 0 && canWriteWorkflows" variant="primary" size="sm" @click="openNewGraph">
+          <Plus :size="14" />
+          新建应用
+        </Button>
+        <Button v-else-if="workflowApps.length > 0" variant="secondary" size="sm" @click="resetFilters">
+          清除筛选
+        </Button>
+      </div>
+
+      <div v-if="filteredApps.length > 0" class="app-list-pagination">
+        <PaginationControls
+          numbered
+          :offset="offset"
+          :limit="pageSize"
+          :item-count="pagedApps.length"
+          :total-count="filteredApps.length"
+          :disabled="loading"
+          @previous="offset = Math.max(0, offset - pageSize)"
+          @next="offset = offset + pageSize"
+          @go="offset = $event"
+        >
+          <template #summary>共 {{ filteredApps.length }} 个应用</template>
+        </PaginationControls>
+
+        <div class="app-list-pagesize">
+          <Select
+            fit-options
+            floating
+            :model-value="String(pageSize)"
+            :options="pageSizeOptions"
+            aria-label="每页条数"
+            @update:model-value="changePageSize"
+          />
+        </div>
+      </div>
+    </div>
+
+    <Teleport to="body">
+      <div
+        v-if="openMenuRow"
+        class="app-row-menu"
+        :style="menuStyle"
+        role="menu"
+        @click.stop
+      >
+        <button type="button" role="menuitem" @click="openInfoDrawer(openMenuRow, false)">
+          应用信息
+        </button>
+        <button
+          v-if="canWriteWorkflows"
+          type="button"
+          role="menuitem"
+          @click="openInfoDrawer(openMenuRow, true)"
+        >
+          编辑信息
+        </button>
+        <button
+          v-if="canWriteWorkflows"
+          type="button"
+          role="menuitem"
+          @click="openCopyDrawer(openMenuRow)"
+        >
+          复制应用
+        </button>
+        <button
+          v-if="canWriteWorkflows"
+          type="button"
+          role="menuitem"
+          class="is-danger"
+          @click="requestDeleteWorkflowApp(openMenuRow)"
+        >
+          删除应用
+        </button>
+      </div>
+    </Teleport>
+
+    <WorkflowAppInfoDrawer
+      :open="infoDrawerOpen"
+      :project-id="selectedProjectId"
+      :project-name="selectedProjectName"
+      :app-summary="infoTargetApp"
+      :initial-editing="infoInitialEditing"
+      :can-write="canWriteWorkflows"
+      @close="infoDrawerOpen = false"
+      @updated="handleAppUpdated"
+    />
+
+    <WorkflowAppCopyDialog
+      :open="copyDrawerOpen"
+      :project-id="selectedProjectId"
+      :source-app="copyTargetApp"
+      @close="copyDrawerOpen = false"
+      @copied="handleAppCopied"
+    />
+
+    <WorkflowAppImportDialog
+      :open="importDrawerOpen"
+      :project-id="selectedProjectId"
+      @close="importDrawerOpen = false"
+      @imported="handleAppImported"
+    />
 
     <ConfirmDialog
       v-if="pendingDeleteWorkflowApp"
-      :title="t('common.confirmDelete')"
-      :message="deleteWorkflowAppMessage"
-      :details="t('workflowEditor.applications.deleteHint')"
-      :confirm-label="t('workflowEditor.applications.delete')"
-      :cancel-label="t('common.cancel')"
-      :busy="deletingApplicationId === pendingDeleteWorkflowApp.application.application_id"
+      :title="pendingDeleteWorkflowApp.runtimes.length > 0 ? '无法删除应用' : '删除应用?'"
+      :message="deleteDialogMessage"
+      :confirm-label="pendingDeleteWorkflowApp.runtimes.length > 0 ? '我知道了' : '确认删除'"
+      :cancel-label="pendingDeleteWorkflowApp.runtimes.length > 0 ? '' : '取消'"
+      :confirm-variant="pendingDeleteWorkflowApp.runtimes.length > 0 ? 'primary' : 'danger'"
+      :busy="Boolean(deletingApplicationId)"
       @cancel="pendingDeleteWorkflowApp = null"
-      @confirm="deleteWorkflowApp"
-    />
+      @confirm="handleDeleteConfirm"
+    >
+      <ul v-if="pendingDeleteWorkflowApp.runtimes.length > 0" class="app-delete-block-list">
+        <li v-for="rt in pendingDeleteWorkflowApp.runtimes" :key="rt.workflow_runtime_id">
+          <span>{{ rt.display_name || rt.workflow_runtime_id }}</span>
+          <small>{{ formatRuntimeState(rt.observed_state) }}</small>
+        </li>
+      </ul>
+    </ConfirmDialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { Plus, RefreshCw, SquarePen, Trash2, Workflow } from '@lucide/vue'
+import { FileUp, Layers, MoreHorizontal, Plus, RefreshCw, Search, X } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
-import type { PaginationMeta } from '@/shared/api/pagination'
+import { getErrorMessage } from '@/shared/api/error'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import Select from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import PageHeader from '@/shared/ui/layout/PageHeader.vue'
-import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
+import WorkflowAppCopyDialog from '../components/WorkflowAppCopyDialog.vue'
+import WorkflowAppImportDialog from '../components/WorkflowAppImportDialog.vue'
+import WorkflowAppInfoDrawer from '../components/WorkflowAppInfoDrawer.vue'
 import { deleteWorkflowApplication } from '../services/workflow-application.service'
 import { listWorkflowApps, type WorkflowAppSummary } from '../services/workflow-app.service'
-import { refreshWorkflowAppRuntimeStatuses } from '../services/workflow-runtime.service'
-import type { WorkflowAppRuntime, WorkflowNodeCatalogResponse } from '../types'
+import type { WorkflowAppRuntime } from '../types'
 
-const { t } = useI18n()
+interface RuntimeSegment {
+  key: string
+  label: string
+  tone: 'ok' | 'neutral' | 'bad' | 'warn'
+}
+
 const router = useRouter()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
-const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApps = ref<WorkflowAppSummary[]>([])
-const appRuntimes = ref<WorkflowAppRuntime[]>([])
-const deletingApplicationId = ref<string | null>(null)
+const activeRowId = ref('')
+const searchQuery = ref('')
+const publishFilter = ref<'all' | 'published' | 'unpublished'>('all')
+const runtimeFilter = ref<'all' | 'running' | 'stopped' | 'failed' | 'none'>('all')
+const offset = ref(0)
+const pageSize = ref(20)
+
+const openMenuAppId = ref<string | null>(null)
+const menuStyle = ref<CSSProperties>({})
+
+const infoDrawerOpen = ref(false)
+const infoTargetApp = ref<WorkflowAppSummary | null>(null)
+const infoInitialEditing = ref(false)
+
+const copyDrawerOpen = ref(false)
+const copyTargetApp = ref<WorkflowAppSummary | null>(null)
+
+const importDrawerOpen = ref(false)
+
 const pendingDeleteWorkflowApp = ref<WorkflowAppSummary | null>(null)
-const applicationPagination = ref<PaginationMeta>(createPaginationState())
+const deletingApplicationId = ref<string | null>(null)
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const selectedProjectName = computed(
+  () =>
+    projectStore.projects.find((p) => p.project_id === selectedProjectId.value)?.display_name ||
+    selectedProjectId.value ||
+    '默认项目',
+)
 const canWriteWorkflows = computed(() => sessionStore.hasScopes(['workflows:write']))
-const runningRuntimeCount = computed(() => appRuntimes.value.filter((runtime) => runtime.observed_state === 'running').length)
-const applicationCount = computed(() => applicationPagination.value.totalCount ?? workflowApps.value.length)
-const deleteWorkflowAppMessage = computed(() => {
-  const workflowApp = pendingDeleteWorkflowApp.value
-  if (!workflowApp) return ''
-  return t('workflowEditor.applications.confirmDeleteWithGraph', {
-    applicationId: workflowApp.application.application_id,
+
+const publishFilterOptions = [
+  { label: '全部', value: 'all' },
+  { label: '已发布', value: 'published' },
+  { label: '未发布', value: 'unpublished' },
+]
+
+const runtimeFilterOptions = [
+  { label: '全部', value: 'all' },
+  { label: '运行中', value: 'running' },
+  { label: '已停止', value: 'stopped' },
+  { label: '异常', value: 'failed' },
+  { label: '未创建', value: 'none' },
+]
+
+const pageSizeOptions = [10, 20, 50].map((n) => ({ label: `${n} 条/页`, value: String(n) }))
+
+const filteredApps = computed(() => {
+  const kw = searchQuery.value.trim().toLowerCase()
+  return workflowApps.value.filter((item) => {
+    if (kw) {
+      const name = (item.application.display_name || item.application.application_id).toLowerCase()
+      const id = item.application.application_id.toLowerCase()
+      if (!name.includes(kw) && !id.includes(kw)) return false
+    }
+    if (publishFilter.value === 'published' && !item.latestVersion) return false
+    if (publishFilter.value === 'unpublished' && Boolean(item.latestVersion)) return false
+    if (runtimeFilter.value === 'none' && item.runtimes.length > 0) return false
+    if (runtimeFilter.value === 'running' && !item.runtimes.some((r) => r.observed_state === 'running')) {
+      return false
+    }
+    if (runtimeFilter.value === 'stopped' && !item.runtimes.some((r) => r.observed_state === 'stopped')) {
+      return false
+    }
+    if (runtimeFilter.value === 'failed' && !item.runtimes.some((r) => r.observed_state === 'failed')) {
+      return false
+    }
+    return true
   })
 })
 
-function runtimeTone(state: string): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  if (state === 'running') return 'success'
-  if (state === 'failed') return 'danger'
-  if (state === 'starting' || state === 'stopping') return 'warning'
-  return 'neutral'
+const pagedApps = computed(() => filteredApps.value.slice(offset.value, offset.value + pageSize.value))
+
+const openMenuRow = computed(
+  () => workflowApps.value.find((item) => item.application.application_id === openMenuAppId.value) ?? null,
+)
+
+const deleteDialogMessage = computed(() => {
+  const target = pendingDeleteWorkflowApp.value
+  if (!target) return ''
+  const name = target.application.display_name || target.application.application_id
+  if (target.runtimes.length > 0) {
+    return `“${name}” 仍关联 ${target.runtimes.length} 个运行实例，请先停止并删除关联实例后再删除应用：`
+  }
+  return `确认删除应用 “${name}” 及关联流程草稿？此操作不可撤销。`
+})
+
+onMounted(() => {
+  window.addEventListener('click', closeRowMenu)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('click', closeRowMenu)
+})
+
+watch(
+  selectedProjectId,
+  async (projectId) => {
+    offset.value = 0
+    if (!projectId) {
+      workflowApps.value = []
+      return
+    }
+    await refreshPage()
+  },
+  { immediate: true },
+)
+
+function closeRowMenu(): void {
+  openMenuAppId.value = null
 }
 
-function editorPath(applicationId: string): string {
-  return `/workflows/graph/apps/${encodeURIComponent(applicationId)}`
+function toggleRowMenu(event: MouseEvent, appId: string): void {
+  event.stopPropagation()
+  if (openMenuAppId.value === appId) {
+    openMenuAppId.value = null
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const left = Math.min(rect.right - 136, window.innerWidth - 152)
+  const top = rect.bottom + 4
+  menuStyle.value = { left: `${Math.max(12, left)}px`, top: `${top}px` }
+  openMenuAppId.value = appId
+}
+
+function selectPublishFilter(val: string | number | boolean | null): void {
+  if (val === 'all' || val === 'published' || val === 'unpublished') {
+    publishFilter.value = val
+    offset.value = 0
+  }
+}
+
+function selectRuntimeFilter(val: string | number | boolean | null): void {
+  if (val === 'all' || val === 'running' || val === 'stopped' || val === 'failed' || val === 'none') {
+    runtimeFilter.value = val
+    offset.value = 0
+  }
+}
+
+function changePageSize(val: string | number | boolean | null): void {
+  const next = Number(val)
+  if (!Number.isFinite(next) || next <= 0) return
+  pageSize.value = next
+  offset.value = 0
+}
+
+function resetFilters(): void {
+  searchQuery.value = ''
+  publishFilter.value = 'all'
+  runtimeFilter.value = 'all'
+  offset.value = 0
+}
+
+function summarizeRuntimeCounts(runtimes: WorkflowAppRuntime[]): RuntimeSegment[] {
+  let running = 0
+  let stopped = 0
+  let failed = 0
+  let transitioning = 0
+  for (const rt of runtimes) {
+    if (rt.observed_state === 'running') running++
+    else if (rt.observed_state === 'failed') failed++
+    else if (rt.observed_state === 'starting' || rt.observed_state === 'stopping') transitioning++
+    else stopped++
+  }
+  const segments: RuntimeSegment[] = []
+  if (running > 0) segments.push({ key: 'running', label: `运行 ${running}`, tone: 'ok' })
+  if (transitioning > 0) segments.push({ key: 'transitioning', label: `切换中 ${transitioning}`, tone: 'warn' })
+  if (stopped > 0) segments.push({ key: 'stopped', label: `停止 ${stopped}`, tone: 'neutral' })
+  if (failed > 0) segments.push({ key: 'failed', label: `异常 ${failed}`, tone: 'bad' })
+  return segments
+}
+
+function formatRuntimeState(state: string): string {
+  if (state === 'running') return '运行中'
+  if (state === 'stopped') return '已停止'
+  if (state === 'failed') return '异常'
+  if (state === 'starting') return '启动中'
+  if (state === 'stopping') return '停止中'
+  return state
 }
 
 function detailPath(applicationId: string): string {
   return `/workflows/apps/${encodeURIComponent(applicationId)}`
-}
-
-function openNewGraph(): void {
-  void router.push('/workflows/graph/new')
 }
 
 function openDetail(applicationId: string): void {
@@ -215,120 +515,417 @@ function openDetail(applicationId: string): void {
 }
 
 function openGraphEditor(applicationId: string): void {
-  void router.push(editorPath(applicationId))
+  void router.push(`/workflows/graph/apps/${encodeURIComponent(applicationId)}`)
 }
 
-function refreshPage(): void {
-  void loadPage()
+function openNewGraph(): void {
+  void router.push('/workflows/graph/new')
 }
 
-async function loadPage(offset?: number): Promise<void> {
-  if (!selectedProjectId.value) {
-    workflowApps.value = []
-    appRuntimes.value = []
-    applicationPagination.value = createPaginationState()
+function openInfoDrawer(row: WorkflowAppSummary, editing: boolean): void {
+  openMenuAppId.value = null
+  infoTargetApp.value = row
+  infoInitialEditing.value = editing
+  infoDrawerOpen.value = true
+}
+
+function openCopyDrawer(row: WorkflowAppSummary): void {
+  openMenuAppId.value = null
+  copyTargetApp.value = row
+  copyDrawerOpen.value = true
+}
+
+function requestDeleteWorkflowApp(row: WorkflowAppSummary): void {
+  openMenuAppId.value = null
+  pendingDeleteWorkflowApp.value = row
+}
+
+async function handleAppUpdated(): Promise<void> {
+  infoDrawerOpen.value = false
+  await refreshPage()
+}
+
+async function handleAppCopied(): Promise<void> {
+  copyDrawerOpen.value = false
+  await refreshPage()
+}
+
+async function handleAppImported(): Promise<void> {
+  importDrawerOpen.value = false
+  await refreshPage()
+}
+
+async function handleDeleteConfirm(): Promise<void> {
+  const target = pendingDeleteWorkflowApp.value
+  if (!target) return
+  if (target.runtimes.length > 0) {
+    pendingDeleteWorkflowApp.value = null
     return
   }
+  deletingApplicationId.value = target.application.application_id
+  errorMessage.value = null
+  try {
+    await deleteWorkflowApplication(selectedProjectId.value, target.application.application_id)
+    pendingDeleteWorkflowApp.value = null
+    await refreshPage()
+  } catch (err) {
+    errorMessage.value = getErrorMessage(err)
+  } finally {
+    deletingApplicationId.value = null
+  }
+}
+
+async function refreshPage(): Promise<void> {
+  if (!selectedProjectId.value) return
   loading.value = true
   errorMessage.value = null
-  const pageOffset = Number.isFinite(offset) ? Math.max(0, offset as number) : applicationPagination.value.offset
   try {
-    const [catalogResponse, workflowAppResponse] = await Promise.all([
-      getWorkflowNodeCatalog(),
-      listWorkflowApps(selectedProjectId.value, { offset: pageOffset, limit: applicationPagination.value.limit }),
-    ])
-    const runtimeStatusResult = await refreshWorkflowAppRuntimeStatuses(workflowAppResponse.runtimes)
-    const runtimeById = new Map(runtimeStatusResult.items.map((runtime) => [runtime.workflow_runtime_id, runtime]))
-    nodeCatalog.value = catalogResponse
-    workflowApps.value = workflowAppResponse.items.map((workflowApp) => {
-      const runtimes = workflowApp.runtimes.map((runtime) => runtimeById.get(runtime.workflow_runtime_id) ?? runtime)
-      return {
-        ...workflowApp,
-        runtimes,
-        primaryRuntime: runtimes.find((runtime) => runtime.observed_state === 'running') ?? runtimes[0] ?? null,
-      }
-    })
-    appRuntimes.value = runtimeStatusResult.items
-    applicationPagination.value = workflowAppResponse.pagination
-    if (runtimeStatusResult.failedRuntimeIds.length > 0) {
-      errorMessage.value = t('workflowEditor.applications.partialRuntimeRefreshFailed', {
-        runtimeIds: runtimeStatusResult.failedRuntimeIds.join(', '),
-      })
+    const result = await listWorkflowApps(selectedProjectId.value, { offset: 0, limit: 100 })
+    workflowApps.value = result.items
+    if (offset.value >= filteredApps.value.length && offset.value > 0) {
+      offset.value = Math.max(0, Math.floor((filteredApps.value.length - 1) / pageSize.value) * pageSize.value)
     }
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.messages.loadFailed')
+  } catch (err) {
+    errorMessage.value = getErrorMessage(err)
   } finally {
     loading.value = false
   }
 }
-
-function requestDeleteWorkflowApp(workflowApp: WorkflowAppSummary): void {
-  if (!canWriteWorkflows.value || workflowApp.runtimes.length > 0) return
-  pendingDeleteWorkflowApp.value = workflowApp
-}
-
-async function deleteWorkflowApp(): Promise<void> {
-  const workflowApp = pendingDeleteWorkflowApp.value
-  if (!workflowApp) return
-  if (!canWriteWorkflows.value || workflowApp.runtimes.length > 0) return
-  const applicationId = workflowApp.application.application_id
-  deletingApplicationId.value = applicationId
-  errorMessage.value = null
-  try {
-    await deleteWorkflowApplication(selectedProjectId.value, applicationId)
-    const nextOffset = workflowApps.value.length === 1
-      ? Math.max(0, applicationPagination.value.offset - applicationPagination.value.limit)
-      : applicationPagination.value.offset
-    await loadPage(nextOffset)
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.applications.deleteFailed')
-  } finally {
-    deletingApplicationId.value = null
-    pendingDeleteWorkflowApp.value = null
-  }
-}
-
-function loadPreviousPage(): void {
-  void loadPage(Math.max(0, applicationPagination.value.offset - applicationPagination.value.limit))
-}
-
-function loadNextPage(): void {
-  if (!applicationPagination.value.hasMore) return
-  void loadPage(applicationPagination.value.nextOffset ?? applicationPagination.value.offset + applicationPagination.value.limit)
-}
-
-function createPaginationState(): PaginationMeta {
-  return {
-    offset: 0,
-    limit: 50,
-    totalCount: 0,
-    hasMore: false,
-    nextOffset: null,
-  }
-}
-
-watch(
-  () => selectedProjectId.value,
-  () => {
-    applicationPagination.value = createPaginationState()
-    void loadPage(0)
-  },
-  { immediate: true },
-)
 </script>
 
 <style scoped>
-.workflow-app-list__actions {
+.app-list-page {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.app-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.app-list-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 260px;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+  background: var(--am-input);
+  color: var(--am-text-muted);
+}
+
+.app-list-search:focus-within {
+  border-color: var(--am-input-focus-ring);
+  box-shadow: inset 0 0 0 1px var(--am-input-focus-ring);
+}
+
+.app-list-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--am-text-strong);
+  font-size: 13px;
+}
+
+.app-list-search input:focus-visible {
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+.app-list-search button {
+  border: none;
+  background: transparent;
+  color: var(--am-text-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.app-list-toolbar__right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.app-filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-filter-label {
+  font-size: 13px;
+  color: var(--am-text-muted);
+  white-space: nowrap;
+}
+
+.app-list-card {
+  background: var(--am-surface);
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
+  overflow: hidden;
+}
+
+.app-list-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.app-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.app-list-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--am-text);
+  background: var(--am-table-header, var(--am-surface));
+  border-bottom: 1px solid var(--am-border);
+  white-space: nowrap;
+}
+
+.app-list-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--am-border);
+  color: var(--am-text-strong);
+  vertical-align: middle;
+}
+
+.app-list-table tbody tr {
+  transition: background-color 120ms ease;
+}
+
+.app-list-table tbody tr:hover {
+  background: var(--am-row-hover);
+}
+
+.app-list-table tbody tr.is-selected {
+  background: var(--am-row-selected);
+}
+
+.app-name-link {
+  color: var(--am-text-strong);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.app-name-link:hover {
+  color: var(--am-action-primary);
+}
+
+.app-muted {
+  color: var(--am-text-muted);
+}
+
+.app-runtime-summary {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.app-rt-pill {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  justify-content: flex-end;
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.workflow-app-list__actions-column {
-  text-align: right;
+.app-rt-sep {
+  color: var(--am-text-muted);
+  margin-right: 2px;
 }
 
-.workflow-app-list__pagination {
-  margin-top: 16px;
+.app-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.app-rt-pill.is-ok .app-dot {
+  background: var(--am-action-primary);
+}
+
+.app-rt-pill.is-neutral {
+  color: var(--am-text-muted);
+}
+
+.app-rt-pill.is-neutral .app-dot {
+  background: var(--am-text-muted);
+}
+
+.app-rt-pill.is-bad {
+  color: #dc2626;
+}
+
+.app-rt-pill.is-bad .app-dot {
+  background: #dc2626;
+}
+
+.app-rt-pill.is-warn {
+  color: #d97706;
+}
+
+.app-rt-pill.is-warn .app-dot {
+  background: #f59e0b;
+}
+
+.col-triggers,
+.col-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.col-actions-th,
+.col-actions {
+  width: 150px;
+  white-space: nowrap;
+}
+
+.app-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.app-link-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--am-action-primary);
+  cursor: pointer;
+}
+
+.app-link-btn:hover {
+  text-decoration: underline;
+}
+
+.app-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--am-text);
+  cursor: pointer;
+}
+
+.app-more-btn:hover {
+  background: var(--am-hover-surface);
+}
+
+.app-list-empty {
+  padding: 48px 20px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--am-text-muted);
+  text-align: center;
+}
+
+.app-list-empty__icon {
+  opacity: 0.45;
+}
+
+.app-list-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.app-list-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+}
+
+.app-list-pagination :deep(.pagination-controls) {
+  border: none;
+  padding: 0;
+  background: transparent;
+  flex: 1 1 auto;
+}
+
+.app-list-pagesize {
+  flex: none;
+}
+
+.app-row-menu {
+  position: fixed;
+  z-index: calc(var(--am-z-modal) + 2);
+  min-width: 136px;
+  padding: 6px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface);
+  box-shadow: var(--am-shadow-floating);
+  display: grid;
+  gap: 2px;
+}
+
+.app-row-menu button {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--am-text-strong);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-row-menu button:hover {
+  background: var(--am-hover-surface);
+}
+
+.app-row-menu button.is-danger {
+  color: #dc2626;
+}
+
+.app-delete-block-list {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--am-surface-soft);
+  border: 1px solid var(--am-border);
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.app-delete-block-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--am-text-strong);
+}
+
+.app-delete-block-list small {
+  color: var(--am-text-muted);
 }
 </style>

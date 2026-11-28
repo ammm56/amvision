@@ -10,6 +10,13 @@ import { getWorkflowApp, listWorkflowApps, saveWorkflowApp } from './workflow-ap
 import { listWorkflowAppRuntimes } from './workflow-runtime.service'
 import { getWorkflowTemplate } from './workflow-template.service'
 
+vi.mock('@/modules/integrations/services/trigger-source.service', () => ({
+  listWorkflowTriggerSources: vi.fn().mockResolvedValue({
+    items: [],
+    pagination: { offset: 0, limit: 100, totalCount: 0, hasMore: false, nextOffset: null },
+  }),
+}))
+
 vi.mock('./workflow-application.service', () => ({
   getWorkflowApplication: vi.fn(),
   listWorkflowApplications: vi.fn(),

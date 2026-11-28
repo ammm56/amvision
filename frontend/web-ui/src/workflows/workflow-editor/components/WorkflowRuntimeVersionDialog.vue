@@ -1,9 +1,9 @@
 <template>
   <ConfirmDialog
     v-if="open"
-    :title="t('workflowEditor.appDetail.actions.switchVersion')"
-    :confirm-label="t('workflowEditor.appDetail.actions.switchVersion')"
-    :cancel-label="t('common.cancel')"
+    title="切换版本"
+    confirm-label="切换版本"
+    cancel-label="取消"
     :busy="busy"
     :confirm-disabled="confirmDisabled"
     confirm-variant="primary"
@@ -22,14 +22,19 @@
         <strong>{{ targetVersionLabel }}</strong>
       </div>
     </div>
-    <label class="workflow-dialog-field">
-      <span>{{ t('workflowEditor.appDetail.fields.targetVersion') }}</span>
+
+    <div class="rt-ver-row">
+      <span class="rt-ver-label">{{ t('workflowEditor.appDetail.fields.targetVersion') }} <em>*</em></span>
       <Select
+        floating
         :model-value="targetVersionId"
         :options="versionOptions"
+        :disabled="busy"
+        aria-label="目标版本"
         @update:model-value="emit('update:targetVersionId', readString($event))"
       />
-    </label>
+    </div>
+
     <label v-if="showBreakingOverride" class="workflow-dialog-check">
       <input
         :checked="allowBreakingContract"
@@ -38,7 +43,8 @@
       />
       <span>{{ t('workflowEditor.appDetail.fields.breakingOverride') }}</span>
     </label>
-    <label v-if="showBreakingOverride && allowBreakingContract" class="workflow-dialog-field">
+
+    <label v-if="showBreakingOverride && allowBreakingContract" class="rt-ver-field">
       <span>{{ t('workflowEditor.appDetail.fields.breakingReason') }}</span>
       <input
         :value="breakingChangeReason"
@@ -47,6 +53,7 @@
         @input="emit('update:breakingChangeReason', readInput($event))"
       />
     </label>
+
     <InlineError v-if="errorMessage" :message="errorMessage" />
   </ConfirmDialog>
 </template>
@@ -104,35 +111,12 @@ function readInput(event: Event): string {
 </script>
 
 <style scoped>
-.workflow-dialog-field {
-  display: grid;
-  gap: var(--am-space-sm);
-}
-
-.workflow-dialog-field > span,
-.workflow-runtime-version-route span {
-  color: var(--am-text-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.workflow-dialog-check {
-  display: flex;
-  align-items: center;
-  gap: var(--am-space-sm);
-}
-
-.workflow-dialog-check input {
-  width: 18px;
-  height: 18px;
-}
-
 .workflow-runtime-version-route {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: var(--am-space-md);
-  padding: var(--am-space-md);
+  gap: 12px;
+  padding: 12px;
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-sm);
   background: var(--am-surface-soft);
@@ -144,7 +128,73 @@ function readInput(event: Event): string {
   min-width: 0;
 }
 
+.workflow-runtime-version-route span {
+  color: var(--am-text-muted);
+  font-size: 12px;
+}
+
 .workflow-runtime-version-route strong {
+  color: var(--am-text-strong);
+  font-size: 14px;
   overflow-wrap: anywhere;
+}
+
+.rt-ver-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.rt-ver-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--am-text-strong);
+}
+
+.rt-ver-label em {
+  color: #dc2626;
+  font-style: normal;
+}
+
+.rt-ver-field {
+  display: grid;
+  gap: 6px;
+}
+
+.rt-ver-field > span {
+  color: var(--am-text-strong);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.rt-ver-field input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--am-border-strong);
+  border-radius: var(--am-radius-sm);
+  background: var(--am-input);
+  color: var(--am-text-strong);
+  font-size: 13px;
+}
+
+.rt-ver-field input:focus-visible {
+  outline: 2px solid var(--am-input-focus-ring);
+  outline-offset: 1px;
+}
+
+.workflow-dialog-check {
+  display: flex;
+  align-items: center;
+  gap: var(--am-space-sm);
+  font-size: 13px;
+  color: var(--am-text-strong);
+}
+
+.workflow-dialog-check input {
+  width: 16px;
+  height: 16px;
 }
 </style>

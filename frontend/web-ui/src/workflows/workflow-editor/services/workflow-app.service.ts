@@ -1,5 +1,9 @@
 import type { PaginatedResult, PaginationMeta } from '@/shared/api/pagination'
 import {
+  listWorkflowTriggerSources,
+  type WorkflowTriggerSource,
+} from '@/modules/integrations/services/trigger-source.service'
+import {
   getWorkflowApplication,
   listWorkflowApplications,
   listWorkflowAppVersions,
@@ -22,6 +26,8 @@ export interface WorkflowAppSummary {
   application: WorkflowApplicationSummary
   runtimes: WorkflowAppRuntime[]
   primaryRuntime: WorkflowAppRuntime | null
+  latestVersion: WorkflowAppVersion | null
+  triggerCount: number
 }
 
 export interface WorkflowAppDocument {
@@ -122,20 +128,80 @@ async function listAllApplicationSetRuntimes(
   return runtimes
 }
 
+async function listProjectTriggerSourcesSafely(projectId: string): Promise<WorkflowTriggerSource[]> {
+  try {
+    const items: WorkflowTriggerSource[] = []
+    const visitedOffsets = new Set<number>()
+    let offset = 0
+    const limit = 100
+    while (!visitedOffsets.has(offset)) {
+      visitedOffsets.add(offset)
+      const page = await listWorkflowTriggerSources({ projectId, offset, limit })
+      items.push(...page.items)
+      const nextOffset = page.pagination.nextOffset
+      if (!page.pagination.hasMore || nextOffset === null || visitedOffsets.has(nextOffset)) break
+      offset = nextOffset
+    }
+    return items
+  } catch {
+    return []
+  }
+}
+
+async function resolveAppLatestVersionSafely(
+  projectId: string,
+  applicationId: string,
+): Promise<WorkflowAppVersion | null> {
+  try {
+    const firstPage = await listWorkflowAppVersions(projectId, applicationId, { offset: 0, limit: 10 })
+    return resolveLatestPublishedVersion(projectId, applicationId, firstPage)
+  } catch {
+    return null
+  }
+}
+
 export async function listWorkflowApps(projectId: string, query: WorkflowApplicationListQuery = {}): Promise<WorkflowAppListResult> {
-  const applicationResponse = await listWorkflowApplications(projectId, query)
-  const runtimes = await listAllApplicationSetRuntimes(
-    projectId,
-    applicationResponse.items.map((application) => application.application_id),
-  )
+  const [applicationResponse, triggerSources] = await Promise.all([
+    listWorkflowApplications(projectId, query),
+    listProjectTriggerSourcesSafely(projectId),
+  ])
+  const applicationIds = applicationResponse.items.map((application) => application.application_id)
+  const runtimes = await listAllApplicationSetRuntimes(projectId, applicationIds)
   const runtimesByApplication = groupRuntimesByApplication(runtimes)
+  const triggerCountByRuntime = new Map<string, number>()
+  for (const trigger of triggerSources) {
+    if (!trigger.workflow_runtime_id) continue
+    triggerCountByRuntime.set(
+      trigger.workflow_runtime_id,
+      (triggerCountByRuntime.get(trigger.workflow_runtime_id) ?? 0) + 1,
+    )
+  }
+
+  const latestVersionByApp = new Map<string, WorkflowAppVersion | null>()
+  const versionConcurrency = 6
+  for (let offset = 0; offset < applicationIds.length; offset += versionConcurrency) {
+    const chunk = applicationIds.slice(offset, offset + versionConcurrency)
+    const resolved = await Promise.all(
+      chunk.map(async (appId) => [appId, await resolveAppLatestVersionSafely(projectId, appId)] as const),
+    )
+    for (const [appId, latest] of resolved) {
+      latestVersionByApp.set(appId, latest)
+    }
+  }
+
   return {
     items: applicationResponse.items.map((application) => {
-      const runtimes = runtimesByApplication.get(application.application_id) ?? []
+      const appRuntimes = runtimesByApplication.get(application.application_id) ?? []
+      const triggerCount = appRuntimes.reduce(
+        (sum, runtime) => sum + (triggerCountByRuntime.get(runtime.workflow_runtime_id) ?? 0),
+        0,
+      )
       return {
         application,
-        runtimes,
-        primaryRuntime: pickPrimaryRuntime(runtimes),
+        runtimes: appRuntimes,
+        primaryRuntime: pickPrimaryRuntime(appRuntimes),
+        latestVersion: latestVersionByApp.get(application.application_id) ?? null,
+        triggerCount,
       }
     }),
     pagination: applicationResponse.pagination,

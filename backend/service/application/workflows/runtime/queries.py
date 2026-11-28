@@ -214,3 +214,37 @@ class WorkflowRuntimeQueries:
                 details={"workflow_run_id": workflow_run_id},
             )
         return workflow_run
+
+    def list_workflow_runs(
+        self,
+        *,
+        project_id: str,
+        workflow_runtime_id: str | None = None,
+        application_id: str | None = None,
+        state: str | None = None,
+    ) -> tuple[WorkflowRun, ...]:
+        """按 Project 与可选 Runtime、Application、状态过滤列出 WorkflowRun。"""
+
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise InvalidRequestError("查询 WorkflowRun 列表时 project_id 不能为空")
+        normalized_runtime_id = (
+            workflow_runtime_id.strip() if workflow_runtime_id is not None else None
+        )
+        if workflow_runtime_id is not None and not normalized_runtime_id:
+            raise InvalidRequestError("workflow_runtime_id 不能为空字符串")
+        normalized_application_id = (
+            application_id.strip() if application_id is not None else None
+        )
+        if application_id is not None and not normalized_application_id:
+            raise InvalidRequestError("application_id 不能为空字符串")
+        normalized_state = state.strip() if state is not None else None
+        if state is not None and not normalized_state:
+            raise InvalidRequestError("state 不能为空字符串")
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.workflow_runtime.list_workflow_runs_filtered(
+                project_id=normalized_project_id,
+                workflow_runtime_id=normalized_runtime_id,
+                application_id=normalized_application_id,
+                state=normalized_state,
+            )

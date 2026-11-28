@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -73,6 +75,16 @@ class WorkflowAppRuntimeSelectVersionRequestBody(BaseModel):
     expected_generation: int = Field(ge=0)
     allow_breaking_contract: bool = False
     breaking_change_reason: str | None = Field(default=None, max_length=2048)
+
+
+class WorkflowAppRuntimeConfigUpdateRequestBody(BaseModel):
+    """描述 Runtime 停机更新运行配置请求。"""
+
+    expected_generation: int = Field(ge=0)
+    display_name: str | None = Field(default=None, max_length=200)
+    request_timeout_seconds: int | None = Field(default=None, ge=1)
+    workflow_run_record_mode: Literal["none", "minimal", "full"] | None = None
+    return_diagnostics: bool | None = None
 
 
 class WorkflowRuntimeInvokeRequestBody(BaseModel):

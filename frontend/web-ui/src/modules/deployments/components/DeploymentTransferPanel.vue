@@ -48,7 +48,7 @@
               </span>
               <div class="transfer-summary">
                 <strong>{{ tr('selectFile') }}</strong>
-                <span>{{ trOpt('selectPackageHint', '支持 .zip 离线部署实例包，包含模型权重、运行产物、契约与配置。', 'Supports .zip offline deployment packages containing model weights, runtime artifacts, contract, and configuration.') }}</span>
+                <span>{{ trOpt('selectPackageHint', '支持 .zip 离线部署实例包，包含模型权重、运行产物、接口定义与配置。', 'Supports .zip offline deployment packages containing model weights, runtime artifacts, schema, and configuration.') }}</span>
               </div>
               <Button variant="secondary" size="sm" :disabled="busy" @click="emit('chooseFile')">{{ tr('selectFile') }}</Button>
             </div>

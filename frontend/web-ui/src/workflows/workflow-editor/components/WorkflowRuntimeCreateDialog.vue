@@ -1,9 +1,9 @@
 <template>
   <ConfirmDialog
     v-if="open"
-    :title="t('workflowEditor.appDetail.actions.createRuntime')"
-    :confirm-label="t('workflowEditor.appDetail.actions.createRuntime')"
-    :cancel-label="t('common.cancel')"
+    title="创建运行实例"
+    confirm-label="创建实例"
+    cancel-label="取消"
     :busy="busy"
     :confirm-disabled="!selectedVersionId || !timeoutValid"
     confirm-variant="primary"
@@ -11,32 +11,33 @@
     @cancel="emit('cancel')"
     @confirm="confirmCreate"
   >
-    <label class="workflow-dialog-field">
-      <span>{{ t('workflowEditor.appDetail.fields.createFromVersion') }}</span>
+    <p v-if="appName" class="rt-create-subtitle">所属应用：{{ appName }}</p>
+
+    <label class="rt-form-row">
+      <span class="rt-form-label">实例名称</span>
+      <input
+        v-model="displayName"
+        type="text"
+        maxlength="200"
+        :disabled="busy"
+        placeholder="可选，默认使用应用名称"
+      />
+    </label>
+
+    <div class="rt-form-row">
+      <span class="rt-form-label">发布版本 <em>*</em></span>
       <Select
+        floating
         :model-value="selectedVersionId"
         :options="versionOptions"
+        :disabled="busy"
+        aria-label="发布版本"
         @update:model-value="selectedVersionId = readString($event)"
       />
-    </label>
-    <label class="workflow-dialog-field">
-      <span>{{ t('workflowEditor.appDetail.fields.workflowRunRecord') }}</span>
-      <Select
-        :model-value="workflowRunRecordMode"
-        :options="workflowRunRecordModeOptions"
-        @update:model-value="workflowRunRecordMode = readRecordMode($event)"
-      />
-    </label>
-    <label class="workflow-dialog-field">
-      <span>{{ t('workflowEditor.appDetail.fields.returnDiagnostics') }}</span>
-      <Select
-        :model-value="returnDiagnostics"
-        :options="returnDiagnosticsOptions"
-        @update:model-value="returnDiagnostics = readString($event) === 'true' ? 'true' : 'false'"
-      />
-    </label>
-    <label class="workflow-dialog-field">
-      <span>{{ t('workflowEditor.appDetail.fields.requestTimeoutSeconds') }}</span>
+    </div>
+
+    <label class="rt-form-row">
+      <span class="rt-form-label">{{ t('workflowEditor.appDetail.fields.requestTimeoutSeconds') }}</span>
       <input
         v-model="requestTimeoutSeconds"
         type="number"
@@ -48,6 +49,32 @@
         :placeholder="t('workflowEditor.appDetail.fields.serviceDefaultTimeout')"
       />
     </label>
+
+    <div class="rt-form-row">
+      <span class="rt-form-label">执行记录 <em>*</em></span>
+      <Select
+        floating
+        :model-value="workflowRunRecordMode"
+        :options="workflowRunRecordModeOptions"
+        :disabled="busy"
+        aria-label="执行记录"
+        @update:model-value="workflowRunRecordMode = readRecordMode($event)"
+      />
+    </div>
+
+    <div class="rt-form-row">
+      <span class="rt-form-label">返回诊断 <em>*</em></span>
+      <Select
+        floating
+        :model-value="returnDiagnostics"
+        :options="returnDiagnosticsOptions"
+        :disabled="busy"
+        aria-label="返回诊断"
+        @update:model-value="returnDiagnostics = readString($event) === 'true' ? 'true' : 'false'"
+      />
+    </div>
+
+    <p class="rt-form-note">创建后处于停止状态。</p>
     <InlineError v-if="!timeoutValid" :message="t('workflowEditor.appDetail.fields.invalidRequestTimeout')" />
     <InlineError v-if="errorMessage" :message="errorMessage" />
   </ConfirmDialog>
@@ -65,6 +92,7 @@ type SelectValue = string | number | boolean | null
 type WorkflowRunRecordMode = 'full' | 'minimal' | 'none'
 
 interface WorkflowRuntimeCreateDialogValue {
+  displayName?: string
   workflowAppVersionId: string
   workflowRunRecordMode: WorkflowRunRecordMode
   returnDiagnostics: boolean
@@ -80,6 +108,7 @@ interface SelectOption {
 const props = defineProps<{
   open: boolean
   busy: boolean
+  appName?: string
   defaultVersionId: string
   versionOptions: SelectOption[]
   errorMessage?: string | null
@@ -91,6 +120,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const displayName = ref('')
 const selectedVersionId = ref('')
 const workflowRunRecordMode = ref<WorkflowRunRecordMode>('none')
 const returnDiagnostics = ref('false')
@@ -102,20 +132,21 @@ const timeoutValid = computed(() => requestTimeoutSeconds.value === '' || (
 ))
 
 const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
-  { label: 'none', value: 'none', description: t('workflowEditor.appDetail.options.recordNone') },
-  { label: 'minimal', value: 'minimal', description: t('workflowEditor.appDetail.options.recordMinimal') },
-  { label: 'full', value: 'full', description: t('workflowEditor.appDetail.options.recordFull') },
+  { label: '不保存', value: 'none', description: t('workflowEditor.appDetail.options.recordNone') },
+  { label: '摘要', value: 'minimal', description: t('workflowEditor.appDetail.options.recordMinimal') },
+  { label: '完整', value: 'full', description: t('workflowEditor.appDetail.options.recordFull') },
 ])
 
 const returnDiagnosticsOptions = computed<SelectOption[]>(() => [
-  { label: t('workflowEditor.appDetail.options.no'), value: 'false', description: t('workflowEditor.appDetail.options.diagnosticsOff') },
-  { label: t('workflowEditor.appDetail.options.yes'), value: 'true', description: t('workflowEditor.appDetail.options.diagnosticsOn') },
+  { label: '关闭', value: 'false', description: t('workflowEditor.appDetail.options.diagnosticsOff') },
+  { label: '开启', value: 'true', description: t('workflowEditor.appDetail.options.diagnosticsOn') },
 ])
 
 watch(
   () => props.open,
   (open) => {
     if (!open) return
+    displayName.value = ''
     selectedVersionId.value = props.defaultVersionId
     workflowRunRecordMode.value = 'none'
     returnDiagnostics.value = 'false'
@@ -135,7 +166,9 @@ function readRecordMode(value: SelectValue): WorkflowRunRecordMode {
 
 function confirmCreate(): void {
   if (!selectedVersionId.value || !timeoutValid.value || props.busy) return
+  const trimmedName = displayName.value.trim()
   emit('create', {
+    ...(trimmedName ? { displayName: trimmedName } : {}),
     workflowAppVersionId: selectedVersionId.value,
     workflowRunRecordMode: workflowRunRecordMode.value,
     returnDiagnostics: returnDiagnostics.value === 'true',
@@ -145,14 +178,50 @@ function confirmCreate(): void {
 </script>
 
 <style scoped>
-.workflow-dialog-field {
-  display: grid;
-  gap: var(--am-space-sm);
+.rt-create-subtitle {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--am-text-muted);
 }
 
-.workflow-dialog-field > span {
+.rt-form-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.rt-form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--am-text-strong);
+}
+
+.rt-form-label em {
+  color: #dc2626;
+  font-style: normal;
+}
+
+.rt-form-row input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--am-border-strong);
+  border-radius: var(--am-radius-sm);
+  background: var(--am-input);
   color: var(--am-text-strong);
   font-size: 13px;
-  font-weight: 700;
+}
+
+.rt-form-row input:focus-visible {
+  outline: 2px solid var(--am-input-focus-ring);
+  outline-offset: 1px;
+}
+
+.rt-form-note {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--am-text-muted);
 }
 </style>

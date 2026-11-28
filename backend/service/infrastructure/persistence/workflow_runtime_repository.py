@@ -1286,6 +1286,41 @@ class SqlAlchemyWorkflowRuntimeRepository:
             ) from error
         return bool(result.rowcount == 1)
 
+    def compare_and_set_workflow_app_runtime_config(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+        *,
+        expected_generation: int,
+    ) -> bool:
+        """在 stopped 或 failed 状态下按 generation CAS 更新运行实例配置。"""
+
+        statement = (
+            update(WorkflowAppRuntimeRecord)
+            .where(
+                WorkflowAppRuntimeRecord.workflow_runtime_id
+                == workflow_app_runtime.workflow_runtime_id,
+                WorkflowAppRuntimeRecord.revision_generation == expected_generation,
+                WorkflowAppRuntimeRecord.desired_state == "stopped",
+                WorkflowAppRuntimeRecord.observed_state.in_(("stopped", "failed")),
+            )
+            .values(
+                display_name=workflow_app_runtime.display_name,
+                request_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
+                desired_revision_id=workflow_app_runtime.desired_revision_id,
+                revision_generation=workflow_app_runtime.revision_generation,
+                updated_at=workflow_app_runtime.updated_at,
+                metadata_json=dict(workflow_app_runtime.metadata),
+            )
+        )
+        try:
+            result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "CAS 更新 WorkflowAppRuntime 配置失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(result.rowcount == 1)
+
     def update_workflow_app_runtime_state_if_current(
         self,
         workflow_app_runtime: WorkflowAppRuntime,
@@ -1555,6 +1590,42 @@ class SqlAlchemyWorkflowRuntimeRepository:
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
                 "列出 WorkflowRun 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._run_to_domain(record) for record in records)
+
+    def list_workflow_runs_filtered(
+        self,
+        *,
+        project_id: str,
+        workflow_runtime_id: str | None = None,
+        application_id: str | None = None,
+        state: str | None = None,
+    ) -> tuple[WorkflowRun, ...]:
+        """按 Project 与可选 Runtime、Application、状态过滤列出 WorkflowRun。"""
+
+        statement = select(WorkflowRunRecord).where(
+            WorkflowRunRecord.project_id == project_id
+        )
+        if workflow_runtime_id is not None:
+            statement = statement.where(
+                WorkflowRunRecord.workflow_runtime_id == workflow_runtime_id
+            )
+        if application_id is not None:
+            statement = statement.where(
+                WorkflowRunRecord.application_id == application_id
+            )
+        if state is not None:
+            statement = statement.where(WorkflowRunRecord.state == state)
+        statement = statement.order_by(
+            WorkflowRunRecord.created_at.desc(),
+            WorkflowRunRecord.workflow_run_id.desc(),
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按条件列出 WorkflowRun 失败",
                 details={"error_type": error.__class__.__name__},
             ) from error
         return tuple(self._run_to_domain(record) for record in records)

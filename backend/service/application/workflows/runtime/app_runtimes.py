@@ -103,6 +103,48 @@ def normalize_select_version_request(
     )
 
 
+@dataclass(frozen=True)
+class WorkflowAppRuntimeConfigUpdateRequest:
+    """描述 Runtime 停机更新运行配置的请求。"""
+
+    expected_generation: int
+    display_name: str | None = None
+    request_timeout_seconds: int | None = None
+    workflow_run_record_mode: str | None = None
+    return_diagnostics: bool | None = None
+
+
+def normalize_update_runtime_config_request(
+    request: WorkflowAppRuntimeConfigUpdateRequest,
+) -> WorkflowAppRuntimeConfigUpdateRequest:
+    """规范化并校验 Runtime 配置更新请求。"""
+
+    if request.expected_generation < 0:
+        raise InvalidRequestError("expected_generation 不能小于 0")
+    normalized_name: str | None = None
+    if request.display_name is not None:
+        normalized_name = request.display_name.strip()
+        if not normalized_name:
+            raise InvalidRequestError("实例名称不能为空")
+    if request.request_timeout_seconds is not None and request.request_timeout_seconds <= 0:
+        raise InvalidRequestError("request_timeout_seconds 必须大于 0")
+    normalized_record_mode: str | None = None
+    if request.workflow_run_record_mode is not None:
+        normalized_record_mode = request.workflow_run_record_mode.strip().lower()
+        if normalized_record_mode not in {"none", "minimal", "full"}:
+            raise InvalidRequestError(
+                "workflow_run_record_mode 只能是 none、minimal 或 full",
+                details={"workflow_run_record_mode": request.workflow_run_record_mode},
+            )
+    return WorkflowAppRuntimeConfigUpdateRequest(
+        expected_generation=request.expected_generation,
+        display_name=normalized_name,
+        request_timeout_seconds=request.request_timeout_seconds,
+        workflow_run_record_mode=normalized_record_mode,
+        return_diagnostics=request.return_diagnostics,
+    )
+
+
 def with_runtime_resource_updated_by(
     metadata: dict[str, object],
     updated_by: str | None,

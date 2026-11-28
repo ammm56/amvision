@@ -87,7 +87,7 @@ const groups = computed<ConditionGroup[]>(() => {
       ],
     },
     {
-      title: label('预处理（模型契约）', 'Preprocessing (model contract)'),
+      title: label('预处理（模型配置）', 'Preprocessing (model config)'),
       fields: [
         { label: label('输入尺寸', 'Input size'), value: input ? `${input.width} × ${input.height}` : notRecorded.value },
         { label: label('通道顺序', 'Color space'), value: text(execution?.model_input_spec?.color_space) },

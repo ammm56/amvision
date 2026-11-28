@@ -47,7 +47,7 @@ describe('WorkflowRuntimeDetailsDrawer', () => {
     await flushPromises()
     const drawer = document.querySelector('[role="dialog"]') as HTMLElement
     expect(drawer.textContent).toContain('workflow-runtime-test')
-    expect(drawer.textContent).toContain('Generation')
+    expect(drawer.textContent).toContain('修订次数')
     expect(drawer.textContent).toContain('3')
     expect(drawer.textContent).toContain('local_buffer_broker')
     expect(drawer.textContent).toContain('healthy')

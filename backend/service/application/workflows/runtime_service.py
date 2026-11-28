@@ -86,12 +86,14 @@ from backend.service.application.workflows.runtime.policies import (
     should_return_workflow_timing_metadata,
 )
 from backend.service.application.workflows.runtime.app_runtimes import (
+    WorkflowAppRuntimeConfigUpdateRequest,
     WorkflowAppRuntimeCreateRequest,
     WorkflowAppRuntimeSelectVersionRequest,
     apply_observed_worker_health,
     apply_worker_state,
     normalize_app_runtime_create_request,
     normalize_select_version_request,
+    normalize_update_runtime_config_request,
     with_runtime_resource_updated_by,
 )
 from backend.service.application.workflows.runtime.invokes import (
@@ -716,6 +718,203 @@ class WorkflowRuntimeService:
         """按稳定 Runtime、revision id 和 Project 可见范围读取 revision。"""
 
         return self.queries.get_visible_workflow_runtime_revision(workflow_runtime_id, workflow_runtime_revision_id, visible_project_ids=visible_project_ids)
+
+    def list_workflow_runs(
+        self,
+        *,
+        project_id: str,
+        workflow_runtime_id: str | None = None,
+        application_id: str | None = None,
+        state: str | None = None,
+    ) -> tuple[WorkflowRun, ...]:
+        """按 Project 与可选过滤条件列出持久化 WorkflowRun。"""
+
+        return self.queries.list_workflow_runs(
+            project_id=project_id,
+            workflow_runtime_id=workflow_runtime_id,
+            application_id=application_id,
+            state=state,
+        )
+
+    def update_workflow_app_runtime_config(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowAppRuntimeConfigUpdateRequest,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
+        """在停机且无活动执行/启用 Trigger 的前提下更新 Runtime 运行配置。"""
+
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        with self._project_control_mutation(
+            project_id=workflow_app_runtime.project_id,
+            resource_kind="runtime",
+            identity_parts=(workflow_runtime_id,),
+        ):
+            with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+                return self._update_workflow_app_runtime_config(
+                    workflow_runtime_id,
+                    request,
+                    updated_by=updated_by,
+                )
+
+    def _update_workflow_app_runtime_config(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowAppRuntimeConfigUpdateRequest,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
+        """在已持有生命周期锁时校验并保存运行实例配置，下次启动生效。"""
+
+        normalized_request = normalize_update_runtime_config_request(request)
+        live_state = self.worker_manager.get_runtime_health(workflow_runtime_id)
+        if live_state.observed_state != "stopped" or live_state.current_run_id is not None:
+            raise ResourceConflictError(
+                "修改配置前必须确认 Runtime worker 已完全停止",
+                details={
+                    "observed_state": live_state.observed_state,
+                    "current_run_id": live_state.current_run_id,
+                },
+            )
+        with self._open_unit_of_work() as unit_of_work:
+            current_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                workflow_runtime_id
+            )
+            if current_runtime is None:
+                raise ResourceNotFoundError("请求的 WorkflowAppRuntime 不存在")
+            if current_runtime.revision_generation != normalized_request.expected_generation:
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime generation 已发生变化",
+                    details={
+                        "expected_generation": normalized_request.expected_generation,
+                        "current_generation": current_runtime.revision_generation,
+                    },
+                )
+            if (
+                current_runtime.desired_state != "stopped"
+                or current_runtime.observed_state not in {"stopped", "failed"}
+            ):
+                raise ResourceConflictError(
+                    "修改配置前必须停止 WorkflowAppRuntime",
+                    details={
+                        "desired_state": current_runtime.desired_state,
+                        "observed_state": current_runtime.observed_state,
+                    },
+                )
+            active_runs = (
+                unit_of_work.workflow_runtime.list_active_workflow_runs_for_runtime(
+                    workflow_runtime_id
+                )
+            )
+            if active_runs:
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime 仍有活动 WorkflowRun",
+                    details={"workflow_run_ids": [item.workflow_run_id for item in active_runs]},
+                )
+            trigger_sources = (
+                unit_of_work.workflow_trigger_sources.list_trigger_sources_by_runtime(
+                    workflow_runtime_id
+                )
+            )
+            active_triggers = [
+                item
+                for item in trigger_sources
+                if item.enabled
+                or item.desired_state != "stopped"
+                or item.observed_state != "stopped"
+            ]
+            if active_triggers:
+                raise ResourceConflictError(
+                    "修改配置前必须停用全部绑定 TriggerSource",
+                    details={
+                        "trigger_source_ids": [
+                            item.trigger_source_id for item in active_triggers
+                        ]
+                    },
+                )
+
+            next_metadata = dict(current_runtime.metadata)
+            raw_exec_meta = next_metadata.get("default_execution_metadata")
+            exec_meta = dict(raw_exec_meta) if isinstance(raw_exec_meta, dict) else {}
+            if normalized_request.workflow_run_record_mode is not None:
+                exec_meta["workflow_run_record_mode"] = normalized_request.workflow_run_record_mode
+            if normalized_request.return_diagnostics is not None:
+                exec_meta["return_timing_metadata_enabled"] = normalized_request.return_diagnostics
+                exec_meta["return_node_timings_enabled"] = normalized_request.return_diagnostics
+            next_metadata["default_execution_metadata"] = exec_meta
+            next_metadata = with_runtime_resource_updated_by(next_metadata, updated_by)
+
+            now = _now_isoformat()
+            new_generation = normalized_request.expected_generation + 1
+            current_desired_revision = (
+                unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                    current_runtime.desired_revision_id
+                )
+                if current_runtime.desired_revision_id is not None
+                else None
+            )
+            new_revision: WorkflowRuntimeRevision | None = None
+            if current_desired_revision is not None:
+                # 同步生成对应 generation 的 staged revision，保证后续 start/activate 时的代际栅栏一致
+                new_revision = WorkflowRuntimeRevision(
+                    workflow_runtime_revision_id=f"workflow-runtime-revision-{uuid4().hex}",
+                    workflow_runtime_id=workflow_runtime_id,
+                    generation=new_generation,
+                    workflow_app_version_id=current_desired_revision.workflow_app_version_id,
+                    execution_policy_snapshot_object_key=(
+                        current_runtime.execution_policy_snapshot_object_key
+                    ),
+                    expected_snapshot_fingerprint=(
+                        current_desired_revision.expected_snapshot_fingerprint
+                    ),
+                    state="staged",
+                    created_at=now,
+                    created_by=_normalize_optional_str(updated_by),
+                )
+
+            updated_runtime = replace(
+                current_runtime,
+                display_name=(
+                    normalized_request.display_name
+                    if normalized_request.display_name is not None
+                    else current_runtime.display_name
+                ),
+                request_timeout_seconds=(
+                    normalized_request.request_timeout_seconds
+                    if normalized_request.request_timeout_seconds is not None
+                    else current_runtime.request_timeout_seconds
+                ),
+                desired_revision_id=(
+                    new_revision.workflow_runtime_revision_id
+                    if new_revision is not None
+                    else current_runtime.desired_revision_id
+                ),
+                revision_generation=new_generation,
+                updated_at=now,
+                metadata=next_metadata,
+            )
+            updated = unit_of_work.workflow_runtime.compare_and_set_workflow_app_runtime_config(
+                updated_runtime,
+                expected_generation=normalized_request.expected_generation,
+            )
+            if not updated:
+                unit_of_work.rollback()
+                raise ResourceConflictError("WorkflowAppRuntime 状态已发生变化，请刷新后重试")
+            if new_revision is not None:
+                unit_of_work.workflow_runtime.add_workflow_runtime_revision(new_revision)
+            unit_of_work.commit()
+
+        self._append_workflow_app_runtime_event(
+            updated_runtime,
+            event_type="runtime.config_updated",
+            message="workflow app runtime 配置已更新，将在下次启动生效",
+            payload={
+                "generation": updated_runtime.revision_generation,
+                "request_timeout_seconds": updated_runtime.request_timeout_seconds,
+            },
+        )
+        return updated_runtime
 
     def select_workflow_app_runtime_version(
         self,

@@ -25,6 +25,7 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.responses impor
     build_workflow_runtime_revision_contract as _build_workflow_runtime_revision_contract,
 )
 from backend.service.api.rest.v1.routes.workflow_runtime_support.schemas import (
+    WorkflowAppRuntimeConfigUpdateRequestBody,
     WorkflowAppRuntimeCreateRequestBody,
     WorkflowAppRuntimeSelectVersionRequestBody,
 )
@@ -34,6 +35,7 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.services import
     ensure_project_visible as _ensure_project_visible,
 )
 from backend.service.application.workflows.runtime.app_runtimes import (
+    WorkflowAppRuntimeConfigUpdateRequest,
     WorkflowAppRuntimeCreateRequest,
     WorkflowAppRuntimeSelectVersionRequest,
 )
@@ -175,6 +177,42 @@ def select_workflow_app_runtime_version(
     )
     return _build_workflow_app_runtime_contract(
         selected_runtime,
+        workflow_service=_build_workflow_json_service_from_request(request),
+    )
+
+
+@workflow_app_runtimes_router.patch(
+    "/app-runtimes/{workflow_runtime_id}",
+    response_model=WorkflowAppRuntimeContract,
+)
+def update_workflow_app_runtime_config(
+    workflow_runtime_id: str,
+    body: WorkflowAppRuntimeConfigUpdateRequestBody,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))
+    ],
+) -> WorkflowAppRuntimeContract:
+    """在停机且无活动执行或启用触发器时更新运行实例配置。"""
+
+    runtime_service = _build_workflow_runtime_service(request)
+    runtime_service.get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
+    )
+    updated_runtime = runtime_service.update_workflow_app_runtime_config(
+        workflow_runtime_id,
+        WorkflowAppRuntimeConfigUpdateRequest(
+            expected_generation=body.expected_generation,
+            display_name=body.display_name,
+            request_timeout_seconds=body.request_timeout_seconds,
+            workflow_run_record_mode=body.workflow_run_record_mode,
+            return_diagnostics=body.return_diagnostics,
+        ),
+        updated_by=principal.principal_id,
+    )
+    return _build_workflow_app_runtime_contract(
+        updated_runtime,
         workflow_service=_build_workflow_json_service_from_request(request),
     )
 

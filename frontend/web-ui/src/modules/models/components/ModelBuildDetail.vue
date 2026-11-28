@@ -47,12 +47,12 @@
       </table></div></section>
       <section><h4>{{ zh ? '输出' : 'Output' }}</h4><div class="resource-table"><table>
         <thead><tr><th scope="col">{{ zh ? '名称' : 'Name' }}</th><th scope="col">{{ zh ? '说明' : 'Description' }}</th></tr></thead>
-        <tbody><tr><td>{{ outputNames }}</td><td>{{ outputNames !== '—' && postprocess ? (zh ? '按后处理契约解析' : 'Apply the postprocessing contract') : '—' }}</td></tr></tbody>
+        <tbody><tr><td>{{ outputNames }}</td><td>{{ outputNames !== '—' && postprocess ? (zh ? '按后处理规则解析' : 'Apply the postprocessing spec') : '—' }}</td></tr></tbody>
       </table></div></section>
     </div>
     <div class="model-build-detail__contracts">
       <section><h3>{{ zh ? '类别信息' : 'Classes' }}</h3><p v-if="!categories.length">{{ zh ? '暂无类别信息' : 'No class information' }}</p><div v-else class="resource-table"><table><thead><tr><th scope="col">ID</th><th scope="col">{{ zh ? '类别名称' : 'Class name' }}</th></tr></thead><tbody><tr v-for="category in categories" :key="category.id"><td>{{ category.id }}</td><td>{{ category.name }}</td></tr></tbody></table></div></section>
-      <section><h3>{{ zh ? '预处理与后处理' : 'Preprocessing and postprocessing' }}</h3><dl><div v-for="entry in contractEntries" :key="entry.label"><dt>{{ entry.label }}</dt><dd>{{ entry.value }}</dd></div></dl><p v-if="!contractEntries.length">{{ zh ? '暂无契约信息' : 'No contract information' }}</p></section>
+      <section><h3>{{ zh ? '预处理与后处理' : 'Preprocessing and postprocessing' }}</h3><dl><div v-for="entry in contractEntries" :key="entry.label"><dt>{{ entry.label }}</dt><dd>{{ entry.value }}</dd></div></dl><p v-if="!contractEntries.length">{{ zh ? '暂无配置信息' : 'No configuration information' }}</p></section>
     </div>
   </section>
 </template>
@@ -220,7 +220,7 @@ const contractEntries = computed(() => [
   { label: zh.value ? '颜色空间' : 'Color space', value: inputSpec.value.color_space },
   { label: zh.value ? '预处理' : 'Preprocess', value: preprocessLabel.value },
   { label: zh.value ? '归一化' : 'Normalization', value: normalizationLabel.value },
-  { label: zh.value ? '后处理契约' : 'Postprocessing contract', value: inputSpec.value.postprocess_contract },
+  { label: zh.value ? '后处理规则' : 'Postprocessing rule', value: inputSpec.value.postprocess_contract },
 ].filter((entry): entry is { label: string; value: string } => typeof entry.value === 'string' && !!entry.value))
 </script>
 
