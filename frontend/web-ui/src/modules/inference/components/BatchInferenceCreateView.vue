@@ -2119,11 +2119,14 @@ function formatSize(bytes: number): string {
 .inf-bc-save-dd {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 
 .inf-bc-save-pill {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 2px 10px;
   border-radius: 999px;
   font-size: 12px;

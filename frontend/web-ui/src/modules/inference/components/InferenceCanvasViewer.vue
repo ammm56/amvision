@@ -217,6 +217,11 @@
         <p>{{ sourceError }}</p>
       </div>
 
+      <div v-else-if="loadingImage && !imageSrc" class="inf-viewer__empty">
+        <RefreshCw :size="28" class="inf-spin" />
+        <p>加载图像中...</p>
+      </div>
+
       <div v-else-if="!imageSrc" class="inf-viewer__empty">
         <ImageIcon :size="36" />
         <p>选择图片后开始推理</p>
@@ -401,6 +406,7 @@ const props = withDefaults(
     imageHeight?: number
     taskType: ModelTaskType
     hasResult?: boolean
+    loadingImage?: boolean
     inspectorOpen?: boolean
     noDeployment?: boolean
     sourceError?: string | null
@@ -422,6 +428,7 @@ const props = withDefaults(
     imageWidth: 0,
     imageHeight: 0,
     hasResult: false,
+    loadingImage: false,
     inspectorOpen: false,
     noDeployment: false,
     sourceError: null,
@@ -1046,5 +1053,18 @@ defineExpose({ fitToContainer, resetToFit, zoomToOne })
 
 .inf-overlay-item.is-selected {
   filter: drop-shadow(0 0 4px rgb(255 255 255 / 0.85));
+}
+
+.inf-spin {
+  animation: inf-spin 0.9s linear infinite;
+}
+
+@keyframes inf-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

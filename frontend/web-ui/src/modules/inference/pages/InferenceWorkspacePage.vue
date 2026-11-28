@@ -11,7 +11,7 @@
         label="在线推理"
         @update:model-value="setActiveTab"
       />
-      <div v-if="activeTab === 'tasks' && tasksViewMode === 'list'" class="inf-nav__actions">
+      <div v-if="activeTab === 'tasks' && tasksViewMode === 'list' && canWriteTasks" class="inf-nav__actions">
         <Button variant="primary" data-create-batch-btn @click="startBatchCreate">
           <Plus :size="15" />
           新建批量任务
@@ -20,6 +20,11 @@
     </nav>
 
     <InlineError :message="errorMessage" />
+
+    <div v-if="isReadOnlyUser" class="inf-readonly-banner" role="status" data-readonly-banner>
+      <Info :size="15" />
+      <span>当前账号为只读权限：仅可查看与导出结果，不可提交异步或批量任务，也不可取消或删除记录。</span>
+    </div>
 
     <template v-if="activeTab === 'workbench'">
       <section class="inf-target-bar">
@@ -43,8 +48,11 @@
         <div class="inf-target-bar__right">
           <template v-if="selectedDeployment">
             <span class="inf-status-dot-label">
-              <span class="inf-status-dot" :class="syncReady ? 'is-ok' : 'is-warn'" />
-              <span>{{ syncStatusLabel }}</span>
+              <span
+                class="inf-status-dot"
+                :class="versionChangedNotice || !activeChannelReady ? 'is-warn' : 'is-ok'"
+              />
+              <span>{{ versionChangedNotice ? '版本已更新' : activeChannelStatusLabel }}</span>
             </span>
             <RouterLink :to="`/deployments`" class="inf-deploy-link-btn">
               查看部署
@@ -57,12 +65,36 @@
         </div>
       </section>
 
+      <div v-if="versionChangedNotice" class="inf-version-banner" role="alert" data-version-changed-banner>
+        <div class="inf-version-banner__left">
+          <AlertTriangle :size="15" />
+          <span>
+            部署版本已更新：<strong>{{ versionChangedNotice.fromLabel }}</strong> → <strong>{{ versionChangedNotice.toLabel }}</strong>
+          </span>
+        </div>
+        <div class="inf-version-banner__actions">
+          <Button size="sm" variant="primary" data-confirm-version-update @click="confirmDeploymentVersionUpdate">
+            使用当前版本
+          </Button>
+          <Button size="sm" variant="secondary" data-change-deployment @click="clearDeploymentSelection">
+            更换部署
+          </Button>
+        </div>
+      </div>
+
       <div class="inf-workbench-grid">
         <InferenceInputPanel
           :project-id="selectedProjectId"
           :task-type="activeTaskType"
           :deployment-input-size="selectedDeployment?.input_size || null"
           :source-mode="sourceMode"
+          :invocation-mode="invocationMode"
+          :async-task-name="asyncTaskName"
+          :async-ready="asyncReady"
+          :read-only="isReadOnlyUser"
+          :can-submit-async="canWriteTasks"
+          :async-error="asyncError"
+          :version-blocked="Boolean(versionChangedNotice)"
           :uploaded-file="uploadedFile"
           :selected-file-id="existingFileId"
           :selected-file-label="existingFileLabel"
@@ -86,6 +118,8 @@
           :lookup-loading="lookupLoading"
           :last-request-id="lastRequestId"
           @update:source-mode="handleSourceModeChange"
+          @update:invocation-mode="handleInvocationModeChange"
+          @update:async-task-name="asyncTaskName = $event"
           @update:uploaded-file="handleUploadedFileChange"
           @update:existing-selection="handleExistingSelection"
           @update:input-uri="handleUriChange"
@@ -96,7 +130,8 @@
           @update:keypoint-confidence-threshold="keypointConfidenceThreshold = $event"
           @update:save-result="saveResult = $event"
           @update:result-name="resultName = $event"
-          @run="runSyncInference"
+          @run="handleRunAction"
+          @open-tasks="setActiveTab('tasks')"
           @lookup-timeout="lookupTimedOutSave"
           @recheck-input="recheckInputSource"
         />
@@ -107,7 +142,7 @@
             :image-width="currentImageWidth || 0"
             :image-height="currentImageHeight || 0"
             :task-type="activeTaskType"
-            :has-result="Boolean(inferenceResult)"
+            :has-result="Boolean(inferenceResult) && !versionChangedNotice"
             :inspector-open="inspectorOpen"
             :no-deployment="!loading && deployments.length === 0"
             :source-error="sourceError"
@@ -261,7 +296,7 @@
                   </span>
                 </div>
 
-                <div v-if="inferenceResult" class="inf-canvas-footer__row inf-canvas-footer__row--result">
+                <div v-if="inferenceResult && !versionChangedNotice" class="inf-canvas-footer__row inf-canvas-footer__row--result">
                   <div class="inf-canvas-footer__stats">
                     <span class="inf-status-dot-label is-brand">
                       <span class="inf-status-dot is-ok" />
@@ -353,14 +388,17 @@
         v-else-if="tasksViewMode === 'detail' && activeBatchTaskId"
         :batch-task-id="activeBatchTaskId"
         :deployments="deployments"
+        :can-write-tasks="canWriteTasks"
         @back="closeBatchDetail"
         @deleted="handleBatchDeleted"
         @retry-failed-items="retryBatchFailedItems"
       />
       <InferenceTasksTab
         v-else
+        :key="tasksRefreshKey"
         :project-id="selectedProjectId"
         :deployments="deployments"
+        :can-write-tasks="canWriteTasks"
         @open-create="startBatchCreate"
         @open-batch="openBatchDetail"
         @open-direct-record="openSavedRecordInWorkbench"
@@ -481,10 +519,11 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { AlertTriangle, ArrowLeft, Bookmark, Plus } from '@lucide/vue'
+import { AlertTriangle, ArrowLeft, Bookmark, Info, Plus } from '@lucide/vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import { useProjectStore } from '@/app/stores/project.store'
+import { useSessionStore } from '@/app/stores/session.store'
 import {
   listTaskDeployments,
   runTaskDeploymentStatusAction,
@@ -502,7 +541,10 @@ import BatchInferenceDetailView from '../components/BatchInferenceDetailView.vue
 import DeploymentTargetSelect from '../components/DeploymentTargetSelect.vue'
 import type { ExistingFileSelectionResult } from '../components/ExistingFilePickerDrawer.vue'
 import InferenceCanvasViewer from '../components/InferenceCanvasViewer.vue'
-import InferenceInputPanel, { type InferenceSourceMode } from '../components/InferenceInputPanel.vue'
+import InferenceInputPanel, {
+  type InferenceInvocationMode,
+  type InferenceSourceMode,
+} from '../components/InferenceInputPanel.vue'
 import InferenceResultInspector, {
   type InspectorDeploymentMeta,
 } from '../components/InferenceResultInspector.vue'
@@ -517,6 +559,7 @@ import {
   type OverlayRenderItem,
 } from '../components/inference-overlay.utils'
 import {
+  createTaskInferenceTask,
   fetchAuthorizedProjectFileBlob,
   fetchDirectInferenceRecordImageBlob,
   getDirectInferenceRecord,
@@ -535,6 +578,10 @@ import {
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
+const sessionStore = useSessionStore()
+
+const canWriteTasks = computed(() => !sessionStore.currentUser || sessionStore.hasScopes(['tasks:write']))
+const isReadOnlyUser = computed(() => Boolean(sessionStore.currentUser) && !sessionStore.hasScopes(['tasks:write']))
 
 const activeTab = ref<'workbench' | 'tasks'>(route.query.tab === 'tasks' ? 'tasks' : 'workbench')
 const tasksViewMode = ref<'list' | 'create' | 'detail'>(
@@ -543,6 +590,7 @@ const tasksViewMode = ref<'list' | 'create' | 'detail'>(
 const activeBatchTaskId = ref(
   typeof route.query.batch_id === 'string' ? route.query.batch_id : '',
 )
+const tasksRefreshKey = ref(0)
 const createSeedDeploymentId = ref('')
 const createSeedFileIds = ref<string[]>([])
 const pageTabs = [
@@ -558,11 +606,25 @@ const errorMessage = ref<string | null>(null)
 const sourceError = ref<string | null>(null)
 const overloadMessage = ref<string | null>(null)
 const saveErrorMessage = ref<string | null>(null)
+const asyncError = ref<string | null>(null)
 const deployments = ref<TaskDeploymentInstance[]>([])
 const selectedDeploymentId = ref('')
 const syncStatus = ref<TaskDeploymentProcessStatus | null>(null)
+const asyncStatus = ref<TaskDeploymentProcessStatus | null>(null)
+const pinnedDeploymentVersion = ref<{
+  deploymentId: string
+  modelVersionId: string
+  versionLabel: string
+} | null>(null)
+const versionChangedNotice = ref<{
+  fromLabel: string
+  toLabel: string
+  nextVersionId: string
+} | null>(null)
 
 const sourceMode = ref<InferenceSourceMode>('upload')
+const invocationMode = ref<InferenceInvocationMode>('sync')
+const asyncTaskName = ref('')
 const uploadedFile = ref<File | null>(null)
 const uploadObjectUrl = ref<string | null>(null)
 const existingFileId = ref('')
@@ -656,6 +718,20 @@ const syncStatusLabel = computed(() => {
   if (!syncStatus.value) return '状态未知'
   if (syncStatus.value.process_state === 'running') return '运行正常'
   return `同步${syncStatus.value.process_state}`
+})
+
+const asyncReady = computed(() => asyncStatus.value?.process_state === 'running')
+
+const activeChannelReady = computed(() =>
+  invocationMode.value === 'async' ? asyncReady.value : syncReady.value,
+)
+
+const activeChannelStatusLabel = computed(() => {
+  if (invocationMode.value === 'async') {
+    if (!asyncStatus.value) return '异步状态未知'
+    return asyncReady.value ? '异步通道就绪' : '异步未启动'
+  }
+  return syncStatusLabel.value
 })
 
 const hasActiveInput = computed(() => {
@@ -764,6 +840,58 @@ function goToDeployments(): void {
   void router.push('/deployments')
 }
 
+function deploymentVersionLabel(dep: TaskDeploymentInstance): string {
+  return dep.model_name || dep.model_version_id
+}
+
+function pinDeploymentVersion(dep: TaskDeploymentInstance | null): void {
+  versionChangedNotice.value = null
+  if (!dep) {
+    pinnedDeploymentVersion.value = null
+    return
+  }
+  pinnedDeploymentVersion.value = {
+    deploymentId: dep.deployment_instance_id,
+    modelVersionId: dep.model_version_id,
+    versionLabel: deploymentVersionLabel(dep),
+  }
+}
+
+function checkPinnedDeploymentVersion(dep: TaskDeploymentInstance | null): void {
+  if (!dep) {
+    versionChangedNotice.value = null
+    return
+  }
+  const pinned = pinnedDeploymentVersion.value
+  if (!pinned || pinned.deploymentId !== dep.deployment_instance_id) {
+    pinDeploymentVersion(dep)
+    return
+  }
+  if (pinned.modelVersionId !== dep.model_version_id) {
+    versionChangedNotice.value = {
+      fromLabel: pinned.versionLabel,
+      toLabel: deploymentVersionLabel(dep),
+      nextVersionId: dep.model_version_id,
+    }
+  }
+}
+
+async function confirmDeploymentVersionUpdate(): Promise<void> {
+  const dep = selectedDeployment.value
+  if (!dep) return
+  pinDeploymentVersion(dep)
+  resetPredictionState()
+  await inspectSelectedDeploymentStatus()
+}
+
+function clearDeploymentSelection(): void {
+  selectedDeploymentId.value = ''
+  pinDeploymentVersion(null)
+  syncStatus.value = null
+  asyncStatus.value = null
+  resetPredictionState()
+}
+
 async function refreshContext(): Promise<void> {
   if (!selectedProjectId.value) return
   loading.value = true
@@ -780,8 +908,12 @@ async function refreshContext(): Promise<void> {
       : ''
     if (queryDeployId && deployments.value.some((d) => d.deployment_instance_id === queryDeployId)) {
       selectedDeploymentId.value = queryDeployId
+      pinDeploymentVersion(selectedDeployment.value)
     } else if (!deployments.value.some((d) => d.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
+      pinDeploymentVersion(selectedDeployment.value)
+    } else {
+      checkPinnedDeploymentVersion(selectedDeployment.value)
     }
     await inspectSelectedDeploymentStatus()
   } catch (err) {
@@ -794,6 +926,7 @@ async function refreshContext(): Promise<void> {
 async function selectDeployment(value: string | number | boolean | null): Promise<void> {
   if (typeof value !== 'string') return
   selectedDeploymentId.value = value
+  pinDeploymentVersion(selectedDeployment.value)
   resetPredictionState()
   await inspectSelectedDeploymentStatus()
 }
@@ -806,6 +939,7 @@ function resetPredictionState(): void {
   inspectorOpen.value = false
   saveErrorMessage.value = null
   overloadMessage.value = null
+  asyncError.value = null
   timeoutPending.value = false
   requestDurationMs.value = null
   completedAtText.value = '—'
@@ -815,18 +949,31 @@ async function inspectSelectedDeploymentStatus(): Promise<void> {
   const dep = selectedDeployment.value
   if (!dep || !SUPPORTED_INFERENCE_TASK_TYPES.includes(dep.task_type as ModelTaskType)) {
     syncStatus.value = null
+    asyncStatus.value = null
     return
   }
-  try {
-    syncStatus.value = await runTaskDeploymentStatusAction(
+  const [nextSync, nextAsync] = await Promise.all([
+    runTaskDeploymentStatusAction(
       dep.task_type as ModelTaskType,
       dep.deployment_instance_id,
       'sync',
       'status',
-    )
-  } catch {
-    syncStatus.value = null
-  }
+    ).catch(() => null),
+    runTaskDeploymentStatusAction(
+      dep.task_type as ModelTaskType,
+      dep.deployment_instance_id,
+      'async',
+      'status',
+    ).catch(() => null),
+  ])
+  syncStatus.value = nextSync
+  asyncStatus.value = nextAsync
+}
+
+function handleInvocationModeChange(mode: InferenceInvocationMode): void {
+  invocationMode.value = mode
+  asyncError.value = null
+  timeoutPending.value = false
 }
 
 function handleSourceModeChange(mode: InferenceSourceMode): void {
@@ -908,9 +1055,67 @@ function createClientRequestId(): string {
   return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+async function handleRunAction(): Promise<void> {
+  if (invocationMode.value === 'async') {
+    await submitAsyncInference()
+    return
+  }
+  await runSyncInference()
+}
+
+async function submitAsyncInference(): Promise<void> {
+  const dep = selectedDeployment.value
+  if (!dep || !hasActiveInput.value || !asyncReady.value || !canWriteTasks.value || versionChangedNotice.value) {
+    return
+  }
+  inferRunning.value = true
+  errorMessage.value = null
+  sourceError.value = null
+  asyncError.value = null
+  timeoutPending.value = false
+
+  const requestId = createClientRequestId()
+  lastRequestId.value = requestId
+
+  try {
+    await createTaskInferenceTask({
+      taskType: activeTaskType.value,
+      projectId: selectedProjectId.value,
+      deploymentInstanceId: dep.deployment_instance_id,
+      displayName: asyncTaskName.value.trim() || currentInputLabel.value,
+      inputFileId: sourceMode.value === 'existing' ? existingFileId.value : undefined,
+      inputUri: sourceMode.value === 'uri' ? inputUri.value.trim() : undefined,
+      imageBase64: sourceMode.value === 'base64' ? imageBase64.value.trim() : undefined,
+      inputImage: sourceMode.value === 'upload' ? uploadedFile.value : undefined,
+      inputTransportMode: sourceMode.value === 'existing' || sourceMode.value === 'uri' ? 'storage' : 'memory',
+      scoreThreshold: scoreThreshold.value,
+      topK: topK.value,
+      maskThreshold: maskThreshold.value,
+      keypointConfidenceThreshold: keypointConfidenceThreshold.value,
+      saveResultImage: saveResult.value,
+      returnPreviewImageBase64: false,
+      requestId,
+    })
+    asyncTaskName.value = ''
+    tasksRefreshKey.value++
+    setActiveTab('tasks')
+  } catch (err) {
+    if (
+      (err instanceof DOMException && err.name === 'AbortError') ||
+      (err instanceof ApiError && (err.status === 408 || err.status === 504))
+    ) {
+      timeoutPending.value = true
+      return
+    }
+    asyncError.value = getErrorMessage(err)
+  } finally {
+    inferRunning.value = false
+  }
+}
+
 async function runSyncInference(): Promise<void> {
   const dep = selectedDeployment.value
-  if (!dep || !hasActiveInput.value) return
+  if (!dep || !hasActiveInput.value || versionChangedNotice.value) return
   inferRunning.value = true
   errorMessage.value = null
   sourceError.value = null
@@ -1159,6 +1364,55 @@ function formatMs(value: number | null | undefined): string {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+}
+
+.inf-page--workbench {
+  min-width: 0;
+}
+
+.inf-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--am-border);
+  background: var(--am-surface-soft);
+  color: var(--am-text-muted);
+  font-size: 13px;
+  flex: none;
+}
+
+.inf-version-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent);
+  background: color-mix(in srgb, #f59e0b 10%, var(--am-surface));
+  flex: none;
+}
+
+.inf-version-banner__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b45309;
+  font-size: 13px;
+}
+
+:root[data-theme='dark'] .inf-version-banner__left {
+  color: #fbbf24;
+}
+
+.inf-version-banner__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 @media (min-width: 1081px) {

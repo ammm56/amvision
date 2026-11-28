@@ -109,7 +109,10 @@
           <div>
             <dt>保存状态</dt>
             <dd class="inf-save-status-dd">
-              <span v-if="savedRecord" class="inf-text-brand">已保存 ({{ savedRecord.record_id }})</span>
+              <span v-if="savedRecord" class="inf-saved-badge-row">
+                <span class="inf-text-brand">已保存</span>
+                <code class="inf-saved-record-id" :title="savedRecord.record_id">{{ savedRecord.record_id }}</code>
+              </span>
               <template v-else>
                 <span>未保存</span>
                 <Button size="sm" variant="secondary" :loading="savingRecord" @click="emit('save-record')">
@@ -534,15 +537,19 @@
       </template>
 
       <template v-else>
+        <div v-if="isJsonTruncated" class="inf-json-truncation-bar">
+          <span>{{ formatJsonSize(fullJsonByteSize) }} · 仅预览前 {{ MAX_JSON_PREVIEW_LINES }} 行（共 {{ allJsonLines.length }} 行）</span>
+        </div>
+
         <div class="inf-json-toolbar">
           <div class="inf-json-toolbar__btns">
-            <Button size="sm" variant="secondary" @click="copyText(jsonText)">
+            <Button size="sm" variant="secondary" @click="copyText(previewJsonText)">
               <Copy :size="13" />
-              {{ copiedToast ? '已复制' : '复制 JSON' }}
+              {{ copiedToast ? '已复制' : isJsonTruncated ? '复制当前片段' : '复制 JSON' }}
             </Button>
             <Button size="sm" variant="secondary" @click="downloadJson">
               <Download :size="13" />
-              下载 JSON
+              {{ isJsonTruncated ? '下载完整 JSON' : '下载 JSON' }}
             </Button>
           </div>
           <label class="inf-switch-inline">
@@ -562,9 +569,13 @@
 
         <div class="inf-json-box" :class="{ 'is-wrap': wrapJson }">
           <div class="inf-json-box__gutter" aria-hidden="true">
-            <span v-for="n in jsonLines.length" :key="n">{{ n }}</span>
+            <span v-for="n in previewJsonLines.length" :key="n">{{ n }}</span>
           </div>
-          <pre class="inf-json-box__code">{{ jsonText }}</pre>
+          <pre class="inf-json-box__code">{{ previewJsonText }}</pre>
+        </div>
+
+        <div v-if="isJsonTruncated" class="inf-json-more">
+          更多内容已省略，请点击“下载完整 JSON”查看全部内容。
         </div>
       </template>
     </div>
@@ -754,8 +765,27 @@ const serverPhaseSum = computed(() => {
   return values.reduce((acc, v) => acc + v, 0)
 })
 
-const jsonText = computed(() => (props.payload ? JSON.stringify(props.payload, null, 2) : '{}'))
-const jsonLines = computed(() => jsonText.value.split('\n'))
+const MAX_JSON_PREVIEW_LINES = 2000
+
+const fullJsonText = computed(() => (props.payload ? JSON.stringify(props.payload, null, 2) : '{}'))
+const fullJsonByteSize = computed(() => {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(fullJsonText.value).length
+  }
+  return fullJsonText.value.length
+})
+const allJsonLines = computed(() => fullJsonText.value.split('\n'))
+const isJsonTruncated = computed(() => allJsonLines.value.length > MAX_JSON_PREVIEW_LINES)
+const previewJsonLines = computed(() =>
+  isJsonTruncated.value ? allJsonLines.value.slice(0, MAX_JSON_PREVIEW_LINES) : allJsonLines.value,
+)
+const previewJsonText = computed(() => previewJsonLines.value.join('\n'))
+
+function formatJsonSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
 
 function toFiniteOrNull(val: unknown): number | null {
   return typeof val === 'number' && Number.isFinite(val) ? val : null
@@ -812,7 +842,7 @@ function saveBlobDownload(blob: Blob, filename: string): void {
 
 function downloadJson(): void {
   saveBlobDownload(
-    new Blob([jsonText.value], { type: 'application/json;charset=utf-8' }),
+    new Blob([fullJsonText.value], { type: 'application/json;charset=utf-8' }),
     `${props.payload?.request_id || 'inference-result'}.json`,
   )
 }
@@ -1020,6 +1050,28 @@ async function triggerDownload(kind: 'json' | 'original' | 'annotated'): Promise
 .inf-text-brand {
   color: var(--am-action-primary);
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.inf-saved-badge-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.inf-saved-record-id {
+  max-width: 170px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--am-surface-soft);
+  border: 1px solid var(--am-border);
+  font-family: var(--am-font-mono);
+  font-size: 11px;
+  color: var(--am-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .inf-filter-card {
@@ -1334,6 +1386,24 @@ async function triggerDownload(kind: 'json' | 'original' | 'annotated'): Promise
   text-align: center;
   font-size: 13px;
   color: var(--am-text-muted);
+}
+
+.inf-json-truncation-bar {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--am-border);
+  background: var(--am-surface-soft);
+  font-size: 12px;
+  color: var(--am-text-muted);
+}
+
+.inf-json-more {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--am-surface-soft);
+  font-size: 12px;
+  color: var(--am-text-muted);
+  text-align: center;
 }
 
 .inf-json-toolbar {

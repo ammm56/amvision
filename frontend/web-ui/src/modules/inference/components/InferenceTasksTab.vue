@@ -272,10 +272,16 @@ interface UnifiedTaskRow {
   rawAsync?: TaskInferenceTaskSummary
 }
 
-const props = defineProps<{
-  projectId: string
-  deployments: TaskDeploymentInstance[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    projectId: string
+    deployments: TaskDeploymentInstance[]
+    canWriteTasks?: boolean
+  }>(),
+  {
+    canWriteTasks: true,
+  },
+)
 
 const emit = defineEmits<{
   'open-create': []
@@ -356,8 +362,8 @@ const allRows = computed<UnifiedTaskRow[]>(() => {
       status: b.state,
       subSummary: parts.join(' ') || `共 ${b.total_items} 项`,
       createdAt: b.created_at,
-      canCancel: b.state === 'queued' || b.state === 'running',
-      canDelete: !['queued', 'running'].includes(b.state),
+      canCancel: props.canWriteTasks && (b.state === 'queued' || b.state === 'running'),
+      canDelete: props.canWriteTasks && !['queued', 'running'].includes(b.state),
     })
   }
 
@@ -408,7 +414,7 @@ const allRows = computed<UnifiedTaskRow[]>(() => {
       subSummary: [`目标 ${r.item_count}`, latencyText].filter(Boolean).join(' · '),
       createdAt: r.created_at,
       canCancel: false,
-      canDelete: true,
+      canDelete: props.canWriteTasks,
     })
   }
 

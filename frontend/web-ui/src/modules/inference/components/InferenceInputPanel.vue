@@ -151,12 +151,25 @@
       <div class="inf-field">
         <span class="inf-field__label">调用方式</span>
         <SelectField
-          model-value="sync"
+          :model-value="invocationMode"
           :options="invocationOptions"
-          disabled
+          :disabled="disabled"
           aria-label="调用方式"
+          @update:model-value="handleInvocationModeSelect"
         />
       </div>
+
+      <label v-if="invocationMode === 'async'" class="inf-field">
+        <span class="inf-field__label">任务名称</span>
+        <input
+          :value="asyncTaskName"
+          type="text"
+          class="inf-text-input"
+          placeholder="可选，默认使用文件名"
+          :disabled="disabled"
+          @input="emit('update:asyncTaskName', ($event.target as HTMLInputElement).value)"
+        />
+      </label>
 
       <div class="inf-field">
         <label v-if="taskType === 'classification'" class="inf-field">
@@ -256,10 +269,10 @@
             :disabled="disabled"
             @change="emit('update:saveResult', ($event.target as HTMLInputElement).checked)"
           />
-          <span>保存结果</span>
+          <span>{{ invocationMode === 'async' ? '保存预览图与结果' : '保存结果' }}</span>
         </label>
 
-        <label v-if="saveResult" class="inf-inline-field">
+        <label v-if="invocationMode === 'sync' && saveResult" class="inf-inline-field">
           <span>结果名称</span>
           <input
             :value="resultName"
@@ -271,27 +284,58 @@
           />
         </label>
       </div>
+
+      <div v-if="invocationMode === 'async' && !asyncReady" class="inf-mode-notice is-warn">
+        <AlertCircle :size="14" />
+        <span>异步通道未启动，请先在部署页启动异步进程或切换为同步调用。</span>
+      </div>
+
+      <div v-else-if="invocationMode === 'async' && (readOnly || canSubmitAsync === false)" class="inf-mode-notice">
+        <AlertCircle :size="14" />
+        <span>当前账号为只读权限，无法提交异步任务。</span>
+      </div>
+
+      <div v-if="invocationMode === 'async' && asyncError" class="inf-source-error">
+        <div class="inf-source-error__msg">
+          <AlertCircle :size="14" />
+          <span>{{ asyncError }}</span>
+        </div>
+      </div>
     </div>
 
     <footer class="inf-input-card__footer">
       <template v-if="timeoutPending && lastRequestId">
         <Button variant="secondary" disabled class="inf-run-btn">
-          结果待确认
+          {{ invocationMode === 'async' ? '提交待确认' : '结果待确认' }}
         </Button>
         <div class="inf-timeout-box">
           <div class="inf-timeout-box__head">
             <Clock :size="14" />
             <div>
               <strong>请求超时</strong>
-              <p>服务端可能仍在执行。</p>
+              <p>{{ invocationMode === 'async' ? '任务可能已在后台受理。' : '服务端可能仍在执行。' }}</p>
             </div>
           </div>
           <div class="inf-timeout-box__actions">
-            <Button size="sm" variant="secondary" :loading="lookupLoading" @click="emit('lookup-timeout')">
+            <Button
+              v-if="invocationMode === 'async'"
+              size="sm"
+              variant="secondary"
+              @click="emit('open-tasks')"
+            >
+              查看任务列表
+            </Button>
+            <Button
+              v-else
+              size="sm"
+              variant="secondary"
+              :loading="lookupLoading"
+              @click="emit('lookup-timeout')"
+            >
               查询结果
             </Button>
-            <Button size="sm" variant="secondary" :disabled="!canRun" @click="emit('run')">
-              重新推理
+            <Button size="sm" variant="secondary" :disabled="runButtonDisabled" @click="emit('run')">
+              {{ invocationMode === 'async' ? '重新提交' : '重新推理' }}
             </Button>
           </div>
           <button
@@ -312,12 +356,12 @@
         v-else
         variant="primary"
         class="inf-run-btn"
-        :disabled="!canRun || disabled"
+        :disabled="runButtonDisabled"
         :loading="running"
         data-run-inference
         @click="emit('run')"
       >
-        立即推理
+        {{ invocationMode === 'async' ? '提交任务' : '立即推理' }}
       </Button>
     </footer>
 
@@ -351,38 +395,59 @@ import ExistingFilePickerDrawer, {
 } from './ExistingFilePickerDrawer.vue'
 
 export type InferenceSourceMode = 'upload' | 'existing' | 'uri' | 'base64'
+export type InferenceInvocationMode = 'sync' | 'async'
 
-const props = defineProps<{
-  projectId: string
-  taskType: ModelTaskType
-  deploymentInputSize?: { width: number; height: number } | null
-  sourceMode: InferenceSourceMode
-  uploadedFile: File | null
-  selectedFileId: string
-  selectedFileLabel: string
-  selectedFileSizeBytes?: number | null
-  previewThumbUrl?: string | null
-  imageWidth?: number | null
-  imageHeight?: number | null
-  inputUri: string
-  imageBase64: string
-  sourceError?: string | null
-  scoreThreshold: number
-  topK: number
-  maskThreshold: number
-  keypointConfidenceThreshold: number
-  saveResult: boolean
-  resultName: string
-  canRun: boolean
-  running?: boolean
-  disabled?: boolean
-  timeoutPending?: boolean
-  lookupLoading?: boolean
-  lastRequestId?: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    projectId: string
+    taskType: ModelTaskType
+    deploymentInputSize?: { width: number; height: number } | null
+    sourceMode: InferenceSourceMode
+    invocationMode?: InferenceInvocationMode
+    asyncTaskName?: string
+    asyncReady?: boolean
+    readOnly?: boolean
+    canSubmitAsync?: boolean
+    asyncError?: string | null
+    versionBlocked?: boolean
+    uploadedFile: File | null
+    selectedFileId: string
+    selectedFileLabel: string
+    selectedFileSizeBytes?: number | null
+    previewThumbUrl?: string | null
+    imageWidth?: number | null
+    imageHeight?: number | null
+    inputUri: string
+    imageBase64: string
+    sourceError?: string | null
+    scoreThreshold: number
+    topK: number
+    maskThreshold: number
+    keypointConfidenceThreshold: number
+    saveResult: boolean
+    resultName: string
+    canRun: boolean
+    running?: boolean
+    disabled?: boolean
+    timeoutPending?: boolean
+    lookupLoading?: boolean
+    lastRequestId?: string | null
+  }>(),
+  {
+    invocationMode: 'sync',
+    asyncTaskName: '',
+    asyncReady: false,
+    readOnly: false,
+    canSubmitAsync: true,
+    asyncError: null,
+    versionBlocked: false,
+  },
+)
 
 const emit = defineEmits<{
   'update:sourceMode': [mode: InferenceSourceMode]
+  'update:invocationMode': [mode: InferenceInvocationMode]
+  'update:asyncTaskName': [value: string]
   'update:uploadedFile': [file: File | null]
   'update:existingSelection': [payload: ExistingFileSelectionResult | null]
   'update:inputUri': [value: string]
@@ -394,6 +459,7 @@ const emit = defineEmits<{
   'update:saveResult': [value: boolean]
   'update:resultName': [value: string]
   run: []
+  'open-tasks': []
   'lookup-timeout': []
   'recheck-input': []
 }>()
@@ -405,7 +471,18 @@ const sourceOptions = [
   { label: 'Base64', value: 'base64' },
 ]
 
-const invocationOptions = [{ label: '同步调用', value: 'sync' }]
+const invocationOptions = [
+  { label: '同步调用', value: 'sync' },
+  { label: '异步任务', value: 'async' },
+]
+
+const runButtonDisabled = computed(() => {
+  if (!props.canRun || props.disabled || props.versionBlocked) return true
+  if (props.invocationMode === 'async') {
+    return !props.asyncReady || props.readOnly || props.canSubmitAsync === false
+  }
+  return false
+})
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref(false)
@@ -430,6 +507,12 @@ function handleSourceSelect(value: string | number | boolean | null): void {
     if (value === 'existing' && !props.selectedFileLabel) {
       pickerOpen.value = true
     }
+  }
+}
+
+function handleInvocationModeSelect(value: string | number | boolean | null): void {
+  if (value === 'sync' || value === 'async') {
+    emit('update:invocationMode', value)
   }
 }
 
@@ -782,6 +865,34 @@ function formatFileMeta(sizeBytes?: number | null, w?: number | null, h?: number
   padding: 0 16px 16px;
   display: grid;
   gap: 10px;
+}
+
+.inf-mode-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--am-border);
+  background: var(--am-surface-soft);
+  color: var(--am-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.inf-mode-notice svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.inf-mode-notice.is-warn {
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+  background: color-mix(in srgb, #f59e0b 10%, var(--am-surface));
+  color: #b45309;
+}
+
+:root[data-theme='dark'] .inf-mode-notice.is-warn {
+  color: #fbbf24;
 }
 
 .inf-run-btn {

@@ -14,6 +14,7 @@ import {
   type TaskDeploymentInstance,
 } from '@/modules/deployments/services/deployment.service'
 import {
+  createTaskInferenceTask,
   inferTaskDeployment,
   listDirectInferenceRecords,
   saveDirectInferenceRecord,
@@ -30,9 +31,12 @@ vi.mock('../services/inference.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/inference.service')>()
   return {
     ...actual,
+    createTaskInferenceTask: vi.fn(),
     inferTaskDeployment: vi.fn(),
     saveDirectInferenceRecord: vi.fn(),
     listDirectInferenceRecords: vi.fn(),
+    listTaskInferenceTasks: vi.fn().mockResolvedValue([]),
+    listBatchInferenceTasks: vi.fn().mockResolvedValue([]),
     getDirectInferenceRecord: vi.fn(),
     deleteDirectInferenceRecord: vi.fn(),
     listProjectPublicFiles: vi.fn().mockResolvedValue([]),
@@ -102,13 +106,21 @@ function makeResult(): TaskInferencePayload {
   }
 }
 
-async function selectSourceMode(wrapper: ReturnType<typeof mount>, label: string): Promise<void> {
-  const selectTrigger = wrapper.find('.inf-input-card button[aria-label="输入来源"]')
+async function selectInputFieldDropdown(
+  wrapper: ReturnType<typeof mount>,
+  ariaLabel: string,
+  label: string,
+): Promise<void> {
+  const selectTrigger = wrapper.find(`.inf-input-card button[aria-label="${ariaLabel}"]`)
   await selectTrigger.trigger('click')
   const option = wrapper
     .findAll('.inf-input-card .ui-select__option')
     .find((btn) => btn.text().includes(label))
   await option?.trigger('click')
+}
+
+async function selectSourceMode(wrapper: ReturnType<typeof mount>, label: string): Promise<void> {
+  await selectInputFieldDropdown(wrapper, '输入来源', label)
 }
 
 describe('InferenceWorkspacePage', () => {
@@ -277,5 +289,154 @@ describe('InferenceWorkspacePage', () => {
 
     expect(inferTaskDeployment).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('推理实例已满载')
+  })
+
+  it('supports switching to async mode, blocks when async channel is stopped, and submits when running', async () => {
+    vi.mocked(runTaskDeploymentStatusAction).mockImplementation(async (_tt, _id, mode) => ({
+      deployment_instance_id: 'deploy-det-1',
+      display_name: 'YOLO11 检测实例',
+      runtime_mode: mode,
+      desired_state: mode === 'sync' ? 'running' : 'stopped',
+      observed_state: mode === 'sync' ? 'running' : 'stopped',
+      generation: 1,
+      process_state: mode === 'sync' ? 'running' : 'stopped',
+      auto_restart: true,
+      restart_count: 0,
+      restart_count_rollover_count: 0,
+      instance_count: 1,
+    }))
+
+    const wrapper = await mountPage()
+    await selectSourceMode(wrapper, 'URI')
+    await wrapper.find('input[placeholder="projects/project-1/inputs/sample.jpg"]').setValue('projects/project-1/inputs/sample.jpg')
+
+    await selectInputFieldDropdown(wrapper, '调用方式', '异步任务')
+    await flushPromises()
+    expect(wrapper.text()).toContain('异步通道未启动')
+    expect((wrapper.find('[data-run-inference]').element as HTMLButtonElement).disabled).toBe(true)
+
+    vi.mocked(runTaskDeploymentStatusAction).mockImplementation(async (_tt, _id, mode) => ({
+      deployment_instance_id: 'deploy-det-1',
+      display_name: 'YOLO11 检测实例',
+      runtime_mode: mode,
+      desired_state: 'running',
+      observed_state: 'running',
+      generation: 1,
+      process_state: 'running',
+      auto_restart: true,
+      restart_count: 0,
+      restart_count_rollover_count: 0,
+      instance_count: 1,
+    }))
+    vi.mocked(createTaskInferenceTask).mockResolvedValue({
+      task_id: 'async-task-1',
+      status: 'queued',
+      queue_name: 'inference',
+      queue_task_id: 'q-1',
+      deployment_instance_id: 'deploy-det-1',
+      input_uri: 'projects/project-1/inputs/sample.jpg',
+      input_source_kind: 'input_uri',
+    })
+
+    const confirmBtn = wrapper.find('.inf-deploy-select__trigger')
+    expect(confirmBtn.exists()).toBe(true)
+    const wrapper2 = await mountPage()
+    await selectSourceMode(wrapper2, 'URI')
+    await wrapper2.find('input[placeholder="projects/project-1/inputs/sample.jpg"]').setValue('projects/project-1/inputs/sample.jpg')
+    await selectInputFieldDropdown(wrapper2, '调用方式', '异步任务')
+    await wrapper2.find('input[placeholder="可选，默认使用文件名"]').setValue('单图异步测试')
+    await flushPromises()
+    expect((wrapper2.find('[data-run-inference]').element as HTMLButtonElement).disabled).toBe(false)
+
+    await wrapper2.find('[data-run-inference]').trigger('click')
+    await flushPromises()
+    expect(createTaskInferenceTask).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(createTaskInferenceTask).mock.calls[0][0].displayName).toBe('单图异步测试')
+  })
+
+  it('hides batch creation and disables async submission for read-only users without tasks:write', async () => {
+    const sessionStore = useSessionStore(pinia)
+    if (sessionStore.currentUser) {
+      sessionStore.currentUser = {
+        ...sessionStore.currentUser,
+        scopes: ['models:read', 'tasks:read'],
+      }
+    }
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-readonly-banner]').exists()).toBe(true)
+
+    await selectSourceMode(wrapper, 'URI')
+    await wrapper.find('input[placeholder="projects/project-1/inputs/sample.jpg"]').setValue('projects/project-1/inputs/sample.jpg')
+    await selectInputFieldDropdown(wrapper, '调用方式', '异步任务')
+    await flushPromises()
+    expect(wrapper.text()).toContain('当前账号为只读权限，无法提交异步任务')
+    expect((wrapper.find('[data-run-inference]').element as HTMLButtonElement).disabled).toBe(true)
+
+    const tasksTabBtn = wrapper.findAll('.tab-list button, [role="tab"]').find((b) => b.text().includes('推理任务'))
+    await tasksTabBtn?.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-create-batch-btn]').exists()).toBe(false)
+  })
+
+  it('detects deployment model version change and blocks execution until user confirms new version', async () => {
+    vi.mocked(inferTaskDeployment).mockResolvedValue(makeResult())
+    const wrapper = await mountPage()
+    await selectSourceMode(wrapper, 'URI')
+    await wrapper.find('input[placeholder="projects/project-1/inputs/sample.jpg"]').setValue('projects/project-1/inputs/sample.jpg')
+    await wrapper.find('[data-run-inference]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.inf-canvas-footer__row--result').exists()).toBe(true)
+
+    vi.mocked(listTaskDeployments).mockImplementation(async (taskType) =>
+      taskType === 'detection'
+        ? [{ ...deployment, model_version_id: 'mv-2', model_name: 'yolo11-s v2' }]
+        : [],
+    )
+    const projectStore = useProjectStore(pinia)
+    projectStore.selectedProjectId = 'project-2'
+    await flushPromises()
+    projectStore.selectedProjectId = 'project-1'
+    await flushPromises()
+
+    expect(wrapper.find('[data-version-changed-banner]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('部署版本已更新')
+    expect((wrapper.find('[data-run-inference]').element as HTMLButtonElement).disabled).toBe(true)
+
+    await wrapper.find('[data-confirm-version-update]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-version-changed-banner]').exists()).toBe(false)
+    expect((wrapper.find('[data-run-inference]').element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('truncates long JSON previews above 2000 lines and distinguishes snippet copy from full download', async () => {
+    const manyDetections = Array.from({ length: 400 }, (_, i) => ({
+      bbox_xyxy: [i, i, i + 10, i + 10] as [number, number, number, number],
+      score: 0.9,
+      class_id: 0,
+      class_name: 'bolt',
+    }))
+    vi.mocked(inferTaskDeployment).mockResolvedValue({
+      ...makeResult(),
+      detection_count: manyDetections.length,
+      detections: manyDetections,
+    })
+
+    const wrapper = await mountPage()
+    await selectSourceMode(wrapper, 'URI')
+    await wrapper.find('input[placeholder="projects/project-1/inputs/sample.jpg"]').setValue('projects/project-1/inputs/sample.jpg')
+    await wrapper.find('[data-run-inference]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('[data-toggle-inspector]').trigger('click')
+    await flushPromises()
+    const jsonTab = wrapper.findAll('.inf-inspector__tab').find((b) => b.text() === 'JSON')
+    await jsonTab?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.inf-json-truncation-bar').text()).toContain('仅预览前 2000 行')
+    expect(wrapper.find('.inf-json-box__gutter').findAll('span').length).toBe(2000)
+    expect(wrapper.text()).toContain('复制当前片段')
+    expect(wrapper.text()).toContain('下载完整 JSON')
+    expect(wrapper.find('.inf-json-more').exists()).toBe(true)
   })
 })

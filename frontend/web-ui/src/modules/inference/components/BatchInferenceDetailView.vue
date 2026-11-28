@@ -20,7 +20,7 @@
           刷新
         </Button>
         <Button
-          v-if="isActive"
+          v-if="canWriteTasks && isActive"
           size="sm"
           variant="primary"
           class="inf-btn-warn"
@@ -29,7 +29,7 @@
           取消任务
         </Button>
         <Button
-          v-else-if="task"
+          v-else-if="canWriteTasks && task"
           size="sm"
           variant="danger"
           @click="deleteModalOpen = true"
@@ -216,7 +216,7 @@
                 成功结果已保留
               </span>
               <Button
-                v-if="failedRetryFileIds.length > 0"
+                v-if="canWriteTasks && failedRetryFileIds.length > 0"
                 size="sm"
                 variant="primary"
                 @click="retryFailed"
@@ -405,7 +405,7 @@
       <footer class="inf-failure-drawer__foot">
         <Button variant="secondary" @click="closeFailureDrawer">关闭</Button>
         <Button
-          v-if="activeFailureItem.input_file_id"
+          v-if="canWriteTasks && activeFailureItem.input_file_id"
           variant="primary"
           @click="retrySingleSample(activeFailureItem.input_file_id)"
         >
@@ -428,6 +428,7 @@
           :image-height="fullscreenItem.image_height || 0"
           :task-type="taskType"
           :has-result="Boolean(fullscreenResultPayload)"
+          :loading-image="fullscreenLoading"
           :inspector-open="fullscreenInspectorOpen"
           :source-error="fullscreenItem.state === 'failed' ? fullscreenItem.error_message : null"
           :all-items="fullscreenAllItems"
@@ -677,10 +678,16 @@ import {
   type InferenceLayerVisibility,
 } from './inference-overlay.utils'
 
-const props = defineProps<{
-  batchTaskId: string
-  deployments: TaskDeploymentInstance[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    batchTaskId: string
+    deployments: TaskDeploymentInstance[]
+    canWriteTasks?: boolean
+  }>(),
+  {
+    canWriteTasks: true,
+  },
+)
 
 const emit = defineEmits<{
   back: []
@@ -706,6 +713,7 @@ const showFailureDiag = ref(false)
 
 const fullscreenItem = ref<BatchInferenceTaskItem | null>(null)
 const fullscreenImageUrl = ref<string | null>(null)
+const fullscreenLoading = ref(false)
 const fullscreenResultPayload = ref<TaskInferencePayload | null>(null)
 const fullscreenInspectorOpen = ref(false)
 const fullscreenSelectedItemId = ref<string | null>(null)
@@ -949,6 +957,7 @@ function closeFailureDrawer(): void {
 async function openFullscreenForItem(item: BatchInferenceTaskItem): Promise<void> {
   const gen = ++fsLoadGen
   fullscreenItem.value = item
+  fullscreenLoading.value = true
   fullscreenResultPayload.value = null
   fullscreenSelectedItemId.value = null
   fullscreenIsolateItemId.value = null
@@ -959,30 +968,37 @@ async function openFullscreenForItem(item: BatchInferenceTaskItem): Promise<void
     fullscreenImageUrl.value = null
   }
 
-  if (item.has_input_image) {
-    try {
-      const blob = await fetchBatchInferenceTaskItemImageBlob(props.batchTaskId, item.item_id, 'input')
-      if (gen !== fsLoadGen) return
-      fullscreenImageUrl.value = URL.createObjectURL(blob)
-    } catch {
-      if (gen === fsLoadGen) fullscreenImageUrl.value = null
-    }
-  }
-
-  if (item.state === 'succeeded') {
-    try {
-      const res = await getBatchInferenceTaskItemResult(props.batchTaskId, item.item_id)
-      if (gen === fsLoadGen && res.file_status === 'ready') {
-        fullscreenResultPayload.value = res.payload as unknown as TaskInferencePayload
+  try {
+    if (item.has_input_image) {
+      try {
+        const blob = await fetchBatchInferenceTaskItemImageBlob(props.batchTaskId, item.item_id, 'input')
+        if (gen !== fsLoadGen) return
+        fullscreenImageUrl.value = URL.createObjectURL(blob)
+      } catch {
+        if (gen === fsLoadGen) fullscreenImageUrl.value = null
       }
-    } catch {
-      // 失败保留图像展示
+    }
+
+    if (item.state === 'succeeded') {
+      try {
+        const res = await getBatchInferenceTaskItemResult(props.batchTaskId, item.item_id)
+        if (gen === fsLoadGen && res.file_status === 'ready') {
+          fullscreenResultPayload.value = res.payload as unknown as TaskInferencePayload
+        }
+      } catch {
+        // 失败保留图像展示
+      }
+    }
+  } finally {
+    if (gen === fsLoadGen) {
+      fullscreenLoading.value = false
     }
   }
 }
 
 function closeFullscreen(): void {
   fsLoadGen++
+  fullscreenLoading.value = false
   fullscreenItem.value = null
   fullscreenInspectorOpen.value = false
   if (fullscreenImageUrl.value) {
