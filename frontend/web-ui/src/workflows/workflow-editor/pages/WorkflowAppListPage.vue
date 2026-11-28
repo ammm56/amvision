@@ -47,7 +47,7 @@
           @click="importDrawerOpen = true"
         >
           <FileUp :size="15" />
-          导入
+          导入文档
         </Button>
 
         <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
@@ -325,6 +325,7 @@ const sessionStore = useSessionStore()
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const workflowApps = ref<WorkflowAppSummary[]>([])
+let appListRequest = 0
 const activeRowId = ref('')
 const searchQuery = ref('')
 const publishFilter = ref<'all' | 'published' | 'unpublished'>('all')
@@ -383,13 +384,8 @@ const filteredApps = computed(() => {
     if (publishFilter.value === 'published' && !item.latestVersion) return false
     if (publishFilter.value === 'unpublished' && Boolean(item.latestVersion)) return false
     if (runtimeFilter.value === 'none' && item.runtimes.length > 0) return false
-    if (runtimeFilter.value === 'running' && !item.runtimes.some((r) => r.observed_state === 'running')) {
-      return false
-    }
-    if (runtimeFilter.value === 'stopped' && !item.runtimes.some((r) => r.observed_state === 'stopped')) {
-      return false
-    }
-    if (runtimeFilter.value === 'failed' && !item.runtimes.some((r) => r.observed_state === 'failed')) {
+    if (runtimeFilter.value !== 'all' && runtimeFilter.value !== 'none'
+      && !summarizeRuntimeCounts(item.runtimes).some((segment) => segment.key === runtimeFilter.value)) {
       return false
     }
     return true
@@ -417,6 +413,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  appListRequest++
   window.removeEventListener('click', closeRowMenu)
 })
 
@@ -424,8 +421,12 @@ watch(
   selectedProjectId,
   async (projectId) => {
     offset.value = 0
+    activeRowId.value = ''
+    workflowApps.value = []
     if (!projectId) {
-      workflowApps.value = []
+      appListRequest++
+      loading.value = false
+      errorMessage.value = null
       return
     }
     await refreshPage()
@@ -576,19 +577,30 @@ async function handleDeleteConfirm(): Promise<void> {
 }
 
 async function refreshPage(): Promise<void> {
-  if (!selectedProjectId.value) return
+  const projectId = selectedProjectId.value
+  if (!projectId) return
+  const revision = ++appListRequest
   loading.value = true
   errorMessage.value = null
   try {
-    const result = await listWorkflowApps(selectedProjectId.value, { offset: 0, limit: 100 })
-    workflowApps.value = result.items
+    const apps: WorkflowAppSummary[] = []
+    let pageOffset = 0
+    while (true) {
+      const result = await listWorkflowApps(projectId, { offset: pageOffset, limit: 100 })
+      if (revision !== appListRequest) return
+      apps.push(...result.items)
+      const next = result.pagination.nextOffset
+      if (!result.pagination.hasMore || next === null || next <= pageOffset) break
+      pageOffset = next
+    }
+    workflowApps.value = apps
     if (offset.value >= filteredApps.value.length && offset.value > 0) {
       offset.value = Math.max(0, Math.floor((filteredApps.value.length - 1) / pageSize.value) * pageSize.value)
     }
   } catch (err) {
-    errorMessage.value = getErrorMessage(err)
+    if (revision === appListRequest) errorMessage.value = getErrorMessage(err)
   } finally {
-    loading.value = false
+    if (revision === appListRequest) loading.value = false
   }
 }
 </script>
@@ -612,8 +624,8 @@ async function refreshPage(): Promise<void> {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 260px;
-  max-width: 100%;
+  flex: 1 1 180px;
+  max-width: min(320px, 100%);
   height: 36px;
   padding: 0 10px;
   border: 1px solid var(--am-border);
@@ -814,10 +826,6 @@ async function refreshPage(): Promise<void> {
   font-weight: 500;
   color: var(--am-action-primary);
   cursor: pointer;
-}
-
-.app-link-btn:hover {
-  text-decoration: underline;
 }
 
 .app-more-btn {

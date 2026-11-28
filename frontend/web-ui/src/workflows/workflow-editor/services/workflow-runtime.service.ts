@@ -60,7 +60,10 @@ export interface WorkflowRunListQuery {
   projectId: string
   workflowRuntimeId?: string
   applicationId?: string
+  workflowAppVersionId?: string
   state?: string
+  search?: string
+  startedFrom?: string
   offset?: number
   limit?: number
 }
@@ -347,7 +350,10 @@ export async function listWorkflowRuns(query: WorkflowRunListQuery): Promise<Pag
       project_id: query.projectId,
       ...(query.workflowRuntimeId ? { workflow_runtime_id: query.workflowRuntimeId } : {}),
       ...(query.applicationId ? { application_id: query.applicationId } : {}),
+      ...(query.workflowAppVersionId ? { workflow_app_version_id: query.workflowAppVersionId } : {}),
       ...(query.state ? { state: query.state } : {}),
+      ...(query.search ? { q: query.search } : {}),
+      ...(query.startedFrom ? { started_from: query.startedFrom } : {}),
       offset: query.offset ?? 0,
       limit: query.limit ?? 20,
     },

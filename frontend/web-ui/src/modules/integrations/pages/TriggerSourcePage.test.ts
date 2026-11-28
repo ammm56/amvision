@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useProjectStore } from '@/app/stores/project.store'
 import { i18n } from '@/platform/i18n'
 import {
+  getWorkflowTriggerSource,
   listWorkflowTriggerSources,
   refreshWorkflowTriggerSourceStatuses,
   type WorkflowTriggerSource,
@@ -19,6 +20,7 @@ vi.mock('@/workflows/workflow-editor/services/workflow-runtime.service', () => (
 
 vi.mock('../services/trigger-source.service', async (importOriginal) => ({
   ...await importOriginal<typeof import('../services/trigger-source.service')>(),
+  getWorkflowTriggerSource: vi.fn(),
   listWorkflowTriggerSources: vi.fn(),
   refreshWorkflowTriggerSourceStatuses: vi.fn(),
 }))
@@ -91,6 +93,23 @@ describe('触发入口列表与详情', () => {
       document.querySelector('[role="dialog"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await flushPromises()
       expect(document.querySelector('[role="dialog"]')).toBeNull()
+
+      const linkedSource = {
+        ...source,
+        trigger_source_id: 'another-page-source',
+        display_name: '另一个入口',
+        transport_config: { directory_path: 'D:/inputs' },
+      }
+      vi.mocked(getWorkflowTriggerSource).mockResolvedValue(linkedSource)
+      await router.push({
+        query: { trigger_source_id: linkedSource.trigger_source_id, runtime_id: linkedSource.workflow_runtime_id, mode: 'config' },
+      })
+      await flushPromises()
+      const linkedDrawer = document.querySelector('[role="dialog"]')!
+      expect(linkedDrawer.textContent).toContain('触发入口配置')
+      expect(linkedDrawer.textContent).toContain('另一个入口')
+      expect(linkedDrawer.textContent).toContain('D:/inputs')
+      expect(table.text()).not.toContain('另一个入口')
     } finally {
       wrapper.unmount()
     }

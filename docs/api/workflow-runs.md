@@ -324,6 +324,14 @@
 - worker 等待超时时，state 返回 timed_out，error.code 返回 operation_timeout。
 - async run 在 queued 或 running 期间被取消时，state 返回 cancelled，error.code 返回 operation_cancelled。
 
+## GET /api/v1/workflows/runs
+
+分页读取项目内已保存的执行记录，需要 `workflows:read`。必填参数为 `project_id`，可按 `application_id`、`workflow_runtime_id`、`workflow_app_version_id` 和 `state` 精确筛选。
+
+- `q` 按执行编号的任意片段搜索，忽略大小写。
+- `started_from` 为带时区的 ISO 8601 时间，包含边界。尚未开始的记录使用创建时间。
+- 筛选完成后按创建时间倒序应用 `offset` 和 `limit`。分页响应头中的 `X-Total-Count` 是筛选后的总条数。
+
 ## GET /api/v1/workflows/runs/{workflow_run_id}
 
 - 默认 `response_mode=app-result`，返回公开 App Result，不返回 WorkflowRun、template_outputs 或 node_records

@@ -8,6 +8,7 @@
     :confirm-disabled="!displayName.trim() || !timeoutValid"
     confirm-variant="primary"
     initial-focus="first-field"
+    scroll-body
     @cancel="emit('cancel')"
     @confirm="submitConfig"
   >
@@ -33,7 +34,7 @@
     </div>
 
     <label class="rt-edit-row">
-      <span class="rt-edit-label">请求超时 (秒) <em>*</em></span>
+      <span class="rt-edit-label">请求超时（秒） <em>*</em></span>
       <input
         v-model="requestTimeoutSeconds"
         type="number"
@@ -42,6 +43,7 @@
         :max="Number.MAX_SAFE_INTEGER"
         :disabled="busy"
         :aria-invalid="!timeoutValid"
+        :aria-describedby="!timeoutValid ? timeoutErrorId : undefined"
       />
     </label>
 
@@ -69,21 +71,24 @@
       />
     </div>
 
-    <p class="rt-edit-note">保存后，下次启动生效。</p>
-    <InlineError v-if="!timeoutValid" message="请求超时必须为正整数（秒）" />
+    <InlineError v-if="!timeoutValid" :id="timeoutErrorId" message="请求超时必须为正整数（秒）" />
     <InlineError v-if="errorMessage" :message="errorMessage" />
+    <template #leading-actions>
+      <p class="rt-edit-note">保存后，下次启动生效。</p>
+    </template>
   </ConfirmDialog>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 
 import { getErrorMessage } from '@/shared/api/error'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import Select from '@/shared/ui/components/Select.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { updateWorkflowAppRuntimeConfig } from '../services/workflow-runtime.service'
-import type { WorkflowAppRuntime, WorkflowJsonObject } from '../types'
+import type { WorkflowAppRuntime } from '../types'
+import { readRuntimeDiagnosticsEnabled, readRuntimeRecordMode } from '../utils/workflow-run-display'
 
 type RecordMode = 'none' | 'minimal' | 'full'
 
@@ -105,6 +110,7 @@ const workflowRunRecordMode = ref<RecordMode>('none')
 const returnDiagnostics = ref<'true' | 'false'>('false')
 const busy = ref(false)
 const errorMessage = ref<string | null>(null)
+const timeoutErrorId = useId()
 
 const recordModeOptions = [
   { label: '不保存', value: 'none' },
@@ -122,7 +128,7 @@ const stateLabel = computed(() => {
   if (state === 'stopped') return '已停止'
   if (state === 'failed') return '启动失败'
   if (state === 'running') return '运行中（需先停止）'
-  return state || '未知'
+  return '状态未知'
 })
 
 const timeoutValid = computed(() => {
@@ -136,18 +142,8 @@ watch(
     if (!isOpen || !props.runtime) return
     displayName.value = props.runtime.display_name || ''
     requestTimeoutSeconds.value = props.runtime.request_timeout_seconds || 60
-    const defaultMeta = props.runtime.metadata?.default_execution_metadata
-    const metaObj =
-      typeof defaultMeta === 'object' && defaultMeta !== null && !Array.isArray(defaultMeta)
-        ? (defaultMeta as WorkflowJsonObject)
-        : {}
-    const rawMode = metaObj.workflow_run_record_mode
-    workflowRunRecordMode.value = rawMode === 'full' || rawMode === 'minimal' ? rawMode : 'none'
-    returnDiagnostics.value = Boolean(
-      metaObj.return_timing_metadata_enabled ?? metaObj.return_node_timings_enabled,
-    )
-      ? 'true'
-      : 'false'
+    workflowRunRecordMode.value = readRuntimeRecordMode(props.runtime)
+    returnDiagnostics.value = readRuntimeDiagnosticsEnabled(props.runtime) ? 'true' : 'false'
     errorMessage.value = null
   },
   { immediate: true },
@@ -236,8 +232,12 @@ async function submitConfig(): Promise<void> {
 }
 
 .rt-edit-note {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 12px;
   color: var(--am-text-muted);
+}
+
+@media (max-width: 420px) {
+  .rt-edit-row { grid-template-columns: 1fr; gap: 5px; }
 }
 </style>

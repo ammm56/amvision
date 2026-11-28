@@ -328,25 +328,37 @@
 
     <SideDrawer
       :open="detailSource !== null"
-      :title="t('triggerSources.detailTitle')"
+      :title="t(configureLinkedSource ? 'triggerSources.configTitle' : 'triggerSources.detailTitle')"
       :close-label="t('common.close')"
-      @close="detailSourceId = null"
+      @close="closeSourceDetail"
     >
       <template v-if="detailSource">
+        <InlineError v-if="configureLinkedSource" :message="errorMessage" />
         <dl class="resource-details">
-          <div v-for="field in detailFields" :key="field.label">
+          <div v-for="field in (configureLinkedSource ? configFields : detailFields)" :key="field.label">
             <dt>{{ field.label }}</dt>
             <dd>{{ field.value }}</dd>
           </div>
         </dl>
-        <section class="resource-details__section">
+        <section v-if="!configureLinkedSource" class="resource-details__section">
           <h3>{{ t('workflowEditor.appDetail.fields.healthSummary') }}</h3>
           <pre class="json-view">{{ JSON.stringify(detailHealth?.health_summary ?? detailSource.health_summary, null, 2) }}</pre>
         </section>
-        <section class="resource-details__section">
+        <section v-if="!configureLinkedSource" class="resource-details__section">
           <h3>{{ t('triggerSources.fields.lastError') }}</h3>
           <pre class="json-view">{{ formatError(detailHealth ? detailHealth.last_error : detailSource.last_error) || '-' }}</pre>
         </section>
+      </template>
+      <template v-if="configureLinkedSource && detailSource && canWriteWorkflows" #footer>
+        <Button variant="secondary" @click="closeSourceDetail">{{ t('common.close') }}</Button>
+        <Button
+          variant="secondary"
+          :loading="isTriggerSourceAction(detailSource, 'state')"
+          :disabled="busyTriggerSourceId === detailSource.trigger_source_id"
+          @click="setTriggerSourceEnabled(detailSource, !detailSource.enabled)"
+        >
+          {{ t(detailSource.enabled ? 'triggerSources.actions.disable' : 'triggerSources.actions.enable') }}
+        </Button>
       </template>
     </SideDrawer>
 
@@ -365,11 +377,12 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Activity, Power, PowerOff, RefreshCw, Save, Settings2, Trash2, Workflow } from '@lucide/vue'
 
 import { useProjectStore } from '@/app/stores/project.store'
+import { useSessionStore } from '@/app/stores/session.store'
 import type { PaginationMeta } from '@/shared/api/pagination'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
@@ -397,6 +410,7 @@ import {
   deleteWorkflowTriggerSource,
   disableWorkflowTriggerSource,
   enableWorkflowTriggerSource,
+  getWorkflowTriggerSource,
   getWorkflowTriggerSourceHealth,
   listWorkflowTriggerSources,
   refreshWorkflowTriggerSourceStatuses,
@@ -579,7 +593,10 @@ const mappingModeOptions = computed<SelectOption[]>(() => [
 ])
 
 const route = useRoute()
+const router = useRouter()
 const projectStore = useProjectStore()
+const sessionStore = useSessionStore()
+const canWriteWorkflows = computed(() => sessionStore.hasScopes(['workflows:write']))
 
 const loading = ref(false)
 const saving = ref(false)
@@ -588,7 +605,14 @@ const statusMessage = ref<string | null>(null)
 const runtimes = ref<WorkflowAppRuntime[]>([])
 const triggerSources = ref<WorkflowTriggerSource[]>([])
 const detailSourceId = ref<string | null>(null)
-const detailSource = computed(() => triggerSources.value.find((source) => source.trigger_source_id === detailSourceId.value) ?? null)
+const linkedTriggerSource = ref<WorkflowTriggerSource | null>(null)
+const linkedTriggerId = computed(() => readQueryString('trigger_source_id'))
+const configureLinkedSource = computed(() => Boolean(detailSourceId.value)
+  && detailSourceId.value === linkedTriggerId.value && readQueryString('mode') === 'config')
+const detailSource = computed(() => {
+  if (linkedTriggerSource.value?.trigger_source_id === detailSourceId.value) return linkedTriggerSource.value
+  return triggerSources.value.find((source) => source.trigger_source_id === detailSourceId.value) ?? null
+})
 const detailHealth = computed(() => detailSource.value ? sourceHealth(detailSource.value) : null)
 const detailFields = computed(() => {
   const source = detailSource.value
@@ -605,6 +629,26 @@ const detailFields = computed(() => {
     { label: t('triggerSources.fields.triggeredAt'), value: formatLastTriggered(health ? health.last_triggered_at : source.last_triggered_at) },
     { label: t('workflowEditor.appDetail.fields.updatedAt'), value: formatSystemDateTime(source.updated_at) },
     { label: t('workflowEditor.appDetail.fields.createdAt'), value: formatSystemDateTime(source.created_at) },
+  ]
+})
+const configFields = computed(() => {
+  const source = detailSource.value
+  if (!source) return []
+  const transport = source.transport_config
+  return [
+    { label: t('triggerSources.fields.displayName'), value: source.display_name || source.trigger_source_id },
+    { label: t('triggerSources.fields.kind'), value: source.trigger_kind },
+    ...[
+      { label: t('triggerSources.fields.bindEndpoint'), value: transport.bind_endpoint },
+      { label: t('triggerSources.fields.webhookPath'), value: transport.path },
+      { label: t('triggerSources.fields.directoryPath'), value: transport.directory_path },
+    ].filter((field) => typeof field.value === 'string' && field.value),
+    { label: t('triggerSources.fields.state'), value: t(source.enabled ? 'triggerSources.values.enabled' : 'triggerSources.values.disabled') },
+    { label: t('triggerSources.fields.submitMode'), value: source.submit_mode === 'async' ? '异步' : '同步' },
+    { label: t('triggerSources.fields.resultMode'), value: source.result_mode || '—' },
+    { label: t('triggerSources.fields.ackPolicy'), value: source.ack_policy || '—' },
+    { label: t('triggerSources.fields.replyTimeoutSeconds'), value: source.reply_timeout_seconds ?? '—' },
+    { label: t('triggerSources.fields.resultBindings'), value: source.result_mapping?.result_bindings?.join('、') || '—' },
   ]
 })
 const triggerSourcePagination = ref<PaginationMeta>(createPaginationState())
@@ -1198,7 +1242,16 @@ function parseScalarValue(value: string): unknown {
 function replaceTriggerSource(updatedSource: WorkflowTriggerSource): void {
   const sourceIndex = triggerSources.value.findIndex((source) => source.trigger_source_id === updatedSource.trigger_source_id)
   if (sourceIndex >= 0) triggerSources.value.splice(sourceIndex, 1, updatedSource)
-  else triggerSources.value.unshift(updatedSource)
+  if (linkedTriggerSource.value?.trigger_source_id === updatedSource.trigger_source_id) linkedTriggerSource.value = updatedSource
+}
+
+function closeSourceDetail(): void {
+  detailSourceId.value = null
+  if (!linkedTriggerId.value) return
+  const query = { ...route.query }
+  delete query.trigger_source_id
+  delete query.mode
+  void router.replace({ query })
 }
 
 function sourceHealth(source: WorkflowTriggerSource): WorkflowTriggerSourceHealth | null {
@@ -1401,10 +1454,34 @@ function createPaginationState(): PaginationMeta {
 watch(
   () => [selectedProjectId.value, route.query.runtime_id, route.query.application_id] as const,
   (currentValue, previousValue) => {
-    detailSourceId.value = null
+    if (!linkedTriggerId.value) detailSourceId.value = null
     const [projectId] = currentValue
     const previousProjectId = previousValue?.[0]
     void loadPage({ resetTriggerSourcePage: projectId !== previousProjectId })
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [selectedProjectId.value, linkedTriggerId.value, readQueryString('runtime_id')] as const,
+  async ([projectId, triggerId, runtimeId], _, onCleanup) => {
+    linkedTriggerSource.value = null
+    if (!projectId || !triggerId) return
+    detailSourceId.value = null
+    let current = true
+    onCleanup(() => { current = false })
+    try {
+      const source = await getWorkflowTriggerSource(triggerId)
+      if (!current) return
+      if (source.project_id !== projectId || (runtimeId && source.workflow_runtime_id !== runtimeId)) {
+        errorMessage.value = t('triggerSources.values.notFound')
+        return
+      }
+      linkedTriggerSource.value = source
+      detailSourceId.value = triggerId
+    } catch (error) {
+      if (current) errorMessage.value = error instanceof Error ? error.message : t('triggerSources.values.notFound')
+    }
   },
   { immediate: true },
 )

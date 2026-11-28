@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
 )
@@ -149,9 +150,9 @@ def test_patch_runtime_config_requires_stopped_generation_and_disabled_triggers(
 
 
 def test_list_workflow_runs_supports_filters_and_pagination(tmp_path: Path) -> None:
-    """验证 /workflows/runs 支持按 runtime/application/state 过滤与分页头。"""
+    """验证执行编号、版本和开始时间筛选作用于完整记录，再按页返回。"""
 
-    client, _, dataset_storage = _create_runtime_api_client(
+    client, factory, dataset_storage = _create_runtime_api_client(
         tmp_path,
         database_name="workflow-runs-list.db",
         enable_local_buffer_broker=False,
@@ -195,5 +196,59 @@ def test_list_workflow_runs_supports_filters_and_pagination(tmp_path: Path) -> N
             assert list_empty.status_code == 200
             assert list_empty.json() == []
             assert list_empty.headers.get("X-Total-Count") == "0"
+
+            unit_of_work = SqlAlchemyUnitOfWork(factory.create_session())
+            try:
+                base_run = WorkflowRun(
+                    workflow_run_id="run_match_older",
+                    workflow_runtime_id=runtime_id,
+                    project_id="project-1",
+                    application_id=application.application_id,
+                    workflow_app_version_id=version_id,
+                    state="succeeded",
+                    created_at="2026-11-24T00:00:00Z",
+                )
+                for run in (
+                    base_run,
+                    replace(
+                        base_run, workflow_run_id="run_match_newer",
+                        started_at="2026-11-25T01:00:00Z",
+                        created_at="2026-11-25T00:00:00Z",
+                    ),
+                    replace(
+                        base_run, workflow_run_id="run-matching-decoy",
+                        created_at="2026-11-26T00:00:00Z",
+                    ),
+                    replace(
+                        base_run, workflow_run_id="run_match_other_version",
+                        workflow_app_version_id=None,
+                        created_at="2026-11-27T00:00:00Z",
+                    ),
+                ):
+                    unit_of_work.workflow_runtime.save_workflow_run(run)
+                unit_of_work.commit()
+            finally:
+                unit_of_work.close()
+
+            params = {
+                "project_id": "project-1", "application_id": application.application_id,
+                "workflow_runtime_id": runtime_id, "workflow_app_version_id": version_id,
+                "q": "_MATCH_", "state": "succeeded", "limit": 1,
+            }
+            first = client.get("/api/v1/workflows/runs", headers=headers, params=params)
+            assert first.status_code == 200
+            assert first.headers["X-Total-Count"] == "2"
+            assert first.headers["X-Next-Offset"] == "1"
+            assert [item["workflow_run_id"] for item in first.json()] == ["run_match_newer"]
+            second = client.get("/api/v1/workflows/runs", headers=headers, params={**params, "offset": 1})
+            assert [item["workflow_run_id"] for item in second.json()] == ["run_match_older"]
+
+            since = client.get(
+                "/api/v1/workflows/runs", headers=headers,
+                params={**params, "started_from": "2026-11-25T09:00:00+08:00"},
+            )
+            assert since.status_code == 200
+            assert since.headers["X-Total-Count"] == "1"
+            assert [item["workflow_run_id"] for item in since.json()] == ["run_match_newer"]
     finally:
         client.close()

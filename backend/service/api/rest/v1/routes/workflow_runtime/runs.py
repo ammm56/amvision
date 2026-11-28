@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from pydantic import AwareDatetime
 from starlette.concurrency import run_in_threadpool
 
 from backend.contracts.workflows import WorkflowRunContract, WorkflowRunEventContract
@@ -16,7 +18,7 @@ from backend.service.api.deps.auth import (
 from backend.service.api.rest.v1.pagination import (
     DEFAULT_LIST_LIMIT,
     MAX_LIST_LIMIT,
-    paginate_sequence,
+    set_pagination_headers,
 )
 from backend.service.api.rest.v1.routes.workflow_runtime_support.responses import (
     build_workflow_app_invoke_result_payload as _build_workflow_app_invoke_result_payload,
@@ -268,20 +270,34 @@ def list_workflow_runs(
     workflow_runtime_id: Annotated[str | None, Query(description="可选运行实例 id 过滤")] = None,
     application_id: Annotated[str | None, Query(description="可选应用 id 过滤")] = None,
     state: Annotated[str | None, Query(description="可选运行状态过滤")] = None,
+    workflow_app_version_id: Annotated[str | None, Query(description="执行版本 ID 精确过滤")] = None,
+    q: Annotated[str | None, Query(max_length=200, description="执行编号包含的文字")] = None,
+    started_from: Annotated[AwareDatetime | None, Query(description="开始时间下限，含时区和边界值")] = None,
     offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowRunContract]:
     """分页列出可见 Project 下的持久化 WorkflowRun 记录。"""
 
     _ensure_project_visible(principal=principal, project_id=project_id)
-    runs = _build_workflow_runtime_service(request).list_workflow_runs(
+    runs, total_count = _build_workflow_runtime_service(request).list_workflow_runs(
         project_id=project_id,
         workflow_runtime_id=workflow_runtime_id,
         application_id=application_id,
         state=state,
+        workflow_app_version_id=workflow_app_version_id,
+        run_id_query=q,
+        started_from=(
+            started_from.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+            if started_from is not None else None
+        ),
+        offset=offset,
+        limit=limit,
     )
-    paged = paginate_sequence(runs, response=response, offset=offset, limit=limit)
-    return [_build_workflow_run_contract(item) for item in paged]
+    set_pagination_headers(
+        response=response, offset=offset, limit=limit,
+        page_count=len(runs), total_count=total_count,
+    )
+    return [_build_workflow_run_contract(item) for item in runs]
 
 
 @workflow_runtime_runs_router.get(

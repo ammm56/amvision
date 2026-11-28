@@ -59,7 +59,7 @@ describe('WorkflowRunDetailDrawer', () => {
     wrapper.unmount()
   })
 
-  it('摘要策略成功记录未包含预览图时明确提示且不伪造输入', async () => {
+  it('按保存方式显示摘要和完整记录预览', async () => {
     const minimalRun: WorkflowRun = {
       format_id: 'workflow-run-v1',
       workflow_run_id: 'run-min-1',
@@ -72,7 +72,7 @@ describe('WorkflowRunDetailDrawer', () => {
       finished_at: '2026-11-27T01:00:01Z',
       requested_timeout_seconds: 30,
       input_payload: {},
-      outputs: {},
+      outputs: { output_result: { value: { required_count: 5, passed_count: 3, passed: false } } },
       template_outputs: {},
       node_records: [],
       error: null,
@@ -95,8 +95,36 @@ describe('WorkflowRunDetailDrawer', () => {
     await flushPromises()
     const drawer = document.querySelector('[role="dialog"]') as HTMLElement
     expect(drawer.textContent).toContain('执行成功')
+    expect(drawer.textContent).toContain('业务 NG')
+    expect(drawer.textContent).toMatch(/必检项\s*5/)
+    expect(drawer.textContent).toMatch(/未通过\s*2/)
     expect(drawer.textContent).toContain('未保存预览图')
+    drawer.querySelector<HTMLElement>('[data-tab-id="io"]')!.click()
+    await flushPromises()
     expect(drawer.textContent).toContain('摘要记录未保留完整输入数据')
+
+    await wrapper.setProps({
+      run: {
+        ...minimalRun,
+        workflow_run_id: 'run-full-1',
+        metadata: { workflow_run_record_mode: 'full' },
+        outputs: {
+          ...minimalRun.outputs,
+          output_image: {
+            type: 'image-preview',
+            image: {
+              transport_kind: 'inline-base64',
+              media_type: 'image/png',
+              image_base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aFDsAAAAASUVORK5CYII=',
+            },
+          },
+        },
+      },
+    })
+    await flushPromises()
+    expect(drawer.textContent).toContain('完整记录')
+    expect(drawer.querySelector('img')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
+    expect(drawer.querySelector('video')).toBeNull()
     wrapper.unmount()
   })
 })

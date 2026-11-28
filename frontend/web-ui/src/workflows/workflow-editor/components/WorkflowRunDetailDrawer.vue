@@ -26,15 +26,16 @@
         </div>
         <div class="run-drawer__id-row">
           <span class="run-muted">编号</span>
-          <code class="run-mono">{{ run.workflow_run_id }}</code>
+          <code class="run-mono" :title="run.workflow_run_id">{{ displayRunId }}</code>
           <button
             type="button"
             class="run-copy-mini"
             title="复制执行编号"
-            @click="copyText(run.workflow_run_id)"
+            @click="copyText(run.workflow_run_id, 'id')"
           >
             <Copy :size="13" />
           </button>
+          <span v-if="copiedSection === 'id'" class="run-muted" role="status">{{ copyFeedback }}</span>
         </div>
       </div>
 
@@ -47,7 +48,7 @@
       />
 
       <!-- Tab 1: 概览 -->
-      <div v-show="activeTab === 'overview'" class="run-tab-body">
+      <div v-if="activeTab === 'overview'" class="run-tab-body">
         <dl class="run-kv">
           <div>
             <dt>应用</dt>
@@ -110,12 +111,12 @@
             </div>
           </section>
 
-          <section v-if="responseBody" class="run-section">
-            <h4>结果输出</h4>
+          <section v-if="recordMode === 'full' && run.state === 'succeeded' && hasOutputPayload" class="run-section">
             <WorkflowRuntimeBodyViewer
               :project-id="projectId"
               :status-code="responseStatusCode"
-              :body="responseBody"
+              :body="responseBody || run.outputs"
+              media-only
             />
           </section>
           <div v-else-if="run.state === 'succeeded'" class="run-minimal-notice">
@@ -148,7 +149,7 @@
       </div>
 
       <!-- Tab 2: 输入输出 -->
-      <div v-show="activeTab === 'io'" class="run-tab-body">
+      <div v-else-if="activeTab === 'io'" class="run-tab-body">
         <section class="run-section">
           <div class="run-section__head">
             <h4>输入数据</h4>
@@ -180,7 +181,7 @@
         <section class="run-section">
           <div class="run-section__head">
             <h4>输出数据</h4>
-            <div class="run-section__actions">
+            <div v-if="hasOutputPayload" class="run-section__actions">
               <button type="button" class="run-link-btn" @click="copyText(outputPreview.text)">
                 {{ outputPreview.truncated ? '复制当前片段' : '复制输出' }}
               </button>
@@ -194,21 +195,19 @@
               </button>
             </div>
           </div>
-          <WorkflowRuntimeBodyViewer
-            v-if="responseBody"
-            :project-id="projectId"
-            :status-code="responseStatusCode"
-            :body="responseBody"
-          />
-          <p v-if="outputPreview.truncated" class="run-truncate-hint">
-            内容共 {{ outputPreview.totalLines }} 行，预览已截断为前 {{ outputPreview.shownLines }} 行。
-          </p>
-          <pre class="run-json-block">{{ outputPreview.text }}</pre>
+          <div v-if="!hasOutputPayload" class="run-minimal-notice">未保存输出数据</div>
+          <template v-else>
+            <p v-if="outputPreview.truncated" class="run-truncate-hint">
+              内容共 {{ outputPreview.totalLines }} 行，预览已截断为前 {{ outputPreview.shownLines }} 行。
+            </p>
+            <pre class="run-json-block">{{ outputPreview.text }}</pre>
+          </template>
         </section>
+        <p v-if="copiedSection === 'content'" class="run-muted" role="status">{{ copyFeedback }}</p>
       </div>
 
       <!-- Tab 3: 诊断 -->
-      <div v-show="activeTab === 'diagnostics'" class="run-tab-body">
+      <div v-else class="run-tab-body">
         <div v-if="run.error" class="run-error-card">
           <div class="run-section__head">
             <h4>错误信息</h4>
@@ -224,7 +223,7 @@
           <div class="run-section__head">
             <h4>阶段耗时</h4>
             <button type="button" class="run-link-btn" @click="copyText(diagnosticsText)">
-              {{ copyFeedback || '复制诊断' }}
+          复制诊断
             </button>
           </div>
           <div v-if="timingEntries.length === 0" class="run-minimal-notice">
@@ -237,6 +236,7 @@
             </div>
           </dl>
         </section>
+        <p v-if="copiedSection === 'content'" class="run-muted" role="status">{{ copyFeedback }}</p>
 
         <section v-if="nodeRecords.length > 0" class="run-section">
           <h4>节点执行记录 ({{ nodeRecords.length }})</h4>
@@ -268,7 +268,7 @@
         {{ footerCopyFeedback || '复制错误' }}
       </Button>
       <Button
-        v-else-if="run"
+        v-else-if="hasOutputPayload"
         variant="secondary"
         @click="copyResultSummary"
       >
@@ -329,6 +329,7 @@ const emit = defineEmits<{
 
 const activeTab = ref<DetailSubTab>('overview')
 const copyFeedback = ref('')
+const copiedSection = ref<'id' | 'content' | null>(null)
 const footerCopyFeedback = ref('')
 
 const tabs: TabListItem[] = [
@@ -343,12 +344,17 @@ watch(
     if (isOpen) {
       activeTab.value = 'overview'
       copyFeedback.value = ''
+      copiedSection.value = null
       footerCopyFeedback.value = ''
     }
   },
 )
 
 const recordMode = computed(() => readRunRecordMode(props.run))
+const displayRunId = computed(() => {
+  const id = props.run?.workflow_run_id ?? ''
+  return id.length > 26 ? `${id.slice(0, 13)}…${id.slice(-8)}` : id
+})
 const businessOutcome = computed(() => extractBusinessOutcome(props.run))
 const summaryMetrics = computed(() => extractRunMetrics(props.run))
 const failureNode = computed(() => extractRunFailureNode(props.run))
@@ -361,14 +367,14 @@ const hasInputPayload = computed(() => {
 })
 
 const inputPreview = computed(() => formatBoundedJson(props.run?.input_payload ?? {}))
-const outputPreview = computed(() =>
-  formatBoundedJson({
+const persistedOutputs = computed(() => ({
     outputs: props.run?.outputs ?? {},
     ...(Object.keys(props.run?.template_outputs ?? {}).length > 0
       ? { template_outputs: props.run?.template_outputs }
       : {}),
-  }),
-)
+}))
+const hasOutputPayload = computed(() => Object.values(persistedOutputs.value).some((value) => Object.keys(value ?? {}).length > 0))
+const outputPreview = computed(() => formatBoundedJson(persistedOutputs.value))
 
 const timingEntries = computed<Array<[string, string]>>(() => {
   const meta = props.run?.metadata
@@ -401,7 +407,8 @@ const diagnosticsText = computed(() =>
   ),
 )
 
-async function copyText(text: string): Promise<void> {
+async function copyText(text: string, section: 'id' | 'content' = 'content'): Promise<void> {
+  copiedSection.value = section
   try {
     await navigator.clipboard.writeText(text)
     copyFeedback.value = '已复制'
@@ -409,7 +416,7 @@ async function copyText(text: string): Promise<void> {
       copyFeedback.value = ''
     }, 1600)
   } catch {
-    // ignore clipboard fallback
+    copyFeedback.value = '复制失败'
   }
 }
 
@@ -430,7 +437,7 @@ async function copyErrorSummary(): Promise<void> {
 
 async function copyResultSummary(): Promise<void> {
   if (!props.run) return
-  await copyFooterText(JSON.stringify(props.run.outputs ?? {}, null, 2))
+  await copyFooterText(outputPreview.value.fullText)
 }
 
 async function copyFooterText(text: string): Promise<void> {
@@ -441,7 +448,7 @@ async function copyFooterText(text: string): Promise<void> {
       footerCopyFeedback.value = ''
     }, 1600)
   } catch {
-    // ignore clipboard failure
+    footerCopyFeedback.value = '复制失败'
   }
 }
 
@@ -452,7 +459,7 @@ function downloadJson(filename: string, content: string): void {
   link.href = url
   link.download = filename
   link.click()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 </script>
 

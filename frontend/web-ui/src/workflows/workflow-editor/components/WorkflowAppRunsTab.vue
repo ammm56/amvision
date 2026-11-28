@@ -6,7 +6,7 @@
         <div class="runs-filter-item">
           <span class="runs-filter-label">实例</span>
           <SelectField
-            fit-options
+            class="runs-filter-instance"
             floating
             :model-value="filterRuntimeId"
             :options="runtimeFilterOptions"
@@ -57,16 +57,16 @@
           <Search :size="14" />
           <input
             v-model="searchQuery"
-            type="text"
+            type="search"
+            maxlength="200"
             placeholder="搜索执行编号"
             aria-label="搜索执行编号"
-            @input="offset = 0"
           />
           <button
             v-if="searchQuery"
             type="button"
             aria-label="清空执行编号搜索"
-            @click="searchQuery = ''; offset = 0"
+            @click="searchQuery = ''"
           >
             <X :size="13" />
           </button>
@@ -109,13 +109,13 @@
     </div>
 
     <!-- Loading -->
-    <div v-else-if="loading && rawRuns.length === 0" class="runs-state-box">
-      <span class="runs-muted">正在加载执行记录...</span>
+    <div v-else-if="loading" class="runs-state-box" role="status">
+      <span class="runs-muted">正在加载执行记录</span>
     </div>
 
     <!-- None record mode empty hint -->
     <div
-      v-else-if="selectedFilterRuntime && readRuntimeRecordMode(selectedFilterRuntime) === 'none' && filteredRuns.length === 0 && !hasSecondaryFilters"
+      v-else-if="selectedFilterRuntime && readRuntimeRecordMode(selectedFilterRuntime) === 'none' && rawRuns.length === 0 && !hasSecondaryFilters"
       class="runs-state-box"
     >
       <strong>当前实例未保存执行记录</strong>
@@ -129,13 +129,13 @@
     </div>
 
     <!-- Filtered empty -->
-    <div v-else-if="filteredRuns.length === 0 && hasAnyFilters" class="runs-state-box">
+    <div v-else-if="rawRuns.length === 0 && hasAnyFilters" class="runs-state-box">
       <strong>没有符合条件的执行记录</strong>
       <Button variant="secondary" size="sm" @click="clearAllFilters">清空筛选</Button>
     </div>
 
     <!-- True empty -->
-    <div v-else-if="filteredRuns.length === 0" class="runs-state-box">
+    <div v-else-if="rawRuns.length === 0" class="runs-state-box">
       <strong>暂无执行记录</strong>
     </div>
 
@@ -156,13 +156,13 @@
           </thead>
           <tbody>
             <tr
-              v-for="run in pagedRuns"
+              v-for="run in rawRuns"
               :key="run.workflow_run_id"
               :class="{ 'is-selected': selectedRunId === run.workflow_run_id }"
               @click="emit('inspect-run', run)"
             >
               <td class="runs-nowrap">{{ formatSystemDateTime(run.started_at || run.created_at) }}</td>
-              <td><strong>{{ runtimeNameById(run.workflow_runtime_id) }}</strong></td>
+              <td><span class="runs-instance-name" :title="runtimeNameById(run.workflow_runtime_id)">{{ runtimeNameById(run.workflow_runtime_id) }}</span></td>
               <td class="runs-nowrap">{{ versionLabelById(run.workflow_app_version_id) }}</td>
               <td>
                 <span class="runs-status-cell" :class="`is-${runStateDotTone(run.state)}`">
@@ -175,13 +175,13 @@
                 <span
                   v-if="extractBusinessOutcome(run)"
                   class="runs-biz-text"
-                  :class="extractBusinessOutcome(run) === 'NG' ? 'is-ng' : 'is-ok'"
+                  :class="{ 'is-ng': extractBusinessOutcome(run) === 'NG' }"
                 >
                   {{ extractBusinessOutcome(run) }}
                 </span>
                 <span v-else class="runs-muted">—</span>
               </td>
-              <td class="runs-muted">{{ formatRecordModeLabel(readRunRecordMode(run, runtimeById(run.workflow_runtime_id))) }}</td>
+              <td class="runs-muted">{{ formatRecordModeLabel(readRunRecordMode(run)) }}</td>
               <td class="col-actions" @click.stop>
                 <button type="button" class="runs-link-btn" @click="emit('inspect-run', run)">
                   查看
@@ -194,7 +194,6 @@
 
       <div class="runs-pagination">
         <div class="runs-page-meta">
-          <span class="runs-muted">共 {{ effectiveTotalCount }} 条</span>
           <SelectField
             fit-options
             floating
@@ -208,9 +207,9 @@
           numbered
           :offset="offset"
           :limit="limit"
-          :item-count="pagedRuns.length"
-          :total-count="effectiveTotalCount"
-          :has-more="usesClientFiltering ? offset + pagedRuns.length < filteredRuns.length : backendHasMore"
+          :item-count="rawRuns.length"
+          :total-count="backendTotalCount"
+          :has-more="backendHasMore"
           @previous="goToOffset(Math.max(0, offset - limit))"
           @next="goToOffset(offset + limit)"
           @go="goToOffset"
@@ -222,7 +221,7 @@
 
 <script setup lang="ts">
 import { RefreshCw, Search, X } from '@lucide/vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { getErrorMessage } from '@/shared/api/error'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -267,6 +266,8 @@ const backendTotalCount = ref<number | null>(null)
 const backendHasMore = ref(false)
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
+let requestRevision = 0
+let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 const runtimeFilterOptions = computed(() => [
   { value: '', label: '全部' },
@@ -310,56 +311,27 @@ const selectedFilterRuntime = computed(
   () => props.runtimes.find((rt) => rt.workflow_runtime_id === filterRuntimeId.value) ?? null,
 )
 
-const usesClientFiltering = computed(() =>
-  Boolean(filterVersionId.value || filterTimeRange.value || searchQuery.value.trim()),
-)
-
 const hasSecondaryFilters = computed(() =>
   Boolean(filterVersionId.value || filterState.value || filterTimeRange.value || searchQuery.value.trim()),
 )
 
 const hasAnyFilters = computed(() => Boolean(filterRuntimeId.value || hasSecondaryFilters.value))
 
-const filteredRuns = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
+function startedFrom(): string | undefined {
   const now = new Date()
-  let minMs: number | null = null
   if (filterTimeRange.value === 'today') {
-    minMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  } else if (filterTimeRange.value === '7d') {
-    minMs = now.getTime() - 7 * 86_400_000
-  } else if (filterTimeRange.value === '30d') {
-    minMs = now.getTime() - 30 * 86_400_000
+    now.setHours(0, 0, 0, 0)
+    return now.toISOString()
   }
-
-  return rawRuns.value.filter((run) => {
-    if (filterVersionId.value && run.workflow_app_version_id !== filterVersionId.value) {
-      return false
-    }
-    if (minMs !== null) {
-      const ts = Date.parse(run.started_at || run.created_at)
-      if (!Number.isFinite(ts) || ts < minMs) return false
-    }
-    if (q && !run.workflow_run_id.toLowerCase().includes(q)) {
-      return false
-    }
-    return true
-  })
-})
-
-const pagedRuns = computed(() => {
-  if (!usesClientFiltering.value) return filteredRuns.value
-  return filteredRuns.value.slice(offset.value, offset.value + limit.value)
-})
-
-const effectiveTotalCount = computed(() => {
-  if (!usesClientFiltering.value && backendTotalCount.value !== null) {
-    return backendTotalCount.value
+  if (filterTimeRange.value === '7d' || filterTimeRange.value === '30d') {
+    const days = filterTimeRange.value === '7d' ? 7 : 30
+    return new Date(now.getTime() - days * 86_400_000).toISOString()
   }
-  return filteredRuns.value.length
-})
+}
 
 async function refresh(): Promise<void> {
+  clearTimeout(searchTimer)
+  const revision = ++requestRevision
   if (!props.projectId || !props.applicationId) return
   loading.value = true
   errorMessage.value = null
@@ -368,17 +340,27 @@ async function refresh(): Promise<void> {
       projectId: props.projectId,
       applicationId: props.applicationId,
       workflowRuntimeId: filterRuntimeId.value || undefined,
+      workflowAppVersionId: filterVersionId.value || undefined,
       state: filterState.value || undefined,
-      offset: usesClientFiltering.value ? 0 : offset.value,
-      limit: usesClientFiltering.value ? 100 : limit.value,
+      search: searchQuery.value.trim() || undefined,
+      startedFrom: startedFrom(),
+      offset: offset.value,
+      limit: limit.value,
     })
+    if (revision !== requestRevision) return
+    const totalCount = result.pagination.totalCount
+    if (totalCount !== null && offset.value > 0 && offset.value >= totalCount) {
+      offset.value = Math.max(0, Math.floor((totalCount - 1) / limit.value) * limit.value)
+      await refresh()
+      return
+    }
     rawRuns.value = result.items
-    backendTotalCount.value = result.pagination.totalCount ?? result.items.length
+    backendTotalCount.value = totalCount
     backendHasMore.value = result.pagination.hasMore
   } catch (err) {
-    errorMessage.value = getErrorMessage(err)
+    if (revision === requestRevision) errorMessage.value = getErrorMessage(err)
   } finally {
-    loading.value = false
+    if (revision === requestRevision) loading.value = false
   }
 }
 
@@ -397,17 +379,13 @@ function onPageSizeChange(value: string | number | boolean | null): void {
   if (Number.isFinite(num) && num > 0) {
     limit.value = num
     offset.value = 0
-    if (!usesClientFiltering.value) {
-      void refresh()
-    }
+    void refresh()
   }
 }
 
 function goToOffset(nextOffset: number): void {
   offset.value = Math.max(0, nextOffset)
-  if (!usesClientFiltering.value) {
-    void refresh()
-  }
+  void refresh()
 }
 
 function clearAllFilters(): void {
@@ -415,9 +393,10 @@ function clearAllFilters(): void {
   filterVersionId.value = ''
   filterState.value = ''
   filterTimeRange.value = ''
+  const hadSearch = Boolean(searchQuery.value)
   searchQuery.value = ''
   offset.value = 0
-  void refresh()
+  if (!hadSearch) void refresh()
 }
 
 function runtimeById(runtimeId: string): WorkflowAppRuntime | null {
@@ -443,10 +422,21 @@ watch(
     offset.value = 0
     void refresh()
   },
+  { immediate: true },
 )
 
-onMounted(() => {
-  void refresh()
+watch(searchQuery, () => {
+  clearTimeout(searchTimer)
+  requestRevision++
+  offset.value = 0
+  loading.value = true
+  errorMessage.value = null
+  searchTimer = setTimeout(() => void refresh(), 220)
+}, { flush: 'sync' })
+
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer)
+  requestRevision++
 })
 
 defineExpose({ refresh })
@@ -484,6 +474,11 @@ defineExpose({ refresh })
   gap: 6px;
 }
 
+.runs-filter-instance {
+  width: clamp(104px, 14vw, 170px);
+  min-width: 0;
+}
+
 .runs-filter-label {
   font-size: 13px;
   color: var(--am-text-muted);
@@ -494,13 +489,14 @@ defineExpose({ refresh })
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-inline-start: auto;
 }
 
 .runs-search {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 210px;
+  width: clamp(144px, 17vw, 210px);
   max-width: 100%;
   height: 32px;
   padding: 0 10px;
@@ -531,6 +527,8 @@ defineExpose({ refresh })
   outline: none;
   box-shadow: none;
 }
+
+.runs-search input::-webkit-search-cancel-button { display: none; }
 
 .runs-search button {
   border: none;
@@ -636,6 +634,14 @@ defineExpose({ refresh })
   font-variant-numeric: tabular-nums;
 }
 
+.runs-instance-name {
+  display: block;
+  max-width: clamp(160px, 24vw, 360px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .runs-status-cell {
   display: inline-flex;
   align-items: center;
@@ -670,7 +676,7 @@ defineExpose({ refresh })
   height: 12px;
   border-radius: 50%;
   border: 2px solid var(--am-border);
-  border-top-color: var(--am-action-primary);
+  border-top-color: var(--am-text-muted);
   animation: runs-spin 0.9s linear infinite;
 }
 
@@ -682,10 +688,6 @@ defineExpose({ refresh })
 
 .runs-biz-text {
   font-weight: 600;
-}
-
-.runs-biz-text.is-ok {
-  color: var(--am-action-primary);
 }
 
 .runs-biz-text.is-ng {
@@ -708,7 +710,7 @@ defineExpose({ refresh })
 }
 
 .runs-link-btn:hover {
-  text-decoration: underline;
+  color: var(--am-action-primary-hover);
 }
 
 .runs-pagination {
@@ -731,5 +733,10 @@ defineExpose({ refresh })
   border: none;
   padding: 0;
   background: transparent;
+  flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runs-mini-spinner { animation: none; }
 }
 </style>

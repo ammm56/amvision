@@ -726,7 +726,12 @@ class WorkflowRuntimeService:
         workflow_runtime_id: str | None = None,
         application_id: str | None = None,
         state: str | None = None,
-    ) -> tuple[WorkflowRun, ...]:
+        workflow_app_version_id: str | None = None,
+        run_id_query: str | None = None,
+        started_from: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[tuple[WorkflowRun, ...], int]:
         """按 Project 与可选过滤条件列出持久化 WorkflowRun。"""
 
         return self.queries.list_workflow_runs(
@@ -734,6 +739,11 @@ class WorkflowRuntimeService:
             workflow_runtime_id=workflow_runtime_id,
             application_id=application_id,
             state=state,
+            workflow_app_version_id=workflow_app_version_id,
+            run_id_query=run_id_query,
+            started_from=started_from,
+            offset=offset,
+            limit=limit,
         )
 
     def update_workflow_app_runtime_config(

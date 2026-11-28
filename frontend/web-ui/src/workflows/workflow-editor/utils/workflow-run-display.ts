@@ -164,6 +164,16 @@ export function extractRunMetrics(run: WorkflowRun | null | undefined): RunSumma
       if (ng !== null) metrics.push({ label: 'NG', value: ng, tone: ng > 0 ? 'bad' : 'neutral' })
       return metrics
     }
+    const required = obj.required_count
+    const passed = obj.passed_count
+    if (typeof required === 'number' && Number.isSafeInteger(required) && required >= 0
+      && typeof passed === 'number' && Number.isSafeInteger(passed) && passed >= 0 && passed <= required) {
+      return [
+        { label: '必检项', value: required, tone: 'neutral' },
+        { label: '合格项', value: passed, tone: 'ok' },
+        { label: '未通过', value: required - passed, tone: passed < required ? 'bad' : 'neutral' },
+      ]
+    }
   }
   return []
 }

@@ -1601,8 +1601,13 @@ class SqlAlchemyWorkflowRuntimeRepository:
         workflow_runtime_id: str | None = None,
         application_id: str | None = None,
         state: str | None = None,
-    ) -> tuple[WorkflowRun, ...]:
-        """按 Project 与可选 Runtime、Application、状态过滤列出 WorkflowRun。"""
+        workflow_app_version_id: str | None = None,
+        run_id_query: str | None = None,
+        started_from: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[tuple[WorkflowRun, ...], int]:
+        """按项目和筛选条件返回当前执行记录页及总条数。"""
 
         statement = select(WorkflowRunRecord).where(
             WorkflowRunRecord.project_id == project_id
@@ -1617,18 +1622,27 @@ class SqlAlchemyWorkflowRuntimeRepository:
             )
         if state is not None:
             statement = statement.where(WorkflowRunRecord.state == state)
+        if workflow_app_version_id is not None:
+            statement = statement.where(WorkflowRunRecord.workflow_app_version_id == workflow_app_version_id)
+        if run_id_query is not None:
+            statement = statement.where(WorkflowRunRecord.workflow_run_id.icontains(run_id_query, autoescape=True))
+        if started_from is not None:
+            # 存储时间为 UTC ISO 8601。未开始的记录使用创建时间，与列表显示口径一致。
+            statement = statement.where(func.coalesce(WorkflowRunRecord.started_at, WorkflowRunRecord.created_at) >= started_from)
+        count_statement = statement.with_only_columns(func.count(WorkflowRunRecord.workflow_run_id))
         statement = statement.order_by(
             WorkflowRunRecord.created_at.desc(),
             WorkflowRunRecord.workflow_run_id.desc(),
-        )
+        ).offset(offset).limit(limit)
         try:
+            total_count = self.session.execute(count_statement).scalar_one()
             records = self.session.execute(statement).scalars().all()
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
                 "按条件列出 WorkflowRun 失败",
                 details={"error_type": error.__class__.__name__},
             ) from error
-        return tuple(self._run_to_domain(record) for record in records)
+        return tuple(self._run_to_domain(record) for record in records), total_count
 
     def list_workflow_runs_by_runtime(
         self, workflow_runtime_id: str

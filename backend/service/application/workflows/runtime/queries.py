@@ -222,8 +222,13 @@ class WorkflowRuntimeQueries:
         workflow_runtime_id: str | None = None,
         application_id: str | None = None,
         state: str | None = None,
-    ) -> tuple[WorkflowRun, ...]:
-        """按 Project 与可选 Runtime、Application、状态过滤列出 WorkflowRun。"""
+        workflow_app_version_id: str | None = None,
+        run_id_query: str | None = None,
+        started_from: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[tuple[WorkflowRun, ...], int]:
+        """按 Project 和可选运行实例、应用、状态、版本、编号及起始时间过滤执行记录。"""
 
         normalized_project_id = project_id.strip()
         if not normalized_project_id:
@@ -247,4 +252,9 @@ class WorkflowRuntimeQueries:
                 workflow_runtime_id=normalized_runtime_id,
                 application_id=normalized_application_id,
                 state=normalized_state,
+                workflow_app_version_id=(workflow_app_version_id or "").strip() or None,
+                run_id_query=(run_id_query or "").strip() or None,
+                started_from=started_from,
+                offset=offset,
+                limit=limit,
             )

@@ -1,6 +1,6 @@
 <template>
   <section class="runtime-body-viewer">
-    <div class="runtime-body-viewer__summary">
+    <div v-if="!mediaOnly" class="runtime-body-viewer__summary">
       <div v-for="item in summaryItems" :key="item.label" class="runtime-body-viewer__summary-card">
         <span>{{ item.label }}</span>
         <strong>{{ item.value }}</strong>
@@ -10,10 +10,10 @@
     <section v-if="displayImages.length" class="runtime-body-viewer__group">
       <div class="runtime-body-viewer__group-heading">
         <div>
-          <p class="runtime-body-viewer__kicker">Images</p>
+          <p v-if="!mediaOnly" class="runtime-body-viewer__kicker">Images</p>
           <h3>{{ t('workflowEditor.editor.imageResults') }}</h3>
         </div>
-        <span>{{ displayImages.length }} item{{ displayImages.length > 1 ? 's' : '' }}</span>
+        <span v-if="!mediaOnly">{{ displayImages.length }} item{{ displayImages.length > 1 ? 's' : '' }}</span>
       </div>
       <div class="runtime-body-viewer__image-grid">
         <article v-for="image in displayImages" :key="image.path" class="runtime-body-viewer__image-card">
@@ -21,13 +21,13 @@
             <img v-if="image.src" :src="image.src" :alt="image.title" />
             <div v-else class="runtime-body-viewer__image-empty">{{ t('workflowEditor.editor.redactedImageUnavailable') }}</div>
           </button>
-          <div class="runtime-body-viewer__image-meta">
+          <div v-if="!mediaOnly" class="runtime-body-viewer__image-meta">
             <strong>{{ image.title }}</strong>
             <span>{{ image.path }}</span>
             <span>{{ image.transportKind }} / {{ image.mediaType || 'unknown' }}</span>
             <span>{{ image.objectKey || 'inline-base64' }}</span>
           </div>
-          <div class="table-actions table-actions--wrap">
+          <div v-if="!mediaOnly || image.src" class="table-actions table-actions--wrap">
             <Button size="sm" variant="secondary" type="button" :disabled="!image.src" @click="openImage(image)">
               {{ t('workflowEditor.editor.viewImage') }}
             </Button>
@@ -39,10 +39,10 @@
     <section v-if="displayVideos.length" class="runtime-body-viewer__group">
       <div class="runtime-body-viewer__group-heading">
         <div>
-          <p class="runtime-body-viewer__kicker">Videos</p>
+          <p v-if="!mediaOnly" class="runtime-body-viewer__kicker">Videos</p>
           <h3>{{ t('workflowEditor.editor.videoResults') }}</h3>
         </div>
-        <span>{{ displayVideos.length }} item{{ displayVideos.length > 1 ? 's' : '' }}</span>
+        <span v-if="!mediaOnly">{{ displayVideos.length }} item{{ displayVideos.length > 1 ? 's' : '' }}</span>
       </div>
       <div class="runtime-body-viewer__image-grid">
         <article v-for="video in displayVideos" :key="video.path" class="runtime-body-viewer__image-card">
@@ -50,7 +50,7 @@
             <video v-if="video.src" :src="video.src" controls preload="metadata" />
             <div v-else class="runtime-body-viewer__image-empty">{{ t('workflowEditor.editor.videoUnavailable') }}</div>
           </div>
-          <div class="runtime-body-viewer__image-meta">
+          <div v-if="!mediaOnly" class="runtime-body-viewer__image-meta">
             <strong>{{ video.title }}</strong>
             <span>{{ video.path }}</span>
             <span>{{ video.transportKind }} / {{ video.mediaType || 'unknown' }}</span>
@@ -67,7 +67,10 @@
 
     <CloudPreviewPanel v-for="cloud in displayClouds" :key="cloud.path" :payload="cloud.payload" :project-id="projectId" />
 
-    <section v-if="primaryJsonText" class="runtime-body-viewer__group">
+    <p v-if="mediaOnly && !displayImages.length && !displayVideos.length && !displayClouds.length"
+      class="runtime-body-viewer__image-empty">{{ t('workflowEditor.editor.redactedImageUnavailable') }}</p>
+
+    <section v-if="!mediaOnly && primaryJsonText" class="runtime-body-viewer__group">
       <div class="runtime-body-viewer__group-heading">
         <div>
           <p class="runtime-body-viewer__kicker">Payload</p>
@@ -77,7 +80,7 @@
       <pre class="json-view runtime-body-viewer__json">{{ primaryJsonText }}</pre>
     </section>
 
-    <section v-if="metaJsonText" class="runtime-body-viewer__group">
+    <section v-if="!mediaOnly && metaJsonText" class="runtime-body-viewer__group">
       <div class="runtime-body-viewer__group-heading">
         <div>
           <p class="runtime-body-viewer__kicker">Meta</p>
@@ -87,7 +90,7 @@
       <pre class="json-view runtime-body-viewer__json">{{ metaJsonText }}</pre>
     </section>
 
-    <details class="runtime-body-viewer__raw">
+    <details v-if="!mediaOnly" class="runtime-body-viewer__raw">
       <summary>{{ t('workflowEditor.editor.viewRawResponseJson') }}</summary>
       <pre class="json-view runtime-body-viewer__json">{{ rawJsonText }}</pre>
     </details>
@@ -169,6 +172,7 @@ const props = defineProps<{
   projectId: string
   statusCode: number | null
   body: WorkflowJsonObject | null
+  mediaOnly?: boolean
 }>()
 
 const displayImages = ref<RuntimeViewerImage[]>([])
@@ -309,14 +313,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isResponseImagePayload(value: unknown): value is ResponseImagePayload {
-  return isRecord(value) && typeof value.transport_kind === 'string' && typeof value.media_type === 'string'
+  return isRecord(value) && typeof value.transport_kind === 'string'
+    && typeof value.media_type === 'string' && value.media_type.startsWith('image/')
 }
 
 function isResponseVideoPayload(value: unknown): value is ResponseVideoPayload {
   return (
     isRecord(value) &&
     typeof value.transport_kind === 'string' &&
-    typeof value.media_type === 'string' &&
+    typeof value.media_type === 'string' && value.media_type.startsWith('video/') &&
     (value.object_key === undefined || typeof value.object_key === 'string')
   )
 }

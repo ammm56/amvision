@@ -61,7 +61,13 @@
       <!-- Tab 1: 运行实例 -->
       <div v-if="activeTab === 'runtimes'" class="app-tab-stack">
         <section class="app-detail-card">
-          <div class="app-card-toolbar app-card-toolbar--end">
+          <div class="app-card-toolbar">
+            <div v-if="selectedRuntime" class="app-current-runtime app-runtime-heading">
+              <span class="app-muted">当前实例</span>
+              <strong :title="selectedRuntime.display_name || selectedRuntime.workflow_runtime_id">
+                {{ selectedRuntime.display_name || selectedRuntime.workflow_runtime_id }}
+              </strong>
+            </div>
             <div class="app-card-toolbar__actions">
               <Button
                 variant="secondary"
@@ -181,6 +187,7 @@
           <div class="app-card-toolbar">
             <div class="app-current-runtime">
               <strong>关联触发入口</strong>
+              <span v-if="selectedRuntime" class="app-chip">当前实例</span>
             </div>
             <Button
               v-if="canWriteWorkflows"
@@ -216,17 +223,20 @@
               <tbody>
                 <tr v-for="src in selectedRuntimeTriggerSources" :key="src.trigger_source_id">
                   <td><strong>{{ src.display_name || src.trigger_source_id }}</strong></td>
-                  <td class="app-muted">{{ src.trigger_kind }}</td>
+                  <td class="app-muted">{{ triggerKindLabel(src.trigger_kind) }}</td>
                   <td>
                     <span class="app-rt-pill" :class="`is-${triggerDotTone(src)}`">
                       <i class="app-dot" />
                       {{ formatTriggerStateLabel(src) }}
                     </span>
                   </td>
-                  <td class="app-muted app-nowrap">{{ src.updated_at ? formatSystemDateTime(src.updated_at) : '—' }}</td>
+                  <td class="app-muted app-nowrap">{{ src.last_triggered_at ? formatSystemDateTime(src.last_triggered_at) : '—' }}</td>
                   <td class="col-actions">
                     <div class="app-row-actions">
-                      <RouterLink class="app-link-btn" :to="triggerSourceItemPath(src, 'config')">
+                      <RouterLink class="app-link-btn" :to="triggerSourceItemPath(src, 'detail')">
+                        详情
+                      </RouterLink>
+                      <RouterLink v-if="canWriteWorkflows" class="app-link-btn" :to="triggerSourceItemPath(src, 'config')">
                         配置
                       </RouterLink>
                     </div>
@@ -704,7 +714,7 @@
     <WorkflowRuntimeEditConfigDialog
       :open="editConfigRuntime !== null"
       :app-name="application?.display_name || applicationId"
-      :version-label="editConfigRuntime ? runtimeVersionLabel(editConfigRuntime) : '—'"
+      :version-label="editConfigRuntime ? runtimeConfigVersionLabel(editConfigRuntime) : '—'"
       :runtime="editConfigRuntime"
       @cancel="editConfigRuntime = null"
       @saved="handleRuntimeConfigSaved"
@@ -1055,13 +1065,13 @@ const selectedRuntime = computed(
   () => runtimes.value.find((item) => item.workflow_runtime_id === selectedRuntimeId.value) ?? null,
 )
 
-const detailTabs = computed<TabListItem[]>(() => [
-  { id: 'runtimes', label: '运行实例', count: runtimes.value.length },
-  { id: 'versions', label: '发布版本', count: versions.value.length },
+const detailTabs: TabListItem[] = [
+  { id: 'runtimes', label: '运行实例' },
+  { id: 'versions', label: '发布版本' },
   { id: 'io', label: '输入输出' },
   { id: 'invoke', label: '调用调试' },
   { id: 'runs', label: '执行记录' },
-])
+]
 
 const inputBindings = computed(() =>
   (application.value?.bindings ?? []).filter((binding) => binding.direction === 'input'),
@@ -1381,6 +1391,13 @@ function triggerDotTone(src: WorkflowTriggerSource): 'ok' | 'bad' | 'warn' | 'ne
   return 'warn'
 }
 
+function triggerKindLabel(kind: string): string {
+  if (kind === 'zeromq-topic') return 'ZeroMQ'
+  if (kind === 'directory-watch') return 'Directory Watch'
+  if (kind === 'local-shared-memory') return '本机共享内存'
+  return kind
+}
+
 function formatTriggerStateLabel(src: WorkflowTriggerSource): string {
   if (!src.enabled) return '已禁用'
   if (src.observed_state === 'running') return '运行中'
@@ -1396,7 +1413,7 @@ function runtimeDisplayNameById(runtimeId: string): string {
 function versionLabel(versionId: string | null | undefined): string {
   if (!versionId) return '-'
   const found = versions.value.find((item) => item.workflow_app_version_id === versionId)
-  return found ? found.display_version : shortId(versionId)
+  return found?.display_version ?? versionDetailsById.value[versionId]?.display_version ?? shortId(versionId)
 }
 
 function runtimeRevision(runtime: WorkflowAppRuntime, revisionId: string | null | undefined): WorkflowRuntimeRevision | null {
@@ -1427,6 +1444,11 @@ function runtimeVersionLabel(runtime: WorkflowAppRuntime): string {
 
 function runtimeDesiredVersionId(runtime: WorkflowAppRuntime): string {
   return runtimeRevision(runtime, runtime.desired_revision_id)?.workflow_app_version_id ?? ''
+}
+
+function runtimeConfigVersionLabel(runtime: WorkflowAppRuntime): string {
+  if (runtime.desired_revision_id) return versionLabel(runtimeDesiredVersionId(runtime))
+  return runtimeVersionLabel(runtime)
 }
 
 function runtimeTriggerSourceCount(runtime: WorkflowAppRuntime): number {
@@ -1661,11 +1683,32 @@ watch(
   (tab) => {
     if (tab === 'io') {
       void ensureSelectedIoDetail()
-    } else if (tab === 'runs') {
-      void runsTabRef.value?.refresh()
     }
   },
 )
+
+watch([activeTab, workflowApp], async ([tab, app], _, onCleanup) => {
+  if (tab !== 'runs' || !app?.versionPagination.hasMore) return
+  const projectId = selectedProjectId.value
+  const currentApplicationId = applicationId.value
+  let current = true
+  onCleanup(() => { current = false })
+  try {
+    let page = app.versionPagination
+    const history: WorkflowAppVersion[] = []
+    while (page.hasMore && page.nextOffset !== null && page.nextOffset > page.offset) {
+      const result = await listWorkflowAppVersions(projectId, currentApplicationId, { offset: page.nextOffset, limit: page.limit })
+      if (!current || selectedProjectId.value !== projectId || applicationId.value !== currentApplicationId) return
+      history.push(...result.items)
+      page = result.pagination
+    }
+    const byId = new Map([...history, ...app.versions].map((version) => [version.workflow_app_version_id, version]))
+    app.versions = [...byId.values()].sort((left, right) => right.version_number - left.version_number)
+    app.versionPagination = page
+  } catch (error) {
+    if (current) errorMessage.value = getErrorMessage(error)
+  }
+})
 
 watch(
   selectedRuntimeVersionId,
@@ -1926,6 +1969,7 @@ async function createRuntime(value: WorkflowRuntimeCreateDialogValue): Promise<v
 function openEditConfigDialog(runtime: WorkflowAppRuntime): void {
   closeMenu()
   if (!canEditRuntimeConfig(runtime)) return
+  selectRuntime(runtime.workflow_runtime_id)
   editConfigRuntime.value = runtime
 }
 
@@ -2321,7 +2365,7 @@ const workflowAppRuntimeStream = useWorkflowResourceStream<WorkflowAppRuntime>({
 
 function openRuntimeConfigFromChild(runtime: WorkflowAppRuntime): void {
   if (canEditRuntimeConfig(runtime)) {
-    editConfigRuntime.value = runtime
+    openEditConfigDialog(runtime)
   } else {
     openRuntimeDetails(runtime, 'overview')
   }
@@ -2415,8 +2459,8 @@ async function handleCancelInspectedRun(run: WorkflowRun): Promise<void> {
 }
 
 .app-ver-pill.is-published {
-  background: var(--am-row-selected);
-  color: var(--am-action-primary);
+  background: var(--am-surface-soft);
+  color: var(--am-text-muted);
 }
 
 .app-ver-pill.is-draft {
@@ -2477,8 +2521,24 @@ async function handleCancelInspectedRun(run: WorkflowRun): Promise<void> {
   border-bottom: 1px solid var(--am-border);
 }
 
-.app-card-toolbar--end {
-  justify-content: flex-end;
+.app-card-toolbar__actions {
+  margin-inline-start: auto;
+}
+
+.app-runtime-heading {
+  min-width: 0;
+  flex: 1 1 240px;
+  flex-wrap: nowrap;
+}
+
+.app-runtime-heading > span {
+  flex: none;
+}
+
+.app-runtime-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-card-subhead {
@@ -2765,10 +2825,6 @@ async function handleCancelInspectedRun(run: WorkflowRun): Promise<void> {
   color: var(--am-action-primary);
   cursor: pointer;
   text-decoration: none;
-}
-
-.app-link-btn:hover {
-  text-decoration: underline;
 }
 
 .app-link-btn.is-danger {

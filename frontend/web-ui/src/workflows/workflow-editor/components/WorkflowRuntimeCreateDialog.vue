@@ -8,6 +8,7 @@
     :confirm-disabled="!selectedVersionId || !timeoutValid"
     confirm-variant="primary"
     initial-focus="first-field"
+    scroll-body
     @cancel="emit('cancel')"
     @confirm="confirmCreate"
   >
@@ -74,9 +75,11 @@
       />
     </div>
 
-    <p class="rt-form-note">创建后处于停止状态。</p>
     <InlineError v-if="!timeoutValid" :message="t('workflowEditor.appDetail.fields.invalidRequestTimeout')" />
     <InlineError v-if="errorMessage" :message="errorMessage" />
+    <template #leading-actions>
+      <p class="rt-form-note">创建后处于停止状态。</p>
+    </template>
   </ConfirmDialog>
 </template>
 

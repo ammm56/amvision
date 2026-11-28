@@ -35,7 +35,24 @@ def paginate_sequence(
 
     total_count = len(items)
     page_items = list(items[offset : offset + limit])
-    next_offset = offset + len(page_items)
+    set_pagination_headers(
+        response=response, offset=offset, limit=limit,
+        page_count=len(page_items), total_count=total_count,
+    )
+    return page_items
+
+
+def set_pagination_headers(
+    *,
+    response: Response,
+    offset: int,
+    limit: int,
+    page_count: int,
+    total_count: int,
+) -> None:
+    """将当前页条数和过滤后的总条数写入统一分页响应头。"""
+
+    next_offset = offset + page_count
     has_more = next_offset < total_count
 
     response.headers["x-offset"] = str(offset)
@@ -44,5 +61,3 @@ def paginate_sequence(
     response.headers["x-has-more"] = "true" if has_more else "false"
     if has_more:
         response.headers["x-next-offset"] = str(next_offset)
-
-    return page_items
